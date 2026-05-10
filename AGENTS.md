@@ -40,6 +40,8 @@
 
 - **Product model: payback**. The system takes native BTC from the operator's Bitcoin L1 wallet, routes it through BOB Gateway into destination-chain DeFi positions, and returns a configured share of the realized profit back to a native BTC wallet on a fixed schedule. All PnL, caps, and KPIs are **BTC-denominated first**; USD values are display-only.
 - **Operator = user**. Single-account mode. Multi-depositor vaulting (ERC-4626 shares, per-user cost basis) is out of scope until explicitly unlocked by a committed diff to this document.
+- Approved operator BTC address for the 2026-05-10 funding/watch/payback lane:
+  `bc1p809tstru8s6x7accmac2xl3rczcfzzh96myh09gy68d883y4uzushkyww0`. Confirmed deposits to this address may be classified as operating capital only through committed config/policy, Gateway/capital-manager routing, deterministic policy checks, signer approval, and append-only audit evidence. This address is declared in `src/config/operator-btc-addresses.mjs`; it is not a runtime cap override and does not bypass payback rules.
 - Capital sizing is operator-controlled per strategy. There is no project-wide ring-fenced wallet — the operator decides which wallet a given strategy uses and what cap that wallet runs at, declared in the strategy's config.
 - Primary product objective: a native-BTC payback agent. Gateway / Instant Swap quote verification is the **transport and settlement lane**, not the alpha source by itself.
 - Active strategy lanes: destination-chain BTC yield and lending loops, wrapper-BTC arbitrage across Gateway-supported chains, stable entry/exit loops, ETH-family deployment, tokenized reserve / gold sleeves, and other deterministic yield sleeves whose unwind cost is measured.

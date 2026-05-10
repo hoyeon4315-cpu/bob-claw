@@ -1,5 +1,6 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { MempoolClient } from "../bitcoin/fees.mjs";
+import { listApprovedOperatorBtcAddresses } from "../config/operator-btc-addresses.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import {
@@ -104,6 +105,7 @@ export function buildCapitalAuditScope({
   signerAuditRecords = [],
   treasurySnapshots = [],
   gatewayBtcOfframpExecutions = [],
+  approvedOperatorBtcAddresses = [],
 } = {}) {
   const broadcasts = latestBroadcastSignerRecords(signerAuditRecords);
   const evmAddresses = uniqueSorted([
@@ -111,9 +113,10 @@ export function buildCapitalAuditScope({
     ...treasurySnapshots.map((snapshot) => snapshot?.address),
     ...gatewayBtcOfframpExecutions.flatMap((execution) => [execution?.plan?.senderAddress]),
   ]);
-  const bitcoinAddresses = uniqueSorted(
-    gatewayBtcOfframpExecutions.map((execution) => execution?.plan?.recipient),
-  );
+  const bitcoinAddresses = uniqueSorted([
+    ...gatewayBtcOfframpExecutions.map((execution) => execution?.plan?.recipient),
+    ...approvedOperatorBtcAddresses,
+  ]);
   return {
     evmAddresses,
     bitcoinAddresses,
@@ -624,12 +627,14 @@ export function buildCapitalAuditReport({
   bitcoinHistoriesByAddress = {},
   prices = emptyPricesUsd(),
   issues = [],
+  approvedOperatorBtcAddresses = [],
 } = {}) {
   const broadcasts = latestBroadcastSignerRecords(signerAuditRecords);
   const scope = buildCapitalAuditScope({
     signerAuditRecords,
     treasurySnapshots,
     gatewayBtcOfframpExecutions,
+    approvedOperatorBtcAddresses,
   });
   const bitcoinMatching = matchBitcoinSettlements({
     gatewayBtcOfframpExecutions,
@@ -879,6 +884,7 @@ export async function collectCapitalAuditInputs({
     signerAuditRecords,
     treasurySnapshots,
     gatewayBtcOfframpExecutions,
+    approvedOperatorBtcAddresses: listApprovedOperatorBtcAddresses({ purpose: "deposit_watch" }),
   });
 
   const issues = [];
@@ -970,6 +976,7 @@ export async function collectCapitalAuditInputs({
     receiptsByTxHash,
     bitcoinHistoriesByAddress,
     prices,
+    approvedOperatorBtcAddresses: listApprovedOperatorBtcAddresses({ purpose: "deposit_watch" }),
     issues,
   };
 }

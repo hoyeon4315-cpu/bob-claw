@@ -77,6 +77,41 @@ test("executor runtime stays stale when socket health cannot be refreshed", asyn
   assert.equal(runtime.runtimeStatus, "missing");
 });
 
+test("executor runtime does not trust a fresh heartbeat when socket health is refused", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bob-claw-executor-runtime-refused-"));
+  const heartbeatPath = join(dir, "executor-heartbeat.json");
+  const socketPath = join(dir, "executor-signer.sock");
+
+  await writeHeartbeat({
+    path: heartbeatPath,
+    now: "2026-05-10T05:09:36.177Z",
+    metadata: {
+      pid: 72393,
+      socketPath,
+      status: "listening",
+      lastCommand: "health",
+    },
+  });
+  await writeFile(socketPath, "");
+
+  const runtime = await loadExecutorRuntime({
+    now: "2026-05-10T05:09:44.532Z",
+    heartbeatPath,
+    signerSocketPath: socketPath,
+    killSwitchPath: join(dir, "missing-kill-switch"),
+    killSwitchAuditPath: join(dir, "logs", "kill-switch-audit.jsonl"),
+    ttlMs: 60_000,
+    healthReader: async () => {
+      throw new Error("connect ECONNREFUSED");
+    },
+  });
+
+  assert.equal(runtime.available, false);
+  assert.equal(runtime.runtimeStatus, "socket_unreachable");
+  assert.equal(runtime.signerStatus, "unreachable");
+  assert.equal(runtime.signerHealthError, "connect ECONNREFUSED");
+});
+
 test("executor runtime exposes path-filtered kill-switch state", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bob-claw-executor-runtime-kill-"));
   const heartbeatPath = join(dir, "executor-heartbeat.json");

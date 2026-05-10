@@ -56,6 +56,7 @@ import { buildProtocolAprSlice } from "./protocol-apr-slice.mjs";
 import { buildStrategyParitySlice } from "./strategy-parity-slice.mjs";
 import { buildTreasuryHoldingsSlice } from "./treasury-holdings-slice.mjs";
 import { buildSleeveProfileSlice } from "./sleeve-profile-slice.mjs";
+import { buildBtcNavHistorySlice } from "./btc-nav-history-slice.mjs";
 import { loadExecutorRuntime } from "./executor-runtime.mjs";
 import { buildLiveBaselineSummary } from "./live-baseline.mjs";
 import { readReportingPnlBaseline } from "./reporting-pnl-baseline.mjs";
@@ -347,6 +348,9 @@ export async function buildCurrentDashboardContext({
     autoKillActiveProtocols,
     autoKillCampaignStatus,
     autoKillOraclePayload,
+    moneyLoopLatest,
+    btcNavHistoryRecords,
+    perSlotAttributionRecords,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -413,6 +417,9 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "active-protocols.json")),
     readJsonIfExists(join(dataDir, "campaign-status.json")),
     readJsonIfExists(autoKillOraclesPath),
+    readJsonIfExists(join(dataDir, "money-loop-latest.json")),
+    readJsonl(dataDir, "btc-nav-history"),
+    readJsonl(dataDir, "per-slot-attribution"),
   ]);
   const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest, campaignAwareOpportunities, anchorPositionHealth, merklUserRewardsLatest] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
@@ -651,6 +658,16 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.operatingCapitalUsd = operatingCapitalUsd;
   dashboardStatus.operations = {
     allChainAutopilot: buildAllChainAutopilotDashboardSlice(allChainAutopilotReport),
+    moneyLoop: moneyLoopLatest || null,
+  };
+  dashboardStatus.btcNavHistory = buildBtcNavHistorySlice(btcNavHistoryRecords, {
+    generatedAt: dashboardStatus.generatedAt,
+  });
+  dashboardStatus.perSlotAttribution = {
+    schemaVersion: 1,
+    generatedAt: dashboardStatus.generatedAt,
+    recordCount: perSlotAttributionRecords.length,
+    latest: perSlotAttributionRecords.slice(-12),
   };
   dashboardStatus.gasGovernor = buildGovernorReplay({
     auditRecords: signerAuditRecords,
@@ -746,6 +763,9 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.dataCounts.treasuryInventoryRecords = treasuryInventoryRecords.length;
   dashboardStatus.dataCounts.capitalSummaryPresent = 1;
   dashboardStatus.dataCounts.allChainAutopilotPresent = allChainAutopilotReport ? 1 : 0;
+  dashboardStatus.dataCounts.moneyLoopPresent = moneyLoopLatest ? 1 : 0;
+  dashboardStatus.dataCounts.btcNavHistoryRecords = btcNavHistoryRecords.length;
+  dashboardStatus.dataCounts.perSlotAttributionRecords = perSlotAttributionRecords.length;
   dashboardStatus.dataCounts.flowPresent = dashboardStatus.flow ? 1 : 0;
   dashboardStatus.dataCounts.idleConsolidationPlanned7d =
     dashboardStatus.idleConsolidation?.plannedCount7d ?? 0;

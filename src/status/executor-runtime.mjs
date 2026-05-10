@@ -24,6 +24,8 @@ export function summarizeExecutorRuntime({
   heartbeatPath = "./state/executor-heartbeat.json",
   signerSocketPath = DEFAULT_SIGNER_SOCKET_PATH,
   signerSocketPresent = false,
+  signerSocketResponding = undefined,
+  signerHealthError = null,
   killSwitch = null,
   ttlMs = 60_000,
   now = new Date().toISOString(),
@@ -31,7 +33,9 @@ export function summarizeExecutorRuntime({
   const watchdog = evaluateWatchdogHeartbeat({ heartbeat, now, ttlMs });
   const runtimeStatus = watchdog.status === "healthy"
     ? signerSocketPresent
-      ? "healthy"
+      ? signerSocketResponding === false
+        ? "socket_unreachable"
+        : "healthy"
       : "socket_missing"
     : watchdog.status;
 
@@ -42,7 +46,11 @@ export function summarizeExecutorRuntime({
     pid: heartbeat?.pid ?? null,
     signerSocketPath,
     signerSocketPresent,
-    signerStatus: heartbeat?.status || (signerSocketPresent ? "socket_present" : "missing_socket"),
+    signerSocketResponding,
+    signerHealthError,
+    signerStatus: signerSocketResponding === false
+      ? "unreachable"
+      : heartbeat?.status || (signerSocketPresent ? "socket_present" : "missing_socket"),
     lastCommand: heartbeat?.lastCommand || null,
     killSwitch: killSwitch
       ? {
@@ -78,13 +86,16 @@ export async function loadExecutorRuntime({
   const effectiveSocketPath = heartbeat?.socketPath || signerSocketPath;
   const signerSocketPresent = await pathExists(effectiveSocketPath);
   const heartbeatState = evaluateWatchdogHeartbeat({ heartbeat, now, ttlMs });
+  let signerSocketResponding = undefined;
+  let signerHealthError = null;
 
-  if (signerSocketPresent && heartbeatState.status !== "healthy") {
+  if (signerSocketPresent) {
     try {
       const health = await healthReader({
         socketPath: effectiveSocketPath,
         timeoutMs: Math.min(ttlMs, 5_000),
       });
+      signerSocketResponding = health?.status === "ok";
       heartbeat = await heartbeatWriter({
         path: heartbeatPath,
         now,
@@ -95,9 +106,13 @@ export async function loadExecutorRuntime({
           lastCommand: "health",
         },
       });
-    } catch {
-      // Keep the stale/missing heartbeat result when the socket cannot answer health checks.
+    } catch (error) {
+      signerSocketResponding = false;
+      signerHealthError = error.message;
+      // Keep the existing heartbeat, but do not report the runtime as healthy.
     }
+  } else if (heartbeatState.status === "healthy") {
+    signerSocketResponding = false;
   }
   const killSwitch = await killSwitchStatusReader({
     killSwitchPath,
@@ -109,6 +124,8 @@ export async function loadExecutorRuntime({
     heartbeatPath,
     signerSocketPath: effectiveSocketPath,
     signerSocketPresent,
+    signerSocketResponding,
+    signerHealthError,
     ttlMs,
     now,
     killSwitch,
