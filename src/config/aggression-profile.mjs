@@ -7,6 +7,8 @@ export const AGGRESSION_PROFILES = Object.freeze({
     reserveFloorPct: 0.35,
     maxK: 2,
     approvalMaxIdleHours: 24,
+    firstMoverEnabled: false,
+    briberySourceEnabled: false,
     diversity: Object.freeze({
       maxSameChain: 1,
       maxSameProtocol: 1,
@@ -21,6 +23,8 @@ export const AGGRESSION_PROFILES = Object.freeze({
     reserveFloorPct: 0.22,
     maxK: 6,
     approvalMaxIdleHours: 24,
+    firstMoverEnabled: true,
+    briberySourceEnabled: true,
     diversity: Object.freeze({
       maxSameChain: 1,
       maxSameProtocol: 1,
@@ -32,7 +36,10 @@ export const AGGRESSION_PROFILES = Object.freeze({
 export const DEFAULT_AGGRESSION_PROFILE_ID = "aggressive_calibrated";
 
 export function resolveAggressionProfile(profile = DEFAULT_AGGRESSION_PROFILE_ID) {
-  if (typeof profile === "string") return AGGRESSION_PROFILES[profile] || AGGRESSION_PROFILES[DEFAULT_AGGRESSION_PROFILE_ID];
+  if (typeof profile === "string") {
+    const resolved = AGGRESSION_PROFILES[profile] || AGGRESSION_PROFILES[DEFAULT_AGGRESSION_PROFILE_ID];
+    return { ...resolved };
+  }
   if (profile?.id) return { ...AGGRESSION_PROFILES[profile.id], ...profile };
-  return AGGRESSION_PROFILES[DEFAULT_AGGRESSION_PROFILE_ID];
+  return { ...AGGRESSION_PROFILES[DEFAULT_AGGRESSION_PROFILE_ID] };
 }
