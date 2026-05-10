@@ -6,6 +6,7 @@ export const AGGRESSION_PROFILES = Object.freeze({
     maxCanaryUsd: 15,
     reserveFloorPct: 0.35,
     maxK: 2,
+    approvalMaxIdleHours: 24,
     diversity: Object.freeze({
       maxSameChain: 1,
       maxSameProtocol: 1,
@@ -19,6 +20,7 @@ export const AGGRESSION_PROFILES = Object.freeze({
     maxCanaryUsd: 30,
     reserveFloorPct: 0.22,
     maxK: 6,
+    approvalMaxIdleHours: 24,
     diversity: Object.freeze({
       maxSameChain: 1,
       maxSameProtocol: 1,

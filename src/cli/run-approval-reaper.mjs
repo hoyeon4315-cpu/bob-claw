@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import { resolveAggressionProfile } from "../config/aggression-profile.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { readErc20Allowance, readErc20Balance } from "../evm/account-state.mjs";
 import {
@@ -15,6 +17,8 @@ import { sendSignerCommand, signerClientTimeoutMs, signerSocketPath } from "../e
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { buildDefaultTreasuryPolicy, decimalToUnits } from "../treasury/policy.mjs";
 import { tokenAsset } from "../assets/tokens.mjs";
+
+const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
 const JSON_ARTIFACTS = Object.freeze([
   "aave-protocol-canary-latest.json",
@@ -53,7 +57,7 @@ export function parseArgs(argv = []) {
     dataDir: options["data-dir"] || config.dataDir,
     outputPath: options.output || null,
     dashboardOutputPath: options["dashboard-output"] || null,
-    idleTtlMs: options["idle-ttl-ms"] ? Number(options["idle-ttl-ms"]) : 3_600_000,
+    idleTtlMs: options["idle-ttl-ms"] ? Number(options["idle-ttl-ms"]) : null,
     socketPath: options["socket-path"] || signerSocketPath(),
     timeoutMs: options["timeout-ms"] ? Number(options["timeout-ms"]) : signerClientTimeoutMs(),
   };
@@ -88,6 +92,52 @@ async function readJsonlIfExists(path, maxLines = 500) {
   }
 }
 
+export async function extractApprovalsFromSignerAudit(auditPath, maxLines = 2000) {
+  const lines = await readJsonlIfExists(auditPath, maxLines);
+  const byKey = new Map();
+  for (const record of lines) {
+    if (record?.intent?.intentType !== "approve_exact") continue;
+    const intent = record.intent;
+    const metadata = intent.metadata || {};
+    let token = null;
+    let spender = null;
+    if (intent.approval?.token && intent.approval?.spender) {
+      token = intent.approval.token;
+      spender = intent.approval.spender;
+    } else if (metadata.assetAddress && metadata.vaultAddress) {
+      token = metadata.assetAddress;
+      spender = metadata.vaultAddress;
+    } else if (metadata.expectedTxTo && metadata.revokedSpender) {
+      token = metadata.expectedTxTo;
+      spender = metadata.revokedSpender;
+    }
+    if (!token || !spender) continue;
+    const chain = String(record.chain || intent.chain || "").toLowerCase();
+    if (!chain) continue;
+    const key = `${chain}:${token.toLowerCase()}:${spender.toLowerCase()}`;
+    const observedAt = record.timestamp || intent.observedAt || null;
+    const existing = byKey.get(key);
+    const existingTime = existing?.lastActiveAt ? new Date(existing.lastActiveAt).getTime() : 0;
+    const newTime = observedAt ? new Date(observedAt).getTime() : 0;
+    if (!existing || newTime >= existingTime) {
+      byKey.set(key, {
+        strategyId: record.strategyId,
+        chain,
+        token: token.toLowerCase(),
+        spender: spender.toLowerCase(),
+        lastApprovedAmountRaw: intent.approval?.amount || metadata.lastApprovedAmountRaw || null,
+        lastActiveAt: observedAt,
+        source: "signer_audit",
+      });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => {
+    const aKey = `${a.chain}:${a.token}:${a.spender}`;
+    const bKey = `${b.chain}:${b.token}:${b.spender}`;
+    return aKey.localeCompare(bKey);
+  });
+}
+
 function treasuryAllowanceWatchlist() {
   const policy = buildDefaultTreasuryPolicy();
   return (policy.allowanceCaps || []).map((item) => {
@@ -112,9 +162,12 @@ async function loadApprovalArtifacts(dataDir) {
 
 async function buildWatchlist(dataDir) {
   const artifacts = await loadApprovalArtifacts(dataDir);
+  const signerAuditPath = join(dataDir, "..", "logs", "signer-audit.jsonl");
+  const signerAuditWatchlist = await extractApprovalsFromSignerAudit(signerAuditPath);
   return [
     ...treasuryAllowanceWatchlist(),
     ...extractApprovalWatchlist(artifacts),
+    ...signerAuditWatchlist,
   ];
 }
 
@@ -157,6 +210,10 @@ function printSummary(report) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.idleTtlMs == null) {
+    const profile = resolveAggressionProfile();
+    args.idleTtlMs = (profile.approvalMaxIdleHours || 1) * 3_600_000;
+  }
   const report = await collectReport(args);
   if (args.write || args.outputPath) {
     const outputPath = args.outputPath || join(args.dataDir, "approval-reaper-latest.json");
@@ -168,7 +225,9 @@ async function main() {
   else printSummary(report);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (IS_MAIN) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

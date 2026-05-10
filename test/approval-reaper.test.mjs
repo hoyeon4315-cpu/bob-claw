@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { extractApprovalsFromSignerAudit } from "../src/cli/run-approval-reaper.mjs";
 import {
   buildApprovalExposureSlice,
   buildApprovalReaperReport,
@@ -255,4 +259,95 @@ test("approval reaper execute sends only revocable zero-approval intents", async
   assert.equal(signerMessages[0].command, "sign_and_broadcast");
   assert.equal(signerMessages[0].intent.approval.amount, "0");
   assert.equal(report.execution.results[0].status, "approved");
+});
+
+test("extractApprovalsFromSignerAudit returns deduplicated approvals from signer audit", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "approval-reaper-test-"));
+  const auditPath = join(tempDir, "signer-audit.jsonl");
+  await writeFile(
+    auditPath,
+    [
+      JSON.stringify({
+        schemaVersion: 1,
+        timestamp: "2026-05-07T08:00:00.000Z",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
+        intent: {
+          intentType: "approve_exact",
+          amountUsd: 0,
+          mode: "live",
+          metadata: {
+            assetAddress: TOKEN,
+            vaultAddress: SPENDER,
+          },
+        },
+      }),
+      JSON.stringify({
+        schemaVersion: 1,
+        timestamp: "2026-05-07T09:00:00.000Z",
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        chain: "base",
+        intent: {
+          intentType: "approve_exact",
+          amountUsd: 0,
+          mode: "live",
+          metadata: {
+            assetAddress: TOKEN,
+            vaultAddress: SPENDER,
+          },
+        },
+      }),
+      JSON.stringify({
+        schemaVersion: 1,
+        timestamp: "2026-05-07T08:00:00.000Z",
+        strategyId: "other-strategy",
+        chain: "ethereum",
+        intent: {
+          intentType: "funding_transfer",
+          amountUsd: 10,
+          mode: "live",
+        },
+      }),
+    ].join("\n") + "\n",
+  );
+
+  const watchlist = await extractApprovalsFromSignerAudit(auditPath, 2000);
+  await rm(tempDir, { recursive: true, force: true });
+
+  assert.equal(watchlist.length, 1);
+  assert.equal(watchlist[0].strategyId, "gateway_native_asset_conversion_sleeve");
+  assert.equal(watchlist[0].chain, "base");
+  assert.equal(watchlist[0].token, TOKEN.toLowerCase());
+  assert.equal(watchlist[0].spender, SPENDER.toLowerCase());
+  assert.equal(watchlist[0].lastActiveAt, "2026-05-07T09:00:00.000Z");
+  assert.equal(watchlist[0].source, "signer_audit");
+});
+
+test("approval reaper catches signer-audit sourced approval and revokes after TTL", () => {
+  const report = buildApprovalReaperReport({
+    owner: OWNER,
+    now: "2026-05-07T10:00:00.000Z",
+    idleTtlMs: 3_600_000,
+    watchlist: [
+      {
+        chain: "base",
+        token: TOKEN,
+        spender: SPENDER,
+        strategyId: "gateway_native_asset_conversion_sleeve",
+        source: "signer_audit",
+        lastActiveAt: "2026-05-07T08:00:00.000Z",
+      },
+    ],
+    allowanceState: {
+      [`base:${TOKEN.toLowerCase()}:${SPENDER.toLowerCase()}`]: {
+        allowanceRaw: "28027",
+        balanceRaw: "4891",
+      },
+    },
+  });
+
+  assert.equal(report.summary.staleNonzeroCount, 1);
+  assert.equal(report.revocationIntents.length, 1);
+  assert.equal(report.revocationIntents[0].strategyId, "gateway_native_asset_conversion_sleeve");
+  assert.equal(report.revocationIntents[0].metadata.approvalReaperSource, "signer_audit");
 });
