@@ -4,7 +4,7 @@ import {
   reconcilePositions,
   isReconcileStale,
   PROTOCOL_READERS,
-} from "../../src/executor/health/position-reconciler.mjs";
+} from "../../../src/executor/health/position-reconciler.mjs";
 
 describe("position-reconciler", () => {
   it("returns positions with protocol + wallet sources", async () => {

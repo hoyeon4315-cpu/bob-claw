@@ -36,14 +36,14 @@ describe("consecutive-failure-healer", () => {
     const auditLogPath = join(root, "signer-audit.jsonl");
     const rows = [
       {
-        strategyId: "recursive_wrapped_btc_lending_loop",
+        strategyId: "test_strategy_no_reset",
         intentId: "real-fail",
         timestamp: "2026-04-17T00:10:00.000Z",
         policyVerdict: "errored",
         lifecycle: { stage: "reverted" },
       },
       {
-        strategyId: "recursive_wrapped_btc_lending_loop",
+        strategyId: "test_strategy_no_reset",
         intentId: "kill-switch-reject",
         timestamp: "2026-04-17T00:11:00.000Z",
         policyVerdict: "rejected",
@@ -51,7 +51,7 @@ describe("consecutive-failure-healer", () => {
         broadcast: null,
       },
       {
-        strategyId: "recursive_wrapped_btc_lending_loop",
+        strategyId: "test_strategy_no_reset",
         intentId: "self-reject",
         timestamp: "2026-04-17T00:12:00.000Z",
         policyVerdict: "rejected",
@@ -62,7 +62,7 @@ describe("consecutive-failure-healer", () => {
     await writeFile(auditLogPath, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
 
     const result = await scanConsecutiveFailures({
-      strategyId: "recursive_wrapped_btc_lending_loop",
+      strategyId: "test_strategy_no_reset",
       auditLogPath,
     });
 

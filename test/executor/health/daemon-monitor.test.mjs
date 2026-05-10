@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import {
   checkDaemonStatus,
-} from "../../src/executor/health/daemon-monitor.mjs";
+} from "../../../src/executor/health/daemon-monitor.mjs";
 
 describe("daemon-monitor", () => {
   it("detects missing PID file and socket", async () => {

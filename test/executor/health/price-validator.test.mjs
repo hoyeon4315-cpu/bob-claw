@@ -3,7 +3,7 @@ import assert from "node:assert";
 import {
   validatePriceMap,
   buildValidatedPriceMap,
-} from "../../src/executor/health/price-validator.mjs";
+} from "../../../src/executor/health/price-validator.mjs";
 
 describe("price-validator", () => {
   it("flags large price divergences", async () => {

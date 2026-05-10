@@ -27,7 +27,7 @@ function canaryFailure(timestamp, id) {
     observedAt: timestamp,
     status: "reverted",
     queueItem: {
-      opportunityId: id,
+      opportunityId: "test-opp",
       chain: "ethereum",
       protocolId: "morpho",
       mappedStrategyId: GATEWAY_STRATEGY_ID,
@@ -91,7 +91,7 @@ test("committed reset clears pre-evidence consecutive failure streaks only", () 
 
 test("committed reset clears pre-evidence canary graduation failures only", () => {
   const queueItem = {
-    opportunityId: "next",
+    opportunityId: "test-opp",
     chain: "ethereum",
     protocolId: "morpho",
     mappedStrategyId: GATEWAY_STRATEGY_ID,
