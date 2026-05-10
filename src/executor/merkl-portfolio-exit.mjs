@@ -17,6 +17,7 @@ import {
   executeAavePortfolioExit,
   executeErc4626PortfolioExit,
 } from "./helpers/merkl-portfolio-exit-executors.mjs";
+import { resolveExitExecutor } from "./protocol-binding-registry.mjs";
 
 function finite(value) {
   const parsed = Number(value);
@@ -423,6 +424,17 @@ function zeroShareExitRecord({ evaluation, error }) {
 }
 
 async function executePortfolioExitPosition({ position, senderAddress, socketPath, timeoutMs }) {
+  const exitExecutor = resolveExitExecutor(position.bindingKind);
+  if (exitExecutor) {
+    return exitExecutor({
+      position,
+      senderAddress,
+      socketPath,
+      timeoutMs,
+      confirmationTimeoutMs: confirmationTimeoutMsForExit(timeoutMs),
+    });
+  }
+  // Fallback for legacy binding kinds not yet registered with dynamic exit executors
   if (position.bindingKind === "aave_v3_pool_supply_withdraw") {
     return executeAavePortfolioExit({
       position,
