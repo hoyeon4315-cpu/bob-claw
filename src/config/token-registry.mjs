@@ -1,5 +1,8 @@
 // Token registry: per-chain ERC20 metadata.
 // Source of truth replacing realtime-portfolio.mjs hardcoded KNOWN_TOKENS.
+
+export const WBTC_OFT_ADDRESS = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
+export const ETHEREUM_WBTC_ADDRESS = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
 //
 // PR-only additions: AGENTS.md forbids automated whitelisting. The
 // sync CLI may stage candidates into data/treasury/pending-whitelist.jsonl

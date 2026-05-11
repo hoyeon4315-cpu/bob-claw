@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { ZERO_TOKEN } from "../src/assets/tokens.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "../src/executor/helpers/token-dex-experiment.mjs";
 
 function odosClientFixture() {
@@ -260,7 +261,7 @@ test("token dex experiment plan supports native output unwrap", async () => {
 
   assert.equal(plan.planStatus, "ready");
   assert.equal(plan.outputAsset.ticker, "ETH");
-  assert.equal(plan.outputToken, "0x0000000000000000000000000000000000000000");
+  assert.equal(plan.outputToken, ZERO_TOKEN);
   assert.equal(plan.wrappedOutputToken, "0x4200000000000000000000000000000000000006");
   assert.equal(plan.steps.length, 3);
   assert.equal(plan.steps[2].id, "unwrap_wrapped_native");
@@ -349,7 +350,7 @@ test("token dex experiment plan directly unwraps wrapped-native input to native 
   assert.equal(plan.planStatus, "ready");
   assert.equal(plan.inputAsset.ticker, "WBNB");
   assert.equal(plan.outputAsset.ticker, "BNB");
-  assert.equal(plan.outputToken, "0x0000000000000000000000000000000000000000");
+  assert.equal(plan.outputToken, ZERO_TOKEN);
   assert.equal(plan.wrappedOutputToken, "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c");
   assert.equal(plan.minimumOutputAmount, "5000000000000000");
   assert.equal(plan.steps.length, 1);
