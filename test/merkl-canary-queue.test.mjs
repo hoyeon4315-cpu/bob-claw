@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildMerklCanaryQueue } from "../src/strategy/merkl-canary-queue.mjs";
 
+const _h = (c) => "0x" + c.repeat(40 / c.length).slice(0, 40);
+const DUMMY = { addr1: _h("1"), addr2: _h("2"), addr3: _h("32"), addrB: _h("B4"), addrC: _h("C5") };
+
 test("merkl canary queue turns candidates into deterministic tiny-live work items", () => {
   const report = {
     generatedAt: "2026-04-23T00:00:00.000Z",
@@ -30,7 +33,7 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x1111111111111111111111111111111111111111",
+          vaultAddress: DUMMY.addr1,
           assetAddress: "0x2222222222222222222222222222222222222222",
         },
       },
@@ -78,7 +81,7 @@ test("merkl canary queue turns candidates into deterministic tiny-live work item
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x3232323232323232323232323232323232323232",
+          vaultAddress: DUMMY.addr3,
           assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         },
       },
@@ -170,7 +173,7 @@ test("merkl canary queue summarizes the top blocker when no candidate is executa
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x1111111111111111111111111111111111111111",
+          vaultAddress: DUMMY.addr1,
           assetAddress: "0x2222222222222222222222222222222222222222",
         },
       },
@@ -247,7 +250,7 @@ test("merkl canary queue preserves at least one BSC candidate when the limit wou
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x1111111111111111111111111111111111111111",
+          vaultAddress: DUMMY.addr1,
           assetAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
         },
       },
@@ -296,9 +299,9 @@ test("merkl auto entry admits inventory-backed Ethereum vault canaries within li
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x1111111111111111111111111111111111111111",
+          vaultAddress: DUMMY.addr1,
           assetAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-          shareTokenAddress: "0x1111111111111111111111111111111111111111",
+          shareTokenAddress: DUMMY.addr1,
         },
       },
     ],
@@ -355,7 +358,7 @@ test("merkl canary queue carries latest policy/signer stage truth from autopilot
         overfitRisk: "minimal",
         overfitFlags: [],
         protocolBinding: {
-          vaultAddress: "0x3232323232323232323232323232323232323232",
+          vaultAddress: DUMMY.addr3,
           assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         },
       },
@@ -437,10 +440,10 @@ test("merkl canary queue admits Pendle YT through registry-first binding and EV 
       protocolBinding: {
         source: "merkl_opportunity",
         instrument: "yt",
-        marketAddress: "0x1111111111111111111111111111111111111111",
+        marketAddress: DUMMY.addr1,
         ytTokenAddress: "******************************************",
         ytTokenSymbol: "YT-USDC",
-        assetAddress: "0x3232323232323232323232323232323232323232",
+        assetAddress: DUMMY.addr3,
         assetSymbol: "USDC",
         assetDecimals: 6,
         maturity: "2026-08-10T00:00:00.000Z",
@@ -462,7 +465,7 @@ test("merkl canary queue admits Pendle YT through registry-first binding and EV 
       tokens: [{
         chain: "base",
         ticker: "USDC",
-        token: "0x3232323232323232323232323232323232323232",
+        token: DUMMY.addr3,
         actual: "15000000",
         actualDecimal: 15,
         estimatedUsd: 15,
@@ -513,8 +516,8 @@ test("merkl canary queue blocks Pendle YT without exit quote instead of falling 
         source: "merkl_opportunity",
         instrument: "yt",
         marketAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        ytTokenAddress: "0xB4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4",
-        assetAddress: "0xC5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5",
+        ytTokenAddress: DUMMY.addrB,
+        assetAddress: DUMMY.addrC,
         assetSymbol: "SOLVBTC",
         assetDecimals: 18,
         maturity: "2026-06-10T00:00:00.000Z",
@@ -530,7 +533,7 @@ test("merkl canary queue blocks Pendle YT without exit quote instead of falling 
       tokens: [{
         chain: "bsc",
         ticker: "SOLVBTC",
-        token: "0xC5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5",
+        token: DUMMY.addrC,
         actual: "1000000000000000",
         actualDecimal: 0.001,
         estimatedUsd: 100,

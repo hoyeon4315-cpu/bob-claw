@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { evaluatePendleYtEv, isPendleYtQueueItem, PENDLE_YT_EV_POLICY } from "../src/strategy/pendle-yt-ev.mjs";
 
+const _h = (c) => "0x" + c.repeat(40 / c.length).slice(0, 40);
+const DUMMY = { addr1: _h("1"), addr2: _h("2"), addr3: _h("32"), addrB: _h("B4"), addrC: _h("C5") };
+
 function baseQueueItem(overrides = {}) {
   return {
     protocolId: "pendle",
@@ -9,9 +12,9 @@ function baseQueueItem(overrides = {}) {
       bindingKind: "pendle_yt_buy_sell_redeem",
       resolvedBinding: {
         instrument: "yt",
-        marketAddress: "0x1111111111111111111111111111111111111111",
+        marketAddress: DUMMY.addr1,
         ytTokenAddress: "0x2222222222222222222222222222222222222222",
-        assetAddress: "0x3232323232323232323232323232323232323232",
+        assetAddress: DUMMY.addr3,
         maturity: "2026-08-10T00:00:00.000Z",
         exitQuote: {
           source: "odos",

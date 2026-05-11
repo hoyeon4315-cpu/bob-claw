@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { normalizeMerklOpportunity } from "../src/strategy/merkl-opportunity-normalizer.mjs";
 
+const _h = (c) => "0x" + c.repeat(40 / c.length).slice(0, 40);
+const DUMMY = { addr1: _h("1"), addr2: _h("2"), addr3: _h("32"), addrB: _h("B4"), addrC: _h("C5"), addrD: _h("D6"), addrE: _h("E7") };
+
 test("merkl normalizer extracts Morpho ERC-4626 vault binding from raw opportunity", () => {
   const item = normalizeMerklOpportunity({
     id: "13599851929364274522",
@@ -396,7 +399,7 @@ test("merkl normalizer maps generic Pendle YT opportunities without hardcoded ma
     description: "Earn yield token upside by holding a Pendle YT market position.",
     status: "LIVE",
     liveCampaigns: 1,
-    explorerAddress: "0x1111111111111111111111111111111111111111",
+    explorerAddress: DUMMY.addr1,
     latestCampaignEnd: "1798761600",
     tokens: [
       {
@@ -408,7 +411,7 @@ test("merkl normalizer maps generic Pendle YT opportunities without hardcoded ma
       },
       {
         displaySymbol: "USDC",
-        address: "0x3232323232323232323232323232323232323232",
+        address: DUMMY.addr3,
         decimals: 6,
         verified: true,
         type: "TOKEN",
@@ -422,9 +425,9 @@ test("merkl normalizer maps generic Pendle YT opportunities without hardcoded ma
   assert.equal(item.mappedStrategyId, "gateway_native_asset_conversion_sleeve");
   assert.equal(item.executionSurface, "fixedYield");
   assert.equal(item.protocolBinding.instrument, "yt");
-  assert.equal(item.protocolBinding.marketAddress, "0x1111111111111111111111111111111111111111");
+  assert.equal(item.protocolBinding.marketAddress, DUMMY.addr1);
   assert.equal(item.protocolBinding.ytTokenAddress, "0x2222222222222222222222222222222222222222");
-  assert.equal(item.protocolBinding.assetAddress, "0x3232323232323232323232323232323232323232");
+  assert.equal(item.protocolBinding.assetAddress, DUMMY.addr3);
 });
 
 test("merkl normalizer maps BTC-family Pendle YT to btc_yield_token", () => {
@@ -443,14 +446,14 @@ test("merkl normalizer maps BTC-family Pendle YT to btc_yield_token", () => {
     tokens: [
       {
         displaySymbol: "YT-SOLVBTC",
-        address: "0xB4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4B4",
+        address: DUMMY.addrB,
         decimals: 18,
         verified: false,
         type: "TOKEN",
       },
       {
         displaySymbol: "SOLVBTC",
-        address: "0xC5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5C5",
+        address: DUMMY.addrC,
         decimals: 18,
         verified: true,
         type: "TOKEN",
@@ -476,11 +479,11 @@ test("merkl normalizer maps ETH-family Pendle YT to eth_yield_token", () => {
     name: "Hold YT-wETH in Pendle market",
     status: "LIVE",
     liveCampaigns: 1,
-    explorerAddress: "0xD6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6D6",
+    explorerAddress: DUMMY.addrD,
     tokens: [
       {
         displaySymbol: "YT-WETH",
-        address: "0xE7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7E7",
+        address: DUMMY.addrE,
         decimals: 18,
         verified: false,
       },
@@ -509,7 +512,7 @@ test("merkl normalizer maps Pendle PT to instrument=pt without hardcoding", () =
     name: "Hold PT-LBTC fixed yield in Pendle market",
     status: "LIVE",
     liveCampaigns: 1,
-    explorerAddress: "0x1111111111111111111111111111111111111111",
+    explorerAddress: DUMMY.addr1,
     tokens: [
       {
         displaySymbol: "PT-LBTC",
@@ -519,7 +522,7 @@ test("merkl normalizer maps Pendle PT to instrument=pt without hardcoding", () =
       },
       {
         displaySymbol: "LBTC",
-        address: "0x3232323232323232323232323232323232323232",
+        address: DUMMY.addr3,
         decimals: 18,
         verified: true,
       },
@@ -528,5 +531,5 @@ test("merkl normalizer maps Pendle PT to instrument=pt without hardcoding", () =
 
   assert.equal(item.pendleInstrument, "pt");
   assert.equal(item.protocolBinding.instrument, "pt");
-  assert.equal(item.protocolBinding.vaultAddress, "0x1111111111111111111111111111111111111111");
+  assert.equal(item.protocolBinding.vaultAddress, DUMMY.addr1);
 });
