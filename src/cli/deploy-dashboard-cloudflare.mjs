@@ -37,6 +37,7 @@ export function parseArgs(argv, env = process.env) {
   return {
     createProject: flags.has("--create-project"),
     skipStatus: flags.has("--skip-status"),
+    skipVerify: flags.has("--skip-verify"),
     disableLiveOrigin: flags.has("--disable-live-origin"),
     projectName: options["project-name"] || getEnv("BOB_CLAW_CF_PAGES_PROJECT", null, env),
     productionBranch: options["production-branch"] || getEnv("BOB_CLAW_CF_PRODUCTION_BRANCH", "main", env),
@@ -363,7 +364,9 @@ export async function main({
     await runCommand("node", ["src/cli/inventory-whole-wallet.mjs"], commandEnv);
     await runCommand("node", ["src/cli/status-dashboard.mjs", "--commit-public"], commandEnv);
   }
-  await runCommand("node", ["src/cli/verify-dashboard-publish.mjs"], commandEnv);
+  if (!args.skipVerify) {
+    await runCommand("node", ["src/cli/verify-dashboard-publish.mjs"], commandEnv);
+  }
 
   if (args.createProject && !preflight.projectExists) {
     await runCommand(
