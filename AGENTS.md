@@ -290,6 +290,7 @@ The operator (or a coding-session LLM acting on operator request) holds the dev-
 - `liveTrading` reflects whether the daemon's policy gate currently passes. `ALLOWED` is a normal state, not an exceptional one. The dashboard still must not hold keys, sign, or decide whether to trade — it only reports the gate state.
 - Destination scoring artifacts, including `destination-promotion-gate.json`, are score sources for Capital Manager and reports only. They carry `scoreSourceOnly` / `runtimeAuthority: "none"` semantics and must not be treated as execution approval.
 - The dashboard surfaces payback state as (a) last settled payback BTC and date, (b) pending/accruing BTC for next period, (c) KPI values from the accumulator. It does NOT show the payback formula, ratios, or triggers — those live in config only.
+- **Dashboard URL stability rule.** The Cloudflare Pages project name is pinned to `bob-claw-dashboard` (default in `src/cli/deploy-dashboard-cloudflare.mjs`). Do not pass `--project-name` or set `BOB_CLAW_CF_PAGES_PROJECT` to a different value unless explicitly migrating to a new project. The production URL `https://bob-claw-dashboard.pages.dev` must stay unchanged across routine deploys. Only the deploy script and `index.html` cache-bust query strings (`?v=...`) may change; the project name does not.
 
 ## Reporting
 
