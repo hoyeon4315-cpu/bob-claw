@@ -16,6 +16,7 @@ import {
 import { bootstrapReaders } from "../protocol-readers/bootstrap.mjs";
 import { dispatchPosition } from "../protocol-readers/dispatch.mjs";
 import { assetUniverseTokenTargets } from "./asset-universe.mjs";
+import { findToken } from "../config/token-registry.mjs";
 
 // Side-effect: ensure protocol readers are registered before any inventory
 // scan runs. bootstrapReaders is idempotent (guarded by _bootstrapped).
@@ -660,6 +661,7 @@ export async function scanWholeWalletInventory({
             rpcUrl: result.rpcUrl || null,
           });
           if (enrichedMetadata.valuation?.kind === "erc4626_preview" && !metadata.registered) {
+            const underlyingKnown = Boolean(findToken(chain, enrichedMetadata.valuation.underlyingToken));
             erc4626PendingCandidates.push({
               schemaVersion: 1,
               source: "erc4626_auto_probe",
@@ -677,8 +679,14 @@ export async function scanWholeWalletInventory({
               estimatedUsd: enrichedMetadata.estimatedUsdOverride ?? null,
               rpcUrl: enrichedMetadata.valuation.rpcUrl || null,
               classification: "erc4626_vault_share",
-              rationale: `ERC4626 convertToAssets probe succeeded; underlying=${enrichedMetadata.valuation.underlyingSymbol}`,
-              requestedAction: "commit_token_registry_and_protocol_binding",
+              underlyingKnown,
+              autoRegistrable: underlyingKnown,
+              rationale: underlyingKnown
+                ? `ERC4626 convertToAssets probe succeeded; underlying=${enrichedMetadata.valuation.underlyingSymbol} (registered)`
+                : `ERC4626 convertToAssets probe succeeded; underlying=${enrichedMetadata.valuation.underlyingSymbol} (unknown — manual review required)`,
+              requestedAction: underlyingKnown
+                ? "auto_register_erc4626"
+                : "commit_token_registry_and_protocol_binding",
             });
           }
         }

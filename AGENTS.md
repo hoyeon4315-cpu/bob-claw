@@ -86,6 +86,7 @@
 - Auto-escalation of position size based on recent wins (martingale) is banned. Sizing comes from the strategy's declared caps, not from a streak counter.
 - **Payback never escalates sizing**. Accumulated BTC on the operator's L1 wallet is out of the operating perimeter. It does not loop back into the strategy float unless an explicit committed diff deposits it.
 - Inbound inventory automation may detect deposits and classify known assets, but it must not whitelist new tokens automatically. Unknown or governance tokens go only to `data/treasury/pending-whitelist.jsonl` until a committed token/config diff approves them.
+- **Exception — ERC4626 vault auto-registration (2026-05-11).** Tokens that pass the on-chain ERC4626 `convertToAssets` probe during wallet scan may be auto-registered to `data/treasury/auto-registered-erc4626.jsonl` at runtime without a committed diff. The runtime file is merged into the token-registry read path. This applies only to vault share tokens whose `asset()` returns a token already in the committed registry. Governance tokens, unknown underlying assets, and non-ERC4626 tokens still require manual whitelist review.
 
 ## Risk Limits
 
@@ -174,7 +175,7 @@ Every executor, capital mover, strategy module, and the payback engine fit this 
 | Propose cap changes via a committed diff | Raise caps (strategy or payback) at runtime through any side channel |
 | Read audit logs | Delete, rotate in place, or rewrite audit logs |
 | Configure a new chain by editing config | Move funds outside the Capital Manager |
-| Write inbound classification/routing policy | Auto-whitelist an unknown token at runtime |
+| Write inbound classification/routing policy | Auto-whitelist an unknown token at runtime (exception: ERC4626 vault tokens with known underlying — see auto-registration policy) |
 | Trigger a manual dev-mode run | Decide when to sign — that's policy code's call |
 | Toggle kill-switch (`kill:on`/`kill:off`) on explicit operator request, with audit log | Toggle kill-switch autonomously without an operator request |
 | Start, stop, or restart deterministic daemons (`executor:daemon`, `executor:watchdog`, autopilots, payback scheduler) on operator request | Bypass kill-switch, policy engine, or signer approval to launch a trade |
@@ -272,7 +273,7 @@ The operator (or a coding-session LLM acting on operator request) holds the dev-
 - Raise caps at runtime through any side channel — `initialCanaryCaps` are mechanical, and graduation to operator caps requires a separate operator-committed diff.
 - Bypass the policy engine, signer approval, or kill-switch.
 - Decide payback ratio, timing, or trigger at runtime.
-- Auto-whitelist an unknown token.
+- Auto-whitelist an unknown token (exception: ERC4626 vault tokens with known underlying — auto-registered to `data/treasury/auto-registered-erc4626.jsonl`).
 - Promote a strategy whose evidence file is missing, stale, or has any non-empty `blockers` array.
 - Modify or delete `logs/signer-audit.jsonl`, `logs/kill-switch-audit.jsonl`, or `logs/dev-lock-audit.jsonl`.
 

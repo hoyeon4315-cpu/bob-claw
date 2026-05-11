@@ -195,18 +195,33 @@ async function main() {
   await store.append("whole-wallet-inventory", inventory);
 
   if (Array.isArray(liveInventory?.erc4626PendingWhitelist) && liveInventory.erc4626PendingWhitelist.length > 0) {
-    const existingPending = await readJsonl(config.dataDir, "treasury/pending-whitelist").catch(() => []);
-    const seenKeys = new Set(existingPending.map((item) => `${item.chain}:${(item.address || item.token || "").toLowerCase()}`));
-    let appended = 0;
+    const [existingAutoReg, existingPending] = await Promise.all([
+      readJsonl(config.dataDir, "treasury/auto-registered-erc4626").catch(() => []),
+      readJsonl(config.dataDir, "treasury/pending-whitelist").catch(() => []),
+    ]);
+    const seenAutoKeys = new Set(existingAutoReg.map((item) => `${item.chain}:${(item.address || "").toLowerCase()}`));
+    const seenPendingKeys = new Set(existingPending.map((item) => `${item.chain}:${(item.address || item.token || "").toLowerCase()}`));
+    let autoRegistered = 0;
+    let pendingStaged = 0;
     for (const candidate of liveInventory.erc4626PendingWhitelist) {
       const key = `${candidate.chain}:${(candidate.address || "").toLowerCase()}`;
-      if (seenKeys.has(key)) continue;
-      await store.append("treasury/pending-whitelist", candidate);
-      seenKeys.add(key);
-      appended += 1;
+      if (candidate.autoRegistrable) {
+        if (seenAutoKeys.has(key)) continue;
+        await store.append("treasury/auto-registered-erc4626", candidate);
+        seenAutoKeys.add(key);
+        autoRegistered += 1;
+      } else {
+        if (seenPendingKeys.has(key)) continue;
+        await store.append("treasury/pending-whitelist", candidate);
+        seenPendingKeys.add(key);
+        pendingStaged += 1;
+      }
     }
-    if (appended > 0) {
-      console.log(`erc4626PendingWhitelist: ${appended} new vault token(s) staged for review`);
+    if (autoRegistered > 0) {
+      console.log(`erc4626AutoRegistered: ${autoRegistered} vault token(s) auto-registered (known underlying)`);
+    }
+    if (pendingStaged > 0) {
+      console.log(`erc4626PendingWhitelist: ${pendingStaged} vault token(s) staged for manual review (unknown underlying)`);
     }
   }
 

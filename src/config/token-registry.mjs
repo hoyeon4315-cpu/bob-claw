@@ -1,5 +1,10 @@
 // Token registry: per-chain ERC20 metadata.
 // Source of truth replacing realtime-portfolio.mjs hardcoded KNOWN_TOKENS.
+// ERC4626 vault tokens with known underlying may be auto-registered at runtime
+// to data/treasury/auto-registered-erc4626.jsonl and merged via getTokensForChain.
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const WBTC_OFT_ADDRESS = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 export const ETHEREUM_WBTC_ADDRESS = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
@@ -95,16 +100,68 @@ export const TOKEN_REGISTRY = Object.freeze({
   ],
 });
 
+const AUTO_REG_PATH = join(process.cwd(), "data", "treasury", "auto-registered-erc4626.jsonl");
+const AUTO_REG_CACHE_TTL_MS = 30_000;
+let _autoRegCache = null;
+let _autoRegCacheAt = 0;
+
+function loadAutoRegisteredTokens() {
+  const now = Date.now();
+  if (_autoRegCache && now - _autoRegCacheAt < AUTO_REG_CACHE_TTL_MS) return _autoRegCache;
+  try {
+    const raw = readFileSync(AUTO_REG_PATH, "utf8").trim();
+    if (!raw) { _autoRegCache = {}; _autoRegCacheAt = now; return _autoRegCache; }
+    const byChain = {};
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (!entry.chain || !entry.address) continue;
+        const chain = entry.chain.toLowerCase();
+        if (!byChain[chain]) byChain[chain] = [];
+        byChain[chain].push({
+          symbol: entry.symbol || "ERC4626",
+          address: entry.address,
+          decimals: Number.isInteger(entry.decimals) ? entry.decimals : 18,
+          autoRegistered: true,
+        });
+      } catch { /* skip malformed line */ }
+    }
+    _autoRegCache = byChain;
+    _autoRegCacheAt = now;
+    return byChain;
+  } catch {
+    _autoRegCache = {};
+    _autoRegCacheAt = now;
+    return _autoRegCache;
+  }
+}
+
+export function _resetAutoRegCacheForTesting() {
+  _autoRegCache = null;
+  _autoRegCacheAt = 0;
+}
+
+function mergedTokensForChain(chain) {
+  const committed = TOKEN_REGISTRY[chain] || [];
+  const autoReg = loadAutoRegisteredTokens()[chain] || [];
+  if (autoReg.length === 0) return committed;
+  const seen = new Set(committed.map((t) => t.address.toLowerCase()));
+  const novel = autoReg.filter((t) => !seen.has(t.address.toLowerCase()));
+  return novel.length > 0 ? [...committed, ...novel] : committed;
+}
+
 export function getTokensForChain(chain) {
-  return TOKEN_REGISTRY[chain] || [];
+  return mergedTokensForChain(chain);
 }
 
 export function listChains() {
-  return Object.keys(TOKEN_REGISTRY);
+  const autoChains = Object.keys(loadAutoRegisteredTokens());
+  return [...new Set([...Object.keys(TOKEN_REGISTRY), ...autoChains])];
 }
 
 export function findToken(chain, addressOrSymbol) {
-  const tokens = TOKEN_REGISTRY[chain] || [];
+  const tokens = mergedTokensForChain(chain);
   if (!addressOrSymbol) return null;
   const lower = addressOrSymbol.toLowerCase();
   return (
