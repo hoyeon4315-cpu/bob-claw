@@ -10,7 +10,9 @@ function txHashOf(record = {}) {
 }
 
 function isTerminalAuditRecord(record = {}) {
-  return ["confirmed", "reverted"].includes(record.lifecycle?.stage || null) || Boolean(record.realized);
+  const stage = record.lifecycle?.stage || null;
+  if (record.strategyId === "gateway-btc-onramp" && stage === "broadcasted") return true;
+  return ["confirmed", "reverted"].includes(stage) || Boolean(record.realized);
 }
 
 function receiptIsClosed(receipt = {}) {

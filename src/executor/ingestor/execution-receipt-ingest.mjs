@@ -460,6 +460,7 @@ export async function backfillExecutionReceiptReconciliations({
     "token-dex-experiment-executions",
     "gateway-btc-consolidation-executions",
     "gateway-btc-offramp-executions",
+    "gateway-btc-onramp-executions",
   ];
   const store = new JsonlStore(dataDir);
   const results = [];

@@ -105,6 +105,7 @@ export function buildCapitalAuditScope({
   signerAuditRecords = [],
   treasurySnapshots = [],
   gatewayBtcOfframpExecutions = [],
+  gatewayBtcOnrampExecutions = [],
   approvedOperatorBtcAddresses = [],
 } = {}) {
   const broadcasts = latestBroadcastSignerRecords(signerAuditRecords);
@@ -112,9 +113,11 @@ export function buildCapitalAuditScope({
     ...broadcasts.flatMap((record) => [record?.broadcast?.from, record?.broadcast?.to]),
     ...treasurySnapshots.map((snapshot) => snapshot?.address),
     ...gatewayBtcOfframpExecutions.flatMap((execution) => [execution?.plan?.senderAddress]),
+    ...gatewayBtcOnrampExecutions.flatMap((execution) => [execution?.plan?.recipient]),
   ]);
   const bitcoinAddresses = uniqueSorted([
     ...gatewayBtcOfframpExecutions.map((execution) => execution?.plan?.recipient),
+    ...gatewayBtcOnrampExecutions.map((execution) => execution?.plan?.senderAddress),
     ...approvedOperatorBtcAddresses,
   ]);
   return {
@@ -124,6 +127,15 @@ export function buildCapitalAuditScope({
 }
 
 function buildConsolidationMap(executions = []) {
+  const byTxHash = new Map();
+  for (const execution of executions) {
+    const txHash = execution?.signerResult?.broadcast?.txHash;
+    if (txHash) byTxHash.set(txHash, execution);
+  }
+  return byTxHash;
+}
+
+function buildOnrampMap(executions = []) {
   const byTxHash = new Map();
   for (const execution of executions) {
     const txHash = execution?.signerResult?.broadcast?.txHash;
@@ -560,6 +572,39 @@ function buildConsolidationExecutionSummaries({ executions = [], receiptsByTxHas
     });
 }
 
+function buildOnrampExecutionSummaries({ executions = [], receiptsByTxHash = {}, transactionsByTxHash = {}, prices }) {
+  return executions
+    .filter((execution) => execution?.signerResult?.broadcast?.txHash)
+    .sort((left, right) => new Date(left?.observedAt || 0) - new Date(right?.observedAt || 0))
+    .map((execution) => {
+      const txHash = execution.signerResult.broadcast.txHash;
+      const plan = execution.plan || {};
+      const receipt = receiptsByTxHash[txHash] || null;
+      const transaction = transactionsByTxHash[txHash] || null;
+      const inputSats = bigint(plan.amountSats);
+      const expectedUnits = bigint(plan.quote?.outputAmount?.amount);
+      const observedUnits = bigint(execution.destinationProof?.observedDelta);
+      const quotedFeeUnits = bigint(plan.quote?.fees?.amount);
+      return {
+        txHash,
+        observedAt: execution.observedAt,
+        routeKey: plan.routeKey || null,
+        srcChain: "bitcoin",
+        dstChain: plan.dstChain || null,
+        assetTicker: plan.dstAsset?.ticker || null,
+        settlementStatus: execution.settlementStatus || null,
+        sourceAmountSats: inputSats.toString(),
+        expectedOutputUnits: expectedUnits.toString(),
+        observedOutputUnits: observedUnits.toString(),
+        quotedFeeUnits: quotedFeeUnits.toString(),
+        quotedResidualSats: null,
+        outputDriftUnits: (observedUnits - expectedUnits).toString(),
+        gasUsd: gasUsdForReceipt(plan.dstChain, receipt, prices),
+        txValueUsd: txValueUsdForTransaction(plan.dstChain, transaction, prices),
+      };
+    });
+}
+
 function buildNativeDexExecutionSummaries({ executions = [], receiptsByTxHash = {}, prices }) {
   return executions
     .filter((execution) => Array.isArray(execution?.stepResults) && execution.stepResults.length > 0)
@@ -656,6 +701,7 @@ export function buildCapitalAuditReport({
   signerAuditRecords = [],
   treasurySnapshots = [],
   gatewayBtcOfframpExecutions = [],
+  gatewayBtcOnrampExecutions = [],
   gatewayBtcConsolidationExecutions = [],
   nativeDexExperimentExecutions = [],
   transactionsByTxHash = {},
@@ -674,6 +720,7 @@ export function buildCapitalAuditReport({
     signerAuditRecords,
     treasurySnapshots,
     gatewayBtcOfframpExecutions,
+    gatewayBtcOnrampExecutions,
     approvedOperatorBtcAddresses,
   });
   const bitcoinMatching = matchBitcoinSettlements({
@@ -682,6 +729,7 @@ export function buildCapitalAuditReport({
     operatorFundingBtcAddresses,
   });
   const offrampsByTxHash = buildOfframpMap(gatewayBtcOfframpExecutions);
+  const onrampsByTxHash = buildOnrampMap(gatewayBtcOnrampExecutions);
   const consolidationsByTxHash = buildConsolidationMap(gatewayBtcConsolidationExecutions);
   const nativeDexByTxHash = buildNativeDexMap(nativeDexExperimentExecutions);
   const auditHelperTraceIndex = buildAuditHelperTraceIndex(signerAuditRecords);
@@ -691,18 +739,21 @@ export function buildCapitalAuditReport({
     const transaction = transactionsByTxHash[txHash] || null;
     const receipt = receiptsByTxHash[txHash] || null;
     const offramp = offrampsByTxHash.get(txHash) || null;
+    const onramp = onrampsByTxHash.get(txHash) || null;
     const consolidation = consolidationsByTxHash.get(txHash) || null;
     const nativeDex = nativeDexByTxHash.get(txHash) || null;
     const auditHelperTrace = matchAuditHelperTrace(record, auditHelperTraceIndex);
     const evidenceType = offramp
       ? "gateway_btc_offramp"
-      : consolidation
-        ? "gateway_btc_transfer"
-        : nativeDex
-          ? `native_dex_${nativeDex.stepId}`
-          : auditHelperTrace
-            ? auditHelperTrace.evidenceType
-            : "broadcast_only";
+      : onramp
+        ? "gateway_btc_onramp"
+        : consolidation
+          ? "gateway_btc_transfer"
+          : nativeDex
+            ? `native_dex_${nativeDex.stepId}`
+            : auditHelperTrace
+              ? auditHelperTrace.evidenceType
+              : "broadcast_only";
     return {
       txHash,
       observedAt: record.timestamp,
@@ -718,9 +769,9 @@ export function buildCapitalAuditReport({
       gasUsd: gasUsdForReceipt(record.chain, receipt, prices),
       txValueUsd: txValueUsdForTransaction(record.chain, transaction, prices),
       receiptStatus: receipt?.status ?? null,
-      helperMatched: Boolean(offramp || consolidation || nativeDex || auditHelperTrace),
-      helperMatchSource: offramp || consolidation || nativeDex ? "execution_jsonl" : auditHelperTrace?.matchSource || null,
-      helperMatchRule: offramp || consolidation || nativeDex ? "tx_hash" : auditHelperTrace?.matchRule || null,
+      helperMatched: Boolean(offramp || onramp || consolidation || nativeDex || auditHelperTrace),
+      helperMatchSource: offramp || onramp || consolidation || nativeDex ? "execution_jsonl" : auditHelperTrace?.matchSource || null,
+      helperMatchRule: offramp || onramp || consolidation || nativeDex ? "tx_hash" : auditHelperTrace?.matchRule || null,
     };
   });
 
@@ -734,6 +785,12 @@ export function buildCapitalAuditReport({
   });
   const consolidationSummaries = buildConsolidationExecutionSummaries({
     executions: gatewayBtcConsolidationExecutions,
+    receiptsByTxHash,
+    transactionsByTxHash,
+    prices,
+  });
+  const onrampSummaries = buildOnrampExecutionSummaries({
+    executions: gatewayBtcOnrampExecutions,
     receiptsByTxHash,
     transactionsByTxHash,
     prices,
@@ -900,6 +957,7 @@ export function buildCapitalAuditReport({
     })),
     executions: {
       gatewayBtcOfframps: offrampSummaries,
+      gatewayBtcOnramps: onrampSummaries,
       gatewayBtcConsolidations: consolidationSummaries,
       nativeDexExperiments: nativeDexSummaries,
     },
@@ -921,6 +979,7 @@ export async function collectCapitalAuditInputs({
     signerAuditRecords,
     treasurySnapshots,
     gatewayBtcOfframpExecutions,
+    gatewayBtcOnrampExecutions,
     gatewayBtcConsolidationExecutions,
     nativeDexExperimentExecutions,
     marketPriceSnapshots,
@@ -930,6 +989,7 @@ export async function collectCapitalAuditInputs({
     readSignerAuditLog({ rootDir }),
     readJsonl(dataDir, "treasury-inventory"),
     readJsonl(dataDir, "gateway-btc-offramp-executions"),
+    readJsonl(dataDir, "gateway-btc-onramp-executions"),
     readJsonl(dataDir, "gateway-btc-consolidation-executions"),
     readJsonl(dataDir, "native-dex-experiment-executions"),
     readJsonl(dataDir, "market-price-snapshots"),
@@ -941,6 +1001,7 @@ export async function collectCapitalAuditInputs({
     signerAuditRecords,
     treasurySnapshots,
     gatewayBtcOfframpExecutions,
+    gatewayBtcOnrampExecutions,
     approvedOperatorBtcAddresses: listApprovedOperatorBtcAddresses({ purpose: "deposit_watch" }),
   });
 
@@ -1027,6 +1088,7 @@ export async function collectCapitalAuditInputs({
     signerAuditRecords,
     treasurySnapshots,
     gatewayBtcOfframpExecutions,
+    gatewayBtcOnrampExecutions,
     gatewayBtcConsolidationExecutions,
     nativeDexExperimentExecutions,
     transactionsByTxHash,

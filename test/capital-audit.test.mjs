@@ -598,3 +598,83 @@ test("capital audit report includes combined EVM and native BTC totals", () => {
   assert.ok(Math.abs(report.summary.currentCombinedUsd - 62.4) < 1e-9);
   assert.ok(Math.abs(report.summary.combinedDeltaUsd - (-7.6)) < 1e-9);
 });
+
+test("capital audit scope includes onramp recipient in EVM addresses", () => {
+  const scope = buildCapitalAuditScope({
+    signerAuditRecords: [],
+    treasurySnapshots: [],
+    gatewayBtcOfframpExecutions: [],
+    gatewayBtcOnrampExecutions: [
+      { plan: { senderAddress: "bc1sender", recipient: "0xBaseRecipient" } },
+    ],
+    approvedOperatorBtcAddresses: [],
+  });
+
+  assert.deepEqual(scope.evmAddresses, ["0xBaseRecipient"]);
+  assert.deepEqual(scope.bitcoinAddresses, ["bc1sender"]);
+});
+
+test("capital audit report matches gateway-btc-onramp execution to broadcast trace", () => {
+  const report = buildCapitalAuditReport({
+    signerAuditRecords: [
+      {
+        timestamp: "2026-05-11T01:51:48.000Z",
+        strategyId: "gateway-btc-onramp",
+        chain: "bitcoin",
+        lifecycle: { stage: "broadcasted" },
+        broadcast: {
+          txHash: "21372cacaabbccdd",
+          from: "bc1sender",
+          to: "0xBaseRecipient",
+        },
+        intentHash: "onramp-intent-1",
+      },
+    ],
+    treasurySnapshots: [],
+    gatewayBtcOfframpExecutions: [],
+    gatewayBtcOnrampExecutions: [
+      {
+        observedAt: "2026-05-11T01:51:48.000Z",
+        plan: {
+          senderAddress: "bc1sender",
+          recipient: "0xBaseRecipient",
+          dstChain: "base",
+          dstAsset: { ticker: "USDC" },
+          amountSats: 100000,
+          quote: {
+            outputAmount: { amount: "50000000" },
+            fees: { amount: "1000" },
+          },
+        },
+        signerResult: {
+          broadcast: {
+            txHash: "21372cacaabbccdd",
+          },
+        },
+        destinationProof: {
+          observedDelta: "50000000",
+        },
+      },
+    ],
+    gatewayBtcConsolidationExecutions: [],
+    nativeDexExperimentExecutions: [],
+    transactionsByTxHash: {},
+    receiptsByTxHash: {},
+    bitcoinHistoriesByAddress: {},
+    prices: {
+      btc: 80000,
+      tokenByKey: { btc: 80000, usd_stable: 1, ethereum: 3000 },
+      nativeByChain: { base: 3000 },
+    },
+  });
+
+  const tx = report.transactions.find((t) => t.txHash === "21372cacaabbccdd");
+  assert.equal(tx.helperMatched, true);
+  assert.equal(tx.evidenceType, "gateway_btc_onramp");
+  assert.equal(tx.helperMatchSource, "execution_jsonl");
+  assert.equal(tx.helperMatchRule, "tx_hash");
+  assert.equal(report.executions.gatewayBtcOnramps.length, 1);
+  assert.equal(report.executions.gatewayBtcOnramps[0].sourceAmountSats, "100000");
+  assert.equal(report.executions.gatewayBtcOnramps[0].observedOutputUnits, "50000000");
+  assert.equal(report.status, "complete_with_residual_checks");
+});

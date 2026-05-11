@@ -136,9 +136,11 @@ export function buildCapitalAuditClosureRecord({
   const intentHash = auditRecord.intentHash;
   const strategyId = auditRecord.strategyId || "unknown";
   const txHash = auditRecord.lifecycle?.txHash || auditRecord.broadcast?.txHash || receiptRecord?.txHash || null;
+  const isGatewayBtcOnrampBroadcastOnly = strategyId === "gateway-btc-onramp" && !receiptRecord && auditRecord.lifecycle?.stage === "broadcasted";
   const reconciliationStatus = receiptRecord?.reconciliationStatus ||
     (auditRecord.lifecycle?.stage === "reverted" ? "failed" : null) ||
-    (auditRecord.lifecycle?.stage === "confirmed" ? "reconciled" : null);
+    (auditRecord.lifecycle?.stage === "confirmed" ? "reconciled" : null) ||
+    (isGatewayBtcOnrampBroadcastOnly ? "reconciled" : null);
   return {
     schemaVersion: 1,
     status: ["reconciled", "failed", "final_failed"].includes(reconciliationStatus) ? "closed" : "pending",
