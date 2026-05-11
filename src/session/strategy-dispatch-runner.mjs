@@ -53,10 +53,34 @@ function scriptsForCommands(commands = []) {
   return (commands || []).map((command) => command.script).filter(Boolean);
 }
 
+function surfaceAdvisoryLiveEligible(strategy = {}) {
+  return Boolean(strategy.currentLiveEligible);
+}
+
+function surfaceAllowsLiveBroadcast(strategy = {}) {
+  return strategy.currentLiveEligible === true;
+}
+
+function isPolicyAuthorityReportingSurface(strategy = {}) {
+  return strategy.reportingOnly === true && strategy.runtimeGateAuthority === "policy_engine_only";
+}
+
+function liveBroadcastSelectionHasAuthority(strategy = {}, selection = {}, selectedMode = "auto") {
+  return selectedMode === "live" && (surfaceAllowsLiveBroadcast(strategy) || selection.runtimeEmitDecision === true);
+}
+
+function strategyAdviceCode(strategy = {}) {
+  return strategy.adviceCode || strategy.liveAdmissionBlockers?.[0] || strategy.fallbackReason || null;
+}
+
+function strategyLiveAdmissionBlockers(strategy = {}) {
+  return Array.isArray(strategy.liveAdmissionBlockers) ? strategy.liveAdmissionBlockers : [];
+}
+
 function advisoryMetadata(strategy = {}) {
   return {
-    surfaceLiveEligible: Boolean(strategy.currentLiveEligible),
-    adviceCode: strategy.adviceCode || strategy.liveAdmissionBlockers?.[0] || strategy.fallbackReason || null,
+    surfaceLiveEligible: surfaceAdvisoryLiveEligible(strategy),
+    adviceCode: strategyAdviceCode(strategy),
     adviceFields: strategy.adviceFields || ["liveAdmissionBlockers", "fallbackReason", "currentLiveEligible"],
   };
 }
@@ -80,8 +104,7 @@ function buildBroadcastReadiness(strategy = {}, selection = {}, {
   ]);
   const selectedMode = normalizeRequestedMode(selection.mode || null);
   const readyForPolicyDispatch = policyDispatchBlockers.length === 0 && selectedStepCount !== 0;
-  const liveSelectionHasRuntimeAuthority =
-    selectedMode === "live" && (strategy.currentLiveEligible === true || selection.runtimeEmitDecision === true);
+  const liveSelectionHasRuntimeAuthority = liveBroadcastSelectionHasAuthority(strategy, selection, selectedMode);
   return {
     schemaVersion: 1,
     readyForPolicyDispatch,
@@ -94,12 +117,10 @@ function buildBroadcastReadiness(strategy = {}, selection = {}, {
     policyAuthority: "policy_engine_only",
     signerAuthority: "signer_daemon_after_policy_approval",
     advisoryEvidence: {
-      currentLiveEligible: Boolean(strategy.currentLiveEligible),
-      liveAdmissionBlockers: Array.isArray(strategy.liveAdmissionBlockers)
-        ? strategy.liveAdmissionBlockers
-        : [],
+      currentLiveEligible: surfaceAdvisoryLiveEligible(strategy),
+      liveAdmissionBlockers: strategyLiveAdmissionBlockers(strategy),
       fallbackReason: strategy.fallbackReason || null,
-      adviceCode: strategy.adviceCode || strategy.liveAdmissionBlockers?.[0] || strategy.fallbackReason || null,
+      adviceCode: strategyAdviceCode(strategy),
       runtimeBlocking: false,
     },
   };
@@ -182,7 +203,7 @@ function requestedCommandsForStrategy(strategy, requestedMode, { execute = false
         runtimeDecisionDetail: runtime,
       };
     }
-    if (!execute && strategy.reportingOnly === true && strategy.runtimeGateAuthority === "policy_engine_only") {
+    if (!execute && isPolicyAuthorityReportingSurface(strategy)) {
       return {
         mode,
         commands: strategy.selectedCommands || [],
@@ -206,7 +227,7 @@ function requestedCommandsForStrategy(strategy, requestedMode, { execute = false
     analysis: strategy.selectedCommands || [],
     shadow: strategy.selectedMode === "shadow" ? strategy.selectedCommands || [] : [],
     dry_run: strategy.selectedMode === "dry_run" ? strategy.selectedCommands || [] : [],
-    live: strategy.currentLiveEligible ? strategy.selectedCommands || [] : [],
+    live: surfaceAdvisoryLiveEligible(strategy) ? strategy.selectedCommands || [] : [],
   };
   const commands = commandMap[mode] || [];
   if (commands.length === 0) {
@@ -214,8 +235,8 @@ function requestedCommandsForStrategy(strategy, requestedMode, { execute = false
       mode,
       commands,
       blockedReason:
-        mode === "live" && Array.isArray(strategy.liveAdmissionBlockers) && strategy.liveAdmissionBlockers.length
-          ? strategy.liveAdmissionBlockers[0]
+        mode === "live" && strategyLiveAdmissionBlockers(strategy).length
+          ? strategyLiveAdmissionBlockers(strategy)[0]
           : "requested_mode_not_supported",
     };
   }
@@ -319,9 +340,9 @@ async function executeStrategyItem(
     requestedMode: normalizeRequestedMode(requestedMode),
     selectedMode: selection.mode,
     liveCapable: Boolean(strategy.liveCapable),
-    currentLiveEligible: Boolean(strategy.currentLiveEligible),
+    currentLiveEligible: surfaceAdvisoryLiveEligible(strategy),
     blockedReason: selection.blockedReason || null,
-    liveAdmissionBlockers: Array.isArray(strategy.liveAdmissionBlockers) ? strategy.liveAdmissionBlockers : [],
+    liveAdmissionBlockers: strategyLiveAdmissionBlockers(strategy),
     fallbackReason: strategy.fallbackReason || null,
     scripts: scriptsForCommands(selection.commands),
     orchestration: normalizedOrchestration,
