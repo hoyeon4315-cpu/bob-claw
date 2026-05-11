@@ -225,11 +225,54 @@ async function fetchAddressSats(address) {
   return { address, confirmedSats, mempoolSats };
 }
 
-async function fetchBtcPriceUsd() {
-  const data = await fetchJson(`${ESPLORA_BASE}/v1/prices`);
-  const price = finite(data?.USD) ?? finite(data?.usd);
-  return price;
+const BTC_PRICE_SOURCES = [
+  {
+    id: "esplora_mempool",
+    url: `${ESPLORA_BASE}/v1/prices`,
+    extract: (data) => finite(data?.USD) ?? finite(data?.usd),
+  },
+  {
+    id: "coingecko",
+    url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+    extract: (data) => finite(data?.bitcoin?.usd),
+  },
+  {
+    id: "kraken",
+    url: "https://api.kraken.com/0/public/Ticker?pair=XBTUSD",
+    extract: (data) => {
+      const ticker = data?.result && Object.values(data.result)[0];
+      return finite(ticker?.c?.[0]);
+    },
+  },
+];
+
+async function fetchBtcPriceMultiSource() {
+  const results = await Promise.allSettled(
+    BTC_PRICE_SOURCES.map(async (src) => ({ id: src.id, price: src.extract(await fetchJson(src.url)) })),
+  );
+  const samples = [];
+  for (const r of results) {
+    if (r.status === "fulfilled" && Number.isFinite(r.value.price) && r.value.price > 0) {
+      samples.push(r.value);
+    }
+  }
+  if (samples.length === 0) return { medianUsd: null, samples: [], spreadPct: null };
+  const sorted = [...samples].sort((a, b) => a.price - b.price);
+  const median = sorted.length % 2
+    ? sorted[(sorted.length - 1) / 2].price
+    : (sorted[sorted.length / 2 - 1].price + sorted[sorted.length / 2].price) / 2;
+  const min = sorted[0].price;
+  const max = sorted[sorted.length - 1].price;
+  const spreadPct = max > 0 ? ((max - min) / max) * 100 : 0;
+  return { medianUsd: median, samples, spreadPct };
 }
+
+async function fetchBtcPriceUsd() {
+  const multi = await fetchBtcPriceMultiSource();
+  return multi.medianUsd;
+}
+
+const BTC_PRICE_MAX_SPREAD_PCT = Number(process.env.BTC_PRICE_MAX_SPREAD_PCT || 3);
 
 async function loadBtcL1UsdLive() {
   const addresses = listApprovedOperatorBtcAddresses({ includeObservationOnly: true });
@@ -237,13 +280,26 @@ async function loadBtcL1UsdLive() {
     return { source: "esplora_live", valueUsd: null, observedAt: null, error: "no_operator_btc_addresses" };
   }
   try {
-    const [balances, priceUsd] = await Promise.all([
+    const [balances, priceQuote] = await Promise.all([
       Promise.all(addresses.map(fetchAddressSats)),
-      fetchBtcPriceUsd(),
+      fetchBtcPriceMultiSource(),
     ]);
     const totalSats = balances.reduce((s, b) => s + b.confirmedSats, 0);
+    const priceUsd = priceQuote.medianUsd;
     if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
-      return { source: "esplora_live", valueUsd: null, observedAt: new Date().toISOString(), error: "btc_price_unavailable", totalSats };
+      return { source: "esplora_live", valueUsd: null, observedAt: new Date().toISOString(), error: "btc_price_unavailable", totalSats, priceQuote };
+    }
+    const priceSpreadTooWide = priceQuote.spreadPct != null && priceQuote.spreadPct > BTC_PRICE_MAX_SPREAD_PCT;
+    if (priceSpreadTooWide) {
+      return {
+        source: "esplora_live",
+        valueUsd: null,
+        observedAt: new Date().toISOString(),
+        totalSats,
+        btcPriceUsd: priceUsd,
+        priceQuote,
+        error: `btc_price_spread_too_wide:${priceQuote.spreadPct.toFixed(2)}%`,
+      };
     }
     const valueUsd = (totalSats / 1e8) * priceUsd;
     return {
@@ -252,6 +308,7 @@ async function loadBtcL1UsdLive() {
       observedAt: new Date().toISOString(),
       totalSats,
       btcPriceUsd: priceUsd,
+      priceQuote,
       addresses: balances.map((b) => ({ address: b.address, confirmedSats: b.confirmedSats })),
     };
   } catch (error) {
