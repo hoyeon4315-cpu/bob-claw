@@ -71,4 +71,55 @@ export function buildPendleDirectCanaryFeed({ snapshotsByChainId = {}, now = Dat
   return candidates;
 }
 
+const FAMILY_TO_STRATEGY = {
+  btc_fixed_yield: "pendle-yt-canary",
+  eth_fixed_yield: "pendle-yt-canary",
+  stable_fixed_yield: "pendle-yt-canary",
+  non_core_asset: "pendle-yt-canary",
+};
+
+export function pendleDirectCandidateToOpportunity(candidate, { now = Date.now() } = {}) {
+  if (!candidate) return null;
+  return {
+    source: "pendle_direct_ingestion",
+    observedAt: new Date(now).toISOString(),
+    opportunityId: candidate.opportunityId,
+    chainId: candidate.chainId,
+    chain: candidate.chain,
+    protocolId: candidate.protocolId,
+    protocolName: candidate.protocolName,
+    type: "PENDLE_YT_DIRECT",
+    action: "DEPOSIT_YT",
+    name: candidate.assetSymbol,
+    description: `Pendle YT direct candidate: ${candidate.assetSymbol} @ ${candidate.aprPct?.toFixed(2)}% APR maturity=${candidate.maturity}`,
+    identifier: candidate.poolAddress,
+    poolAddress: candidate.poolAddress,
+    depositUrl: `https://app.pendle.finance/trade/pools/${candidate.poolAddress}/zap/in?chain=${candidate.chain}`,
+    status: "open",
+    family: candidate.family,
+    mappedStrategyId: FAMILY_TO_STRATEGY[candidate.family] || "pendle-yt-canary",
+    executionSurface: "fixedYield",
+    pendleInstrument: "yt",
+    protocolBinding: candidate.protocolBinding,
+    tvlUsd: candidate.tvlUsd,
+    aprPct: candidate.aprPct,
+    nativeAprPct: candidate.aprPct,
+    campaignRemainingHours: candidate.maturityHours,
+    decision: "candidate",
+    validationMode: "tiny_live_canary_only",
+    overfitRisk: "low",
+    overfitFlags: [],
+    assetFamilies: [candidate.family],
+    hasBtcExposure: candidate.family === "btc_fixed_yield",
+    hasEthExposure: candidate.family === "eth_fixed_yield",
+    hasStableExposure: candidate.family === "stable_fixed_yield",
+  };
+}
+
+export function pendleDirectCandidatesToOpportunities(candidates = [], options = {}) {
+  return candidates
+    .map((c) => pendleDirectCandidateToOpportunity(c, options))
+    .filter((o) => o != null);
+}
+
 export { findPendleMarket, resolvePendleMerklBinding };

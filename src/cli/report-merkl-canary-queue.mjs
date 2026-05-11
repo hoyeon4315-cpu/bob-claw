@@ -8,6 +8,7 @@ import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { loadOperatingCapitalUsd } from "../lib/operating-capital-snapshot.mjs";
 import { buildMerklCanaryQueue } from "../strategy/merkl-canary-queue.mjs";
+import { pendleDirectCandidatesToOpportunities } from "../strategy/pendle-direct-canary-source.mjs";
 
 const PENDLE_SNAPSHOT_CHAIN_IDS = [1, 8453, 56, 10, 130, 146];
 
@@ -44,7 +45,7 @@ async function readJson(path) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const report = await readJson(join(config.dataDir, "merkl-opportunities-report.json"));
+  let report = await readJson(join(config.dataDir, "merkl-opportunities-report.json"));
   const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, positionRecords, representativeRuns] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
@@ -56,6 +57,14 @@ async function main() {
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, report?.address || inventoryRecords.at(-1)?.address || null);
   const operatingCapitalUsd = await loadOperatingCapitalUsd();
   const pendleMarkets = await loadPendleMarkets(config.dataDir);
+  const directReport = await readJsonIfExists(join(config.dataDir, "pendle-direct-canaries.json"));
+  const directOpportunities = pendleDirectCandidatesToOpportunities(directReport?.candidates || []);
+  if (directOpportunities.length > 0) {
+    const baseOpps = Array.isArray(report?.opportunities) ? report.opportunities : [];
+    const existingIds = new Set(baseOpps.map((o) => o?.opportunityId));
+    const additions = directOpportunities.filter((o) => !existingIds.has(o.opportunityId));
+    report = { ...report, opportunities: [...baseOpps, ...additions] };
+  }
   const queue = buildMerklCanaryQueue({
     report,
     operatingCapitalUsd,
