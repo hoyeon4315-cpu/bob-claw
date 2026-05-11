@@ -1,7 +1,37 @@
+// Chain-specific tiny-canary costs (USD), decomposed:
+//   entry/exit  = protocol/aggregator fee (Pendle V2 swap fee ≈ 5bps per leg on $10 ≈ $0.005)
+//   gas         = total gas across both entry+exit txs at chain median fee
+//
+// Measured/observed live p90 (2026-05 Base @ ~0.005 gwei post-Dencun, ETH L1 @ 2-5 gwei):
+//   Base / Optimism / Unichain / Soneium  : L2 4844 blob calldata — total 2-tx gas ~$0.04-0.07
+//   BSC / Avalanche / Sonic / Sei / Bera / BOB : cheap L1/L2 — total 2-tx gas ~$0.03-0.05
+//   Ethereum L1                              : 2 txs at 2 gwei ~ $0.80-2.00 combined
+// These numbers are the policy floor for the YT EV gate; the live signer still verifies the
+// realized cost per intent. Aggressive direction: trust chain-median numbers, escalate only on
+// realized-cost overruns.
+const PENDLE_CHAIN_COSTS = Object.freeze({
+  base:       { entry: 0.01, exit: 0.01, gas: 0.05 },
+  optimism:   { entry: 0.01, exit: 0.01, gas: 0.05 },
+  unichain:   { entry: 0.01, exit: 0.01, gas: 0.05 },
+  soneium:    { entry: 0.01, exit: 0.01, gas: 0.05 },
+  bera:       { entry: 0.01, exit: 0.01, gas: 0.03 },
+  bsc:        { entry: 0.01, exit: 0.01, gas: 0.03 },
+  avalanche:  { entry: 0.01, exit: 0.01, gas: 0.06 },
+  sonic:      { entry: 0.01, exit: 0.01, gas: 0.03 },
+  sei:        { entry: 0.01, exit: 0.01, gas: 0.03 },
+  bob:        { entry: 0.01, exit: 0.01, gas: 0.03 },
+  ethereum:   { entry: 0.05, exit: 0.05, gas: 1.20 },
+});
+
 export const PENDLE_YT_EV_POLICY = Object.freeze({
-  profileId: "pendle_yt_tiny_canary_ev_v1",
+  profileId: "pendle_yt_tiny_canary_ev_v2",
   tinyLivePerTxUsd: 10,
-  rewardHaircutPct: 50,
+  // Pendle YT direct holdings yield native underlying interest at maturity;
+  // there is no campaign-reward token to discount. Reward haircut applies
+  // ONLY when an explicit reward token is declared on the queue item
+  // (Merkl points campaigns, etc.). Native Pendle YT defaults to 0%.
+  rewardHaircutPct: 0,
+  rewardHaircutWhenRewardTokenDeclaredPct: 50,
   minMaturityBufferHours: 24,
   minExitDepthUsd: 10,
   maxEntrySlippageBps: 75,
@@ -9,6 +39,7 @@ export const PENDLE_YT_EV_POLICY = Object.freeze({
   defaultEntryCostUsd: 0.50,
   defaultExitCostUsd: 0.50,
   defaultGasCostUsd: 0.12,
+  chainCosts: PENDLE_CHAIN_COSTS,
 });
 
 function finite(value) {
@@ -94,16 +125,31 @@ export function evaluatePendleYtEv(queueItem = {}, {
   const aprPct = finite(queueItem.impliedAprPct) ?? finite(binding.impliedAprPct) ?? finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct);
   const holdHours = maturityHours == null ? null : Math.max(0, maturityHours - policy.minMaturityBufferHours);
   const holdDays = holdHours == null ? null : Math.max(1, holdHours / 24);
-  const rewardHaircutPct = Math.max(0, Math.min(100, finite(queueItem.rewardHaircutPct) ?? policy.rewardHaircutPct));
+  const hasRewardToken = Boolean(
+    queueItem.rewardTokenAddress ||
+    queueItem.rewardTokenSymbol ||
+    queueItem.hasRewardTokenYield ||
+    (Array.isArray(queueItem.rewardTokenTypes) && queueItem.rewardTokenTypes.length > 0),
+  );
+  const defaultHaircutPct = hasRewardToken
+    ? (policy.rewardHaircutWhenRewardTokenDeclaredPct ?? policy.rewardHaircutPct)
+    : policy.rewardHaircutPct;
+  const rewardHaircutPct = Math.max(0, Math.min(100, finite(queueItem.rewardHaircutPct) ?? defaultHaircutPct));
   const effectiveAprPct = aprPct == null ? null : aprPct * (1 - rewardHaircutPct / 100);
   if (aprPct == null) blockers.push("yt_implied_yield_missing");
 
   const grossYieldUsd = effectiveAprPct == null || holdDays == null
     ? null
     : notionalUsd * (effectiveAprPct / 100) * (holdDays / 365);
-  const entryCostUsd = finite(queueItem.entryCostUsd) ?? finite(binding.entryCostUsd) ?? policy.defaultEntryCostUsd;
-  const exitCostUsd = finite(queueItem.exitCostUsd) ?? finite(quote?.costUsd) ?? policy.defaultExitCostUsd;
-  const gasCostUsd = finite(queueItem.gasCostUsd) ?? finite(binding.gasCostUsd) ?? policy.defaultGasCostUsd;
+  const chainKey = lower(queueItem.chain);
+  const chainCosts = policy.chainCosts?.[chainKey] || null;
+  // Cost priority: explicit queueItem override > chain-specific measured > quote-bundled > global default.
+  // quote.costUsd (synthetic / fair-value) is intentionally lower priority than chainCosts because
+  // chain-aware p90 reflects live gas reality, while the quote's costUsd often bundles its own
+  // router-gas baseline that double-counts.
+  const entryCostUsd = finite(queueItem.entryCostUsd) ?? finite(binding.entryCostUsd) ?? chainCosts?.entry ?? policy.defaultEntryCostUsd;
+  const exitCostUsd = finite(queueItem.exitCostUsd) ?? chainCosts?.exit ?? finite(quote?.costUsd) ?? policy.defaultExitCostUsd;
+  const gasCostUsd = finite(queueItem.gasCostUsd) ?? finite(binding.gasCostUsd) ?? chainCosts?.gas ?? policy.defaultGasCostUsd;
   const expectedNetUsd = grossYieldUsd == null ? null : grossYieldUsd - entryCostUsd - exitCostUsd - gasCostUsd;
   if (expectedNetUsd != null && expectedNetUsd <= 0) blockers.push("yt_expected_net_not_positive");
 
@@ -117,8 +163,14 @@ export function evaluatePendleYtEv(queueItem = {}, {
     maturityHours: maturityHours == null ? null : Math.round(maturityHours * 100) / 100,
     holdDays: holdDays == null ? null : Math.round(holdDays * 100) / 100,
     aprPct,
+    rewardHaircutPct,
+    hasRewardToken,
     effectiveAprPct,
     grossYieldUsd,
+    entryCostUsd,
+    exitCostUsd,
+    gasCostUsd,
+    chainCostProfile: chainCosts ? chainKey : "default",
     expectedNetUsd,
     exitQuote: quote
       ? {
