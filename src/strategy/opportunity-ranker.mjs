@@ -11,6 +11,12 @@ export const DEFAULT_RANKER_PENALTIES = Object.freeze({
   lowTvlPenalty: 0.3,
   highVolatilityThreshold: 0.8,
   highVolatilityPenalty: 0.2,
+  defiLlamaSigmaThreshold: 0.8,
+  defiLlamaSigmaPenalty: 0.15,
+  defiLlamaIlRiskPenalty: 0.12,
+  defiLlamaMultiExposurePenalty: 0.08,
+  defiLlamaNegativeTrendThresholdPct: -10,
+  defiLlamaNegativeTrendPenalty: 0.1,
   unknownIssuerPenalty: 0.25,
   pointRewardPenalty: 0.4,
   incentiveDominantPenalty: 0.15,
@@ -41,6 +47,19 @@ export function computeOpportunityScore(opportunity = {}, {
   const dstChain = opportunity.dstChain || opportunity.chain;
   const isSameChain = srcChain && dstChain && srcChain === dstChain;
   const bridgeCostBps = isFiniteNumber(opportunity.bridgeCostBps) ? opportunity.bridgeCostBps / 10000 : 0;
+  const defiLlama = opportunity.defiLlama || {};
+  const ilRisk = String(opportunity.ilRisk ?? defiLlama.ilRisk ?? "").toLowerCase();
+  const exposure = String(opportunity.exposure ?? defiLlama.exposure ?? "").toLowerCase();
+  const sigma = isFiniteNumber(opportunity.sigma)
+    ? opportunity.sigma
+    : isFiniteNumber(defiLlama.sigma)
+      ? defiLlama.sigma
+      : null;
+  const apyPct30D = isFiniteNumber(opportunity.apyPct30D)
+    ? opportunity.apyPct30D
+    : isFiniteNumber(defiLlama.apyPct30D)
+      ? defiLlama.apyPct30D
+      : null;
 
   // Adjust APR for bridge cost on cross-chain opportunities
   const effectiveApr = isSameChain ? apr : Math.max(0, apr - bridgeCostBps);
@@ -55,6 +74,12 @@ export function computeOpportunityScore(opportunity = {}, {
   let multiplier = 1;
   if (tvl < penalties.lowTvlThreshold) multiplier -= penalties.lowTvlPenalty;
   if (vol30d > penalties.highVolatilityThreshold) multiplier -= penalties.highVolatilityPenalty;
+  if (sigma !== null && sigma > penalties.defiLlamaSigmaThreshold) multiplier -= penalties.defiLlamaSigmaPenalty;
+  if (ilRisk === "yes") multiplier -= penalties.defiLlamaIlRiskPenalty;
+  if (exposure === "multi") multiplier -= penalties.defiLlamaMultiExposurePenalty;
+  if (apyPct30D !== null && apyPct30D < penalties.defiLlamaNegativeTrendThresholdPct) {
+    multiplier -= penalties.defiLlamaNegativeTrendPenalty;
+  }
   if (!trustedIssuer && !hasAudit) multiplier -= penalties.unknownIssuerPenalty;
   if (hasPointRewards) multiplier -= penalties.pointRewardPenalty;
   if (incentiveDominant) multiplier -= penalties.incentiveDominantPenalty;

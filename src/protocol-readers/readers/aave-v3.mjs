@@ -4,6 +4,7 @@ import { makeReaderError, makeReaderResult, defaultPositionId } from "../spec.mj
 
 const POOL_ABI = [
   "function getUserAccountData(address user) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)",
+  "function getReserveData(address asset) view returns (uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt)",
 ];
 const TOKEN_ABI = [
   "function balanceOf(address) view returns (uint256)",
@@ -79,6 +80,45 @@ export async function readAaveV3({ chain, walletAddress, params = {}, now = new 
       ttlSec: 120,
     };
     return makeReaderResult({ positions: [position] });
+  } catch (err) {
+    return makeReaderError({ error: err && err.message ? err.message : String(err), code: "rpc_failed" });
+  }
+}
+
+export function aaveRayToBps(value) {
+  if (value === null || value === undefined) return null;
+  const numeric = typeof value === "bigint" ? Number(value) : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round((numeric / 1e27) * 10_000 * 10_000) / 10_000;
+}
+
+export async function readAaveV3ReserveRates({
+  chain,
+  poolAddress,
+  assetAddress,
+  now = new Date(),
+  _providerFactory,
+} = {}) {
+  if (!chain || !poolAddress || !assetAddress) {
+    return makeReaderError({ error: "missing chain/poolAddress/assetAddress", code: "missing_params" });
+  }
+  try {
+    const pool = await loadContract({ chain, address: poolAddress, abi: POOL_ABI, _providerFactory });
+    const reserve = await pool.getReserveData(assetAddress);
+    const currentLiquidityRate = reserve?.currentLiquidityRate ?? reserve?.[2] ?? null;
+    const currentVariableBorrowRate = reserve?.currentVariableBorrowRate ?? reserve?.[4] ?? null;
+    const observedAt = new Date(now).toISOString();
+    return Object.freeze({
+      ok: true,
+      chain,
+      poolAddress,
+      assetAddress,
+      observedAt,
+      supplyAprBps: aaveRayToBps(currentLiquidityRate),
+      variableBorrowAprBps: aaveRayToBps(currentVariableBorrowRate),
+      currentLiquidityRate: currentLiquidityRate == null ? null : currentLiquidityRate.toString(),
+      currentVariableBorrowRate: currentVariableBorrowRate == null ? null : currentVariableBorrowRate.toString(),
+    });
   } catch (err) {
     return makeReaderError({ error: err && err.message ? err.message : String(err), code: "rpc_failed" });
   }

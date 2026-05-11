@@ -66,6 +66,35 @@ function round(v, digits = 4) {
   return Math.round(v * f) / f;
 }
 
+function aprPctToBps(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? round(numeric * 100, 4) : null;
+}
+
+export function buildProxySpreadMarketFromSources({
+  defiLlamaPool = null,
+  borrowRate = null,
+  market = {},
+} = {}) {
+  const supplyAprBps = finite(market.supplyAprBps) ?? aprPctToBps(defiLlamaPool?.apyBase);
+  const borrowAprBps =
+    finite(market.borrowAprBps) ??
+    finite(borrowRate?.variableBorrowAprBps) ??
+    finite(borrowRate?.borrowAprBps);
+  const proxyTvlUsd = finite(market.proxyTvlUsd) ?? finite(defiLlamaPool?.tvlUsd);
+  return Object.freeze({
+    ...market,
+    supplyAprBps,
+    borrowAprBps,
+    proxyTvlUsd,
+    sourceFields: Object.freeze({
+      supplyApr: supplyAprBps == null ? null : "defillama.apyBase",
+      borrowApr: borrowAprBps == null ? null : "onchain.variableBorrowRate",
+      proxyTvl: proxyTvlUsd == null ? null : "defillama.tvlUsd",
+    }),
+  });
+}
+
 export function buildDefaultProxySpreadConfig() {
   return { ...DEFAULT_CONFIG };
 }

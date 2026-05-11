@@ -42,6 +42,33 @@ test("computeOpportunityScore applies high volatility penalty", () => {
   assert.ok(volatile < stable);
 });
 
+test("computeOpportunityScore applies DefiLlama risk fields", () => {
+  const safe = computeOpportunityScore({
+    effectiveApr: 0.10,
+    tvlUsd: 2_000_000,
+    hasAudit: true,
+    defiLlama: {
+      ilRisk: "no",
+      exposure: "single",
+      sigma: 0.05,
+      apyPct30D: 5,
+    },
+  });
+  const risky = computeOpportunityScore({
+    effectiveApr: 0.10,
+    tvlUsd: 2_000_000,
+    hasAudit: true,
+    defiLlama: {
+      ilRisk: "yes",
+      exposure: "multi",
+      sigma: 1.2,
+      apyPct30D: -25,
+    },
+  });
+
+  assert.ok(risky < safe);
+});
+
 test("computeOpportunityScore applies unknown issuer penalty", () => {
   const known = computeOpportunityScore({ effectiveApr: 0.10, tvlUsd: 1_000_000, hasAudit: true });
   const unknown = computeOpportunityScore({ effectiveApr: 0.10, tvlUsd: 1_000_000, hasAudit: false });

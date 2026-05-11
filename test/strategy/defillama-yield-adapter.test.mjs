@@ -5,6 +5,7 @@ import {
   buildDefaultDefiLlamaYieldConfig,
   validateDefiLlamaYieldConfig,
   summarizeDefiLlamaYieldAdapter,
+  normalizeDefiLlamaYieldPool,
 } from "../../src/strategy/defillama-yield-adapter.mjs";
 
 test("default config validates", () => {
@@ -12,6 +13,44 @@ test("default config validates", () => {
   const v = validateDefiLlamaYieldConfig(config);
   assert.equal(v.ok, true);
   assert.equal(v.missingFields.length, 0);
+});
+
+test("normalizeDefiLlamaYieldPool exposes free /pools risk and APY fields", () => {
+  const pool = normalizeDefiLlamaYieldPool({
+    chain: "Base",
+    project: "morpho-blue",
+    symbol: "cbBTC-USDC",
+    pool: "pool-1",
+    tvlUsd: 1_000_000,
+    apyBase: 4.5,
+    apyReward: 1.25,
+    apy: 5.75,
+    apyPct30D: -2,
+    apyMean30d: 5.5,
+    mu: 5.1,
+    sigma: 0.2,
+    count: 42,
+    ilRisk: "yes",
+    exposure: "multi",
+    rewardTokens: ["0xreward"],
+    predictions: { predictedClass: "Down" },
+  }, {
+    family: "wrapped_btc",
+    entrySlippageBps: 5,
+    exitSlippageBps: 6,
+    gatewayRoundTripCostBps: 7,
+    offrampCostBps: 8,
+  });
+
+  assert.equal(pool.chain, "base");
+  assert.equal(pool.protocol, "morpho-blue");
+  assert.equal(pool.apyBps, 575);
+  assert.equal(pool.apyBaseBps, 450);
+  assert.equal(pool.apyRewardBps, 125);
+  assert.equal(pool.apyMean30d, 5.5);
+  assert.equal(pool.ilRisk, "yes");
+  assert.equal(pool.exposure, "multi");
+  assert.deepEqual(pool.rewardTokens, ["0xreward"]);
 });
 
 test("adapter blocked when no pools measured", () => {

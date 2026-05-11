@@ -105,6 +105,45 @@ export function validateDefiLlamaYieldConfig(config = {}) {
   });
 }
 
+function bpsFromPct(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? round(numeric * 100, 4) : null;
+}
+
+export function normalizeDefiLlamaYieldPool(pool = {}, defaults = {}) {
+  const chain = String(pool.chain || defaults.chain || "").toLowerCase();
+  return Object.freeze({
+    chain,
+    family: defaults.family || pool.family || null,
+    protocol: pool.project || pool.protocol || defaults.protocol || null,
+    poolId: pool.pool || pool.poolId || defaults.poolId || null,
+    symbol: pool.symbol || defaults.symbol || null,
+    tvlUsd: finite(Number(pool.tvlUsd)) ?? finite(defaults.tvlUsd),
+    apyBps: bpsFromPct(pool.apy) ?? finite(defaults.apyBps),
+    apyBaseBps: bpsFromPct(pool.apyBase),
+    apyRewardBps: bpsFromPct(pool.apyReward),
+    apyPct1D: finite(Number(pool.apyPct1D)),
+    apyPct7D: finite(Number(pool.apyPct7D)),
+    apyPct30D: finite(Number(pool.apyPct30D)),
+    apyMean30d: finite(Number(pool.apyMean30d)),
+    mu: finite(Number(pool.mu)),
+    sigma: finite(Number(pool.sigma)),
+    count: Number.isFinite(Number(pool.count)) ? Number(pool.count) : null,
+    ilRisk: pool.ilRisk || null,
+    exposure: pool.exposure || null,
+    rewardTokens: Array.isArray(pool.rewardTokens) ? Object.freeze([...pool.rewardTokens]) : null,
+    predictions: pool.predictions || null,
+    outlier: pool.outlier === true,
+    underlyingTokens: Array.isArray(pool.underlyingTokens) ? Object.freeze([...pool.underlyingTokens]) : null,
+    poolMeta: pool.poolMeta || null,
+    entrySlippageBps: finite(defaults.entrySlippageBps),
+    exitSlippageBps: finite(defaults.exitSlippageBps),
+    gatewayRoundTripCostBps: finite(defaults.gatewayRoundTripCostBps),
+    offrampCostBps: finite(defaults.offrampCostBps),
+    paused: defaults.paused === true || pool.paused === true,
+  });
+}
+
 function assessPool(pool = {}) {
   const blockers = [];
   const chain = String(pool.chain || "").toLowerCase();
