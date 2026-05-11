@@ -3,6 +3,8 @@
 
 export const WBTC_OFT_ADDRESS = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 export const ETHEREUM_WBTC_ADDRESS = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
+export const UNI_BTC_ADDRESS = "0x236f8c0a61dA474dB21B693fB2ea7AAB0c803894";
+export const SOLVBTC_ADDRESS = "0x3b86ad95859b6ab773f55f8d94b4b9d443ee931f";
 //
 // PR-only additions: AGENTS.md forbids automated whitelisting. The
 // sync CLI may stage candidates into data/treasury/pending-whitelist.jsonl

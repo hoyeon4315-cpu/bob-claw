@@ -941,7 +941,7 @@ function rankConditionalSupport(candidate = {}) {
   return 5;
 }
 
-function chooseCandidate(candidates) {
+function chooseCandidate(candidates, action = null) {
   return [...candidates].sort((left, right) => {
     if (left.preferred !== right.preferred) return left.preferred ? -1 : 1;
     if (Boolean(left.standbyFallback) !== Boolean(right.standbyFallback)) return left.standbyFallback ? 1 : -1;
@@ -952,6 +952,9 @@ function chooseCandidate(candidates) {
     const leftHasSource = Boolean(left.source);
     const rightHasSource = Boolean(right.source);
     if (leftHasSource !== rightHasSource) return leftHasSource ? -1 : 1;
+    const leftMatchesHint = left.source?.chain && left.source?.chain === action?.sourceHint?.chain;
+    const rightMatchesHint = right.source?.chain && right.source?.chain === action?.sourceHint?.chain;
+    if (leftMatchesHint !== rightMatchesHint) return leftMatchesHint ? -1 : 1;
     const leftBootstrapBlocked = left.requiresBootstrapNative && !left.bootstrapNativeSatisfied;
     const rightBootstrapBlocked = right.requiresBootstrapNative && !right.bootstrapNativeSatisfied;
     if (leftBootstrapBlocked !== rightBootstrapBlocked) return leftBootstrapBlocked ? 1 : -1;
@@ -1015,7 +1018,7 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
     }
   }
 
-  if (policy.refillPolicy.enableCrossChainRefill && !sourcePinned) {
+  if (policy.refillPolicy.enableCrossChainRefill) {
     candidates.push(crossChainCandidate(action, plan, policy, routeContext, gatewayAvailability));
     candidates.push(...alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContext }));
   }
@@ -1041,7 +1044,7 @@ export function buildFundingSourcePlan({
   };
   const selections = (resolvedPlan.actions || []).map((action) => {
     const candidates = buildFundingSourceCandidates(action, resolvedPlan, policy, routeContext, gatewayAvailability);
-    const selected = chooseCandidate(candidates);
+    const selected = chooseCandidate(candidates, action);
     return {
       resourceKey: resourceKeyForRefillAction(action),
       type: action.type,

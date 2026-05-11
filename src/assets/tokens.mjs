@@ -1,15 +1,16 @@
-export const ZERO_TOKEN = "******************************************";
-export const UNI_BTC_TOKEN = "******************************************";
-export const SOLVBTC_TOKEN = "******************************************";
-
+export const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
 import {
   TOKEN_REGISTRY,
   WBTC_OFT_ADDRESS,
   ETHEREUM_WBTC_ADDRESS,
+  UNI_BTC_ADDRESS,
+  SOLVBTC_ADDRESS,
 } from "../config/token-registry.mjs";
 
 export const WBTC_OFT_TOKEN = WBTC_OFT_ADDRESS;
 export const ETHEREUM_WBTC_TOKEN = ETHEREUM_WBTC_ADDRESS;
+export const UNI_BTC_TOKEN = UNI_BTC_ADDRESS;
+export const SOLVBTC_TOKEN = SOLVBTC_ADDRESS;
 
 export const WRAPPED_NATIVE_TOKENS = Object.freeze({
   avalanche: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7",

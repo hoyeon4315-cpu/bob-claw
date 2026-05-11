@@ -4,8 +4,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-import { runCli } from "../../src/cli/run-cold-start-canary.mjs";
-
 const candidate = {
   candidateId: "c1",
   packetId: "p1",
@@ -56,20 +54,31 @@ async function makeColdStartFixture({ withProof = false } = {}) {
 }
 
 test("cold-start canary consumes share-price unwind proof records", async () => {
-  const withoutProof = await runCli(["--preview", "--json"], {
-    cwd: await makeColdStartFixture({ withProof: false }),
-    now: "2026-05-09T01:05:00.000Z",
-  });
-  const blocked = JSON.parse(withoutProof.stdout);
-  assert.equal(blocked.status, "blocked");
-  assert.ok(blocked.blockers.includes("share_price_unwind_proof_missing"));
+  const originalKillSwitchPath = process.env.KILL_SWITCH_PATH;
+  process.env.KILL_SWITCH_PATH = join(tmpdir(), `test-kill-switch-${Date.now()}`);
+  const { runCli } = await import("../../src/cli/run-cold-start-canary.mjs");
+  try {
+    const withoutProof = await runCli(["--preview", "--json"], {
+      cwd: await makeColdStartFixture({ withProof: false }),
+      now: "2026-05-09T01:05:00.000Z",
+    });
+    const blocked = JSON.parse(withoutProof.stdout);
+    assert.equal(blocked.status, "blocked");
+    assert.ok(blocked.blockers.includes("share_price_unwind_proof_missing"));
 
-  const withProof = await runCli(["--preview", "--json"], {
-    cwd: await makeColdStartFixture({ withProof: true }),
-    now: "2026-05-09T01:05:00.000Z",
-  });
-  const ready = JSON.parse(withProof.stdout);
-  assert.equal(ready.status, "ready");
-  assert.equal(ready.selectedCandidate.candidateId, "c1");
-  assert.equal(ready.selectedCandidate.sharePriceUnwindProof.ok, true);
+    const withProof = await runCli(["--preview", "--json"], {
+      cwd: await makeColdStartFixture({ withProof: true }),
+      now: "2026-05-09T01:05:00.000Z",
+    });
+    const ready = JSON.parse(withProof.stdout);
+    assert.equal(ready.status, "ready");
+    assert.equal(ready.selectedCandidate.candidateId, "c1");
+    assert.equal(ready.selectedCandidate.sharePriceUnwindProof.ok, true);
+  } finally {
+    if (originalKillSwitchPath !== undefined) {
+      process.env.KILL_SWITCH_PATH = originalKillSwitchPath;
+    } else {
+      delete process.env.KILL_SWITCH_PATH;
+    }
+  }
 });

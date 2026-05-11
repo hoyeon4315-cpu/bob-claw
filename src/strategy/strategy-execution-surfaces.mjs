@@ -918,6 +918,26 @@ function buildSurface(entry, { group, policy }) {
         selectedCommands: withScripts(selectedCommands),
       };
     }
+    case "defillama-yield-portfolio": {
+      const selectedMode = "analysis";
+      const selectedCommands = entry.commands || [];
+      return {
+        ...shared,
+        capabilityBucket: "dry_run_or_shadow_only",
+        runnerKind: "command_sequence",
+        liveCapable: false,
+        currentLiveEligible: false,
+        selectedMode,
+        fallbackReason: "analysis_probe_only",
+        missingCapabilities: [],
+        liveAdmissionBlockers: liveAdmissionBlockers({
+          entry,
+          liveAllowed,
+          extra: ["analysis_probe_only", "live_executor_not_bound"],
+        }),
+        selectedCommands: withScripts(selectedCommands),
+      };
+    }
     default: {
       return {
         ...shared,

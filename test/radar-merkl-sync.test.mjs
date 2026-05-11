@@ -119,7 +119,7 @@ test("syncMerklQueueToRadar appends a new candidate version when gate state chan
   const candidates = await readRadarJsonl(dataDir, "executable-candidates");
   assert.equal(candidates.length, 2);
   assert.equal(candidates[0].candidateId, "merkl:opp_sync_1");
-  assert.equal(candidates[0].gateStatus, "blocked");
+  assert.equal(candidates[0].gateStatus, "review_only");
   assert.equal(candidates[1].candidateId, "merkl:opp_sync_1");
   assert.equal(candidates[1].gateStatus, "executable");
   assert.deepEqual(candidates[1].blockers, []);

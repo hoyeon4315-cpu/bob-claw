@@ -487,7 +487,7 @@ test("capital manager reserve concentration splits a scattered 11-chain wallet i
       .map((item) => `${item.fundingSource?.source?.chain}:${item.fundingSource?.source?.ticker}`),
   );
   assert.equal(jobSources.has("bsc:USDC"), true);
-  assert.equal(jobSources.has("bera:BERA"), true);
+  assert.equal(jobSources.has("base:ETH"), true);
   assert.equal(jobSources.has("avalanche:AVAX"), true);
   assert.equal(jobSources.has("sonic:wS"), true);
 });
