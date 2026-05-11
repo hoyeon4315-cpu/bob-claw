@@ -286,10 +286,18 @@ export async function fetchMerklOpportunities({
 }
 
 export async function fetchDefiLlamaPools({ fetchFn = global.fetch } = {}) {
-  const res = await fetchFn(DEFILLAMA_URL, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`DefiLlama fetch failed: ${res.status}`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : data.data || [];
+  try {
+    const res = await fetchFn(DEFILLAMA_URL, { headers: { Accept: "application/json" } });
+    if (!res.ok) {
+      console.error(`DefiLlama fetch returned ${res.status}; continuing with empty pools`);
+      return [];
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : data.data || [];
+  } catch (error) {
+    console.error(`DefiLlama fetch error: ${error.message}; continuing with empty pools`);
+    return [];
+  }
 }
 
 export function buildCampaignAwareCandidates({

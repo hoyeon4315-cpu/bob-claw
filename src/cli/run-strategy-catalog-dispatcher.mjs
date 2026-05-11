@@ -358,8 +358,18 @@ export async function runStrategyCatalogDispatcherCli(
 
 async function main() {
   const result = await runStrategyCatalogDispatcherCli(process.argv.slice(2));
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.stdout) {
+    const ok = process.stdout.write(result.stdout);
+    if (!ok) {
+      await new Promise((resolve) => process.stdout.once("drain", resolve));
+    }
+  }
+  if (result.stderr) {
+    const ok = process.stderr.write(result.stderr);
+    if (!ok) {
+      await new Promise((resolve) => process.stderr.once("drain", resolve));
+    }
+  }
   process.exit(result.exitCode);
 }
 
