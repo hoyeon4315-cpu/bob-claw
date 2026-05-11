@@ -82,7 +82,7 @@ function uniqueStrings(values = []) {
   return [...new Set(values.filter(Boolean).map((value) => String(value)))];
 }
 
-function buildExecutionTruthSlice(dashboardStatus = {}) {
+function buildExecutionTruthSlice(dashboardStatus = {}, signerAuditRecords = []) {
   const overall = dashboardStatus.overall || {};
   const lanePolicy = overall.lanePolicy || {};
   const operations = dashboardStatus.operations?.allChainAutopilot || null;
@@ -99,7 +99,16 @@ function buildExecutionTruthSlice(dashboardStatus = {}) {
     assetTracking.riskReady === false ? `asset_tracking:${assetTracking.coverageState || assetTracking.verdict || "not_risk_ready"}` : null,
     ...topBlockerReasons,
   ]);
-  const txBroadcastCount = Number(execution.txBroadcastCount || 0);
+
+  const generatedAtMs = new Date(dashboardStatus.generatedAt || 0).getTime();
+  const recentBroadcastCount = (signerAuditRecords || []).filter((record) => {
+    const stage = record?.lifecycle?.stage || (record?.broadcast?.txHash ? "broadcasted" : null);
+    if (stage !== "broadcasted") return false;
+    const ts = new Date(record.timestamp || record.observedAt || 0).getTime();
+    return Number.isFinite(ts) && Number.isFinite(generatedAtMs) && (generatedAtMs - ts) <= 24 * 60 * 60 * 1000;
+  }).length;
+
+  const txBroadcastCount = Number(execution.txBroadcastCount || 0) + recentBroadcastCount;
   const attemptedLive = execution.attemptedLive === true;
   let status = "watching";
   if (overall.liveTrading === "BLOCKED" || (lanePolicy.runtimeBlockers || []).length > 0) {
@@ -1127,7 +1136,7 @@ export async function buildCurrentDashboardContext({
     dashboardStatus,
     nextStep: state.nextStep,
   });
-  dashboardStatus.overall.executionTruth = buildExecutionTruthSlice(dashboardStatus);
+  dashboardStatus.overall.executionTruth = buildExecutionTruthSlice(dashboardStatus, signerAuditRecords);
   dashboardStatus.dataCounts.liveBaselinePresent = dashboardStatus.liveBaseline ? 1 : 0;
   const productCoverage = buildProductPlanningCoverage({
     dashboardStatus,
