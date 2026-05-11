@@ -258,12 +258,52 @@ test("multi-source prices preserve oracle samples for divergence checks", async 
       tokenByKey: { btc: 102, wbtc: 102, ethereum: 12, usd_stable: 1 },
       nativeByChain: { ethereum: 12, base: 12 },
     }),
+    diaFetcher: null,
   });
 
   assert.equal(prices.btc, 101);
   assert.equal(prices.nativeByChain.base, 11);
   assert.equal(prices.sourceCount, 2);
   assert.ok(prices.oracleSamples.length >= 2);
+});
+
+test("multi-source prices can include DIA quotation samples as an optional third source", async () => {
+  const prices = await getMultiSourcePricesUsd({
+    now: "2026-04-25T00:00:00.000Z",
+    coingeckoFetcher: async () => ({
+      btc: 100,
+      tokenByKey: { btc: 100, wbtc: 100, cbbtc: 100, ethereum: 10, usd_stable: 1 },
+      nativeByChain: { ethereum: 10, base: 10 },
+    }),
+    coinbaseFetcher: async () => ({
+      btc: 102,
+      tokenByKey: { btc: 102, wbtc: 102, cbbtc: 102, ethereum: 12, usd_stable: 1 },
+      nativeByChain: { ethereum: 12, base: 12 },
+    }),
+    diaFetcher: async () => ({
+      btc: 101,
+      tokenByKey: { btc: 101, wbtc: 101, cbbtc: 101, ethereum: 11, usd_stable: 1 },
+      nativeByChain: {},
+    }),
+  });
+
+  assert.equal(prices.btc, 101);
+  assert.equal(prices.tokenByKey.cbbtc, 101);
+  assert.equal(prices.sourceCount, 3);
+  assert.ok(prices.oracleSamples.some((sample) => sample.source === "dia" && sample.priceUsd === 101));
+});
+
+test("multi-source prices omit DIA when quotation fetch fails", async () => {
+  const prices = await getMultiSourcePricesUsd({
+    coingeckoFetcher: async () => ({ btc: 100, tokenByKey: { btc: 100 }, nativeByChain: {} }),
+    coinbaseFetcher: async () => ({ btc: 102, tokenByKey: { btc: 102 }, nativeByChain: {} }),
+    diaFetcher: async () => {
+      throw new Error("dia_down");
+    },
+  });
+
+  assert.equal(prices.sourceCount, 2);
+  assert.equal(prices.oracleSamples.some((sample) => sample.source === "dia"), false);
 });
 
 test("multi-source prices preserve oracle fields when every provider fails", async () => {
@@ -274,6 +314,7 @@ test("multi-source prices preserve oracle fields when every provider fails", asy
     coinbaseFetcher: async () => {
       throw new Error("coinbase_down");
     },
+    diaFetcher: null,
   });
 
   assert.equal(prices.btc, null);

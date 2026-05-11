@@ -1,3 +1,5 @@
+import { fetchDiaQuotationSnapshot } from "../risk/dia-quotation-fetcher.mjs";
+
 const PRICE_IDS = {
   btc: "bitcoin",
   ethereum: "ethereum",
@@ -15,6 +17,7 @@ const PRICE_IDS = {
 
 const TOKEN_PRICE_IDS = {
   wbtc: "wrapped-bitcoin",
+  cbbtc: "coinbase-wrapped-btc",
   paxg: "pax-gold",
   xaut: "tether-gold",
 };
@@ -78,6 +81,7 @@ export function emptyPricesUsd() {
     tokenByKey: {
       btc: null,
       wbtc: null,
+      cbbtc: null,
       ethereum: null,
       usd_stable: 1,
       paxg: null,
@@ -203,6 +207,7 @@ export function overlayObservedPricesUsd(prices, options = {}) {
   if (!Number.isFinite(next.btc)) next.btc = observedBtc;
   if (!Number.isFinite(next.tokenByKey.btc)) next.tokenByKey.btc = next.btc;
   if (!Number.isFinite(next.tokenByKey.wbtc)) next.tokenByKey.wbtc = next.btc;
+  if (!Number.isFinite(next.tokenByKey.cbbtc)) next.tokenByKey.cbbtc = next.btc;
 
   for (let index = gasSnapshots.length - 1; index >= 0; index -= 1) {
     const snapshot = gasSnapshots[index];
@@ -263,6 +268,7 @@ export function mergeMissingPricesUsd(primary, fallback) {
   const btc = firstFinite(primary?.btc, fallback?.btc, tokenByKey.btc);
   if (!Number.isFinite(tokenByKey.btc)) tokenByKey.btc = btc;
   if (!Number.isFinite(tokenByKey.wbtc)) tokenByKey.wbtc = btc;
+  if (!Number.isFinite(tokenByKey.cbbtc)) tokenByKey.cbbtc = btc;
   if (!Number.isFinite(tokenByKey.usd_stable)) tokenByKey.usd_stable = 1;
   return {
     btc,
@@ -504,11 +510,16 @@ export async function getMultiSourcePricesUsd({
   now = new Date().toISOString(),
   coingeckoFetcher = getCoinGeckoPricesUsd,
   coinbaseFetcher = getCoinbaseReferencePricesUsd,
+  diaFetcher = fetchDiaQuotationSnapshot,
 } = {}) {
-  const settled = await Promise.allSettled([
+  const fetchers = [
     coingeckoFetcher().then((prices) => ({ source: "coingecko", prices })),
     coinbaseFetcher().then((prices) => ({ source: "coinbase", prices })),
-  ]);
+  ];
+  if (typeof diaFetcher === "function") {
+    fetchers.push(diaFetcher().then((prices) => ({ source: "dia", prices })));
+  }
+  const settled = await Promise.allSettled(fetchers);
   const samples = settled.flatMap((item) => (
     item.status === "fulfilled"
       ? priceSamplesFromSnapshot(item.value.prices, { source: item.value.source, observedAt: now })

@@ -172,6 +172,29 @@ test("oracle divergence stays silent below threshold", () => {
   assert.equal(result, null);
 });
 
+test("oracle divergence with minSourceCount 3 only evaluates once DIA adds the third source", () => {
+  const config = buildAutoKillConfig({ oracleDivergence: { maxDivergencePct: 0.05, minSourceCount: 3 } });
+  assert.equal(evaluateOracleDivergence({
+    samples: [
+      { source: "coingecko", pair: "BTC/USD", priceUsd: 100 },
+      { source: "coinbase", pair: "BTC/USD", priceUsd: 110 },
+    ],
+    config: config.oracleDivergence,
+  }), null);
+
+  const result = evaluateOracleDivergence({
+    samples: [
+      { source: "coingecko", pair: "BTC/USD", priceUsd: 100 },
+      { source: "coinbase", pair: "BTC/USD", priceUsd: 102 },
+      { source: "dia", pair: "BTC/USD", priceUsd: 110 },
+    ],
+    config: config.oracleDivergence,
+  });
+
+  assert.equal(result?.trigger, "oracle_divergence");
+  assert.deepEqual(result.sources, ["coingecko", "coinbase", "dia"]);
+});
+
 test("heartbeat trigger fires when stale", () => {
   const config = buildAutoKillConfig({ heartbeat: { maxAgeMs: 60_000 } });
   const result = evaluateHeartbeat({
