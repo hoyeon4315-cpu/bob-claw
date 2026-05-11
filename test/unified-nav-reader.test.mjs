@@ -50,7 +50,7 @@ test("unified NAV sums EVM aggregate + BTC L1 when sources agree", async () => {
     },
     btcRow: { observedAt: "2026-05-10T07:00:00Z", totalUsd: 500.83 },
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir });
+  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
   assert.equal(unified.halt, false);
   assert.equal(unified.btcL1Usd, 500.83);
   assert.equal(unified.evmAggregateUsd, 468.95);
@@ -71,7 +71,7 @@ test("unified NAV halts when EVM sources disagree by more than threshold", async
     },
     btcRow: { totalUsd: 500 },
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, discrepancyThresholdPct: 10 });
+  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, discrepancyThresholdPct: 10, liveBtc: false });
   assert.equal(unified.halt, true);
   assert.ok(unified.flags.includes("evm_source_disagreement"));
   assert.equal(operatingCapitalUsdFromUnified(unified), null);
@@ -89,7 +89,7 @@ test("unified NAV halts when a required source is missing", async () => {
     },
     // no BTC L1 row
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir });
+  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
   assert.equal(unified.halt, true);
   assert.ok(unified.flags.includes("source_missing"));
   assert.ok(unified.missingSources.includes("btcL1Usd"));
@@ -109,7 +109,23 @@ test("unified NAV restricts closed-protocol-marks to closed audit-pair strategie
       { positionId: "p2", event: "mark", strategyId: "open-strat", valueUsd: 75 },
     ],
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir });
+  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
   assert.equal(unified.breakdown.closedProtocolMarksUsd.positionCount, 1);
   assert.equal(unified.breakdown.closedProtocolMarksUsd.valueUsd, 25);
+});
+
+test("liveBtc fixture path is opt-out only — default queries Esplora", async () => {
+  const dir = await makeFixture({
+    treasuryRow: {
+      observedAt: "2026-05-11T00:00:00Z",
+      summary: { estimatedWalletUsd: 500 },
+      tokens: [],
+    },
+    autopilotSnapshot: { summary: { capitalManager: { estimatedAssetValueUsd: 500 } } },
+    btcRow: { observedAt: "2026-05-10T00:00:00Z", totalUsd: 999.99 },
+  });
+  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
+  assert.equal(unified.breakdown.btcL1Usd.source, "btc-nav-history.jsonl");
+  assert.equal(unified.breakdown.btcL1Usd.valueUsd, 999.99);
+  assert.equal(unified.breakdown.btcL1Usd.fallback, true);
 });

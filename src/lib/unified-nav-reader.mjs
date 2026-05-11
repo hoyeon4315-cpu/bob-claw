@@ -2,9 +2,12 @@ import { readFile, open, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
+import { listApprovedOperatorBtcAddresses } from "../config/operator-btc-addresses.mjs";
 
 const DEFAULT_DISCREPANCY_THRESHOLD_PCT = 10;
 const TAIL_CHUNK_BYTES = 256 * 1024;
+const ESPLORA_BASE = process.env.BTC_ESPLORA_BASE || "https://mempool.space/api";
+const BTC_FETCH_TIMEOUT_MS = 10_000;
 
 function finite(value) {
   const numeric = Number(value);
@@ -126,12 +129,71 @@ async function loadBobL2WbtcUsd(dataDir) {
   };
 }
 
-async function loadBtcL1Usd(dataDir) {
+async function fetchJson(url) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), BTC_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: ac.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchAddressSats(address) {
+  const data = await fetchJson(`${ESPLORA_BASE}/address/${address}`);
+  const chain = data?.chain_stats || {};
+  const mem = data?.mempool_stats || {};
+  const confirmedSats = Number(chain.funded_txo_sum || 0) - Number(chain.spent_txo_sum || 0);
+  const mempoolSats = Number(mem.funded_txo_sum || 0) - Number(mem.spent_txo_sum || 0);
+  return { address, confirmedSats, mempoolSats };
+}
+
+async function fetchBtcPriceUsd() {
+  const data = await fetchJson(`${ESPLORA_BASE}/v1/prices`);
+  const price = finite(data?.USD) ?? finite(data?.usd);
+  return price;
+}
+
+async function loadBtcL1UsdLive() {
+  const addresses = listApprovedOperatorBtcAddresses({ includeObservationOnly: true });
+  if (!Array.isArray(addresses) || addresses.length === 0) {
+    return { source: "esplora_live", valueUsd: null, observedAt: null, error: "no_operator_btc_addresses" };
+  }
+  try {
+    const [balances, priceUsd] = await Promise.all([
+      Promise.all(addresses.map(fetchAddressSats)),
+      fetchBtcPriceUsd(),
+    ]);
+    const totalSats = balances.reduce((s, b) => s + b.confirmedSats, 0);
+    if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+      return { source: "esplora_live", valueUsd: null, observedAt: new Date().toISOString(), error: "btc_price_unavailable", totalSats };
+    }
+    const valueUsd = (totalSats / 1e8) * priceUsd;
+    return {
+      source: "esplora_live",
+      valueUsd,
+      observedAt: new Date().toISOString(),
+      totalSats,
+      btcPriceUsd: priceUsd,
+      addresses: balances.map((b) => ({ address: b.address, confirmedSats: b.confirmedSats })),
+    };
+  } catch (error) {
+    return { source: "esplora_live", valueUsd: null, observedAt: null, error: String(error?.message || error) };
+  }
+}
+
+async function loadBtcL1Usd(dataDir, { liveFetch = true } = {}) {
+  if (liveFetch) {
+    const live = await loadBtcL1UsdLive();
+    if (live.valueUsd != null) return live;
+  }
   let contents = "";
   try {
     contents = await readFile(join(dataDir, "btc-nav-history.jsonl"), "utf8");
   } catch {
-    return { source: "btc-nav-history.jsonl", valueUsd: null, observedAt: null };
+    return { source: "btc-nav-history.jsonl", valueUsd: null, observedAt: null, fallback: true };
   }
   const records = [];
   let depth = 0;
@@ -164,7 +226,7 @@ async function loadBtcL1Usd(dataDir) {
   }
   const row = records.at(-1);
   const value = finite(row?.totalUsd);
-  return { source: "btc-nav-history.jsonl", valueUsd: value, observedAt: row?.observedAt || null };
+  return { source: "btc-nav-history.jsonl", valueUsd: value, observedAt: row?.observedAt || null, fallback: true };
 }
 
 async function loadClosedProtocolMarksUsd(dataDir) {
@@ -210,12 +272,13 @@ function discrepancyPct(a, b) {
 export async function loadUnifiedOperatingCapital({
   dataDir = config.dataDir,
   discrepancyThresholdPct = DEFAULT_DISCREPANCY_THRESHOLD_PCT,
+  liveBtc = true,
 } = {}) {
   const [evmWallet, evmAutopilot, bobL2Wbtc, btcL1, closedMarks] = await Promise.all([
     loadEvmWalletUsd(dataDir),
     loadEvmAutopilotUsd(dataDir),
     loadBobL2WbtcUsd(dataDir),
-    loadBtcL1Usd(dataDir),
+    loadBtcL1Usd(dataDir, { liveFetch: liveBtc }),
     loadClosedProtocolMarksUsd(dataDir),
   ]);
 
