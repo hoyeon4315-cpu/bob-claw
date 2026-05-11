@@ -3,6 +3,10 @@ import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { listApprovedOperatorBtcAddresses } from "../config/operator-btc-addresses.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
+import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../market/prices.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
+import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 
 const DEFAULT_DISCREPANCY_THRESHOLD_PCT = 10;
 const TAIL_CHUNK_BYTES = 256 * 1024;
@@ -108,7 +112,57 @@ async function streamJsonlMap(absolutePath, keySelector) {
   return out;
 }
 
-async function loadEvmWalletUsd(dataDir) {
+async function loadEvmWalletUsdLive(dataDir) {
+  try {
+    const resolved = await resolveOperationalAddress({ dataDir });
+    if (!resolved?.address) {
+      return { source: "evm_live_scan", valueUsd: null, observedAt: null, error: "no_operator_address" };
+    }
+    const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+    const prices = await getCoinGeckoPricesUsd().catch(() => emptyPricesUsd());
+    const inventory = await scanTreasuryInventory({
+      policy,
+      address: resolved.address,
+      prices,
+      continueOnError: true,
+    });
+    const value = finite(inventory?.summary?.estimatedWalletUsd);
+    return {
+      source: "evm_live_scan",
+      valueUsd: value,
+      observedAt: inventory?.observedAt || new Date().toISOString(),
+      ageMs: 0,
+      scanErrorCount: inventory?.summary?.scanErrorCount ?? 0,
+      address: inventory?.address || resolved.address,
+      inventory,
+    };
+  } catch (error) {
+    return { source: "evm_live_scan", valueUsd: null, observedAt: null, error: String(error?.message || error) };
+  }
+}
+
+async function loadEvmWalletUsd(dataDir, { liveScan = true, allowStaleFallback = false } = {}) {
+  if (liveScan) {
+    const live = await loadEvmWalletUsdLive(dataDir);
+    if (live.valueUsd != null) return live;
+    if (!allowStaleFallback) {
+      return {
+        ...live,
+        source: live.source || "evm_live_scan",
+        valueUsd: null,
+        fallback: false,
+        note: "evm live scan failed; stale jsonl fallback refused",
+      };
+    }
+  } else if (!allowStaleFallback) {
+    return {
+      source: "evm_live_scan",
+      valueUsd: null,
+      observedAt: null,
+      fallback: false,
+      note: "liveEvm=false and allowStaleEvmFallback=false — refusing to read jsonl projection",
+    };
+  }
   const row = await lastJsonlRow(join(dataDir, "treasury-inventory.jsonl"));
   const observedAt = row?.observedAt || null;
   const value = finite(row?.summary?.estimatedWalletUsd);
@@ -117,6 +171,8 @@ async function loadEvmWalletUsd(dataDir) {
     valueUsd: value,
     observedAt,
     ageMs: ageMs(observedAt),
+    fallback: true,
+    warning: "treasury-inventory.jsonl is a recorded snapshot, not chain truth; use liveScan:true unless intentionally backtesting",
   };
 }
 
@@ -341,10 +397,12 @@ export async function loadUnifiedOperatingCapital({
   discrepancyThresholdPct = DEFAULT_DISCREPANCY_THRESHOLD_PCT,
   liveBtc = true,
   allowStaleBtcFallback = false,
+  liveEvm = true,
+  allowStaleEvmFallback = false,
   maxRecordedAgeMs = DEFAULT_MAX_AGE_MS,
 } = {}) {
   const [evmWallet, evmAutopilot, bobL2Wbtc, btcL1, protocolMarks] = await Promise.all([
-    loadEvmWalletUsd(dataDir),
+    loadEvmWalletUsd(dataDir, { liveScan: liveEvm, allowStaleFallback: allowStaleEvmFallback }),
     loadEvmAutopilotUsd(dataDir),
     loadBobL2WbtcUsd(dataDir),
     loadBtcL1Usd(dataDir, { liveFetch: liveBtc, allowStaleFallback: allowStaleBtcFallback }),
@@ -373,6 +431,7 @@ export async function loadUnifiedOperatingCapital({
   if (evmDiscrepancyFlag) flags.push(evmDiscrepancyFlag);
   if (missingSources.length > 0) flags.push("source_missing");
   if (btcL1.fallback === true) flags.push("btc_l1_stale_fallback");
+  if (evmWallet.fallback === true) flags.push("evm_wallet_stale_fallback");
   const staleSources = [];
   for (const [name, slice] of [["evmWalletUsd", evmWallet], ["evmAutopilotUsd", evmAutopilot]]) {
     if (slice.ageMs != null && slice.ageMs > maxRecordedAgeMs) staleSources.push(name);
@@ -393,6 +452,7 @@ export async function loadUnifiedOperatingCapital({
       flags.includes("evm_source_disagreement") ||
       flags.includes("source_missing") ||
       flags.includes("btc_l1_stale_fallback") ||
+      flags.includes("evm_wallet_stale_fallback") ||
       flags.includes("recorded_source_stale"),
     staleSources,
     maxRecordedAgeMs,

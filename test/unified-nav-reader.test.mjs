@@ -52,7 +52,7 @@ test("unified NAV breakdown values resolve from fixture when stale BTC fallback 
   });
   const unified = await loadUnifiedOperatingCapital({
     dataDir: dir,
-    liveBtc: false,
+    liveBtc: false, liveEvm: false, allowStaleEvmFallback: true,
     allowStaleBtcFallback: true,
   });
   assert.equal(unified.btcL1Usd, 500.83);
@@ -79,7 +79,7 @@ test("unified NAV halts when EVM sources disagree by more than threshold", async
   const unified = await loadUnifiedOperatingCapital({
     dataDir: dir,
     discrepancyThresholdPct: 10,
-    liveBtc: false,
+    liveBtc: false, liveEvm: false, allowStaleEvmFallback: true,
     allowStaleBtcFallback: true,
   });
   assert.equal(unified.halt, true);
@@ -99,7 +99,7 @@ test("unified NAV halts when a required source is missing", async () => {
     },
     // no BTC L1 row
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
+  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false, liveEvm: false, allowStaleEvmFallback: true });
   assert.equal(unified.halt, true);
   assert.ok(unified.flags.includes("source_missing"));
   assert.ok(unified.missingSources.includes("btcL1Usd"));
@@ -122,7 +122,7 @@ test("protocol-position-marks adds all open marks to NAV; closed-pair subset rep
   });
   const unified = await loadUnifiedOperatingCapital({
     dataDir: dir,
-    liveBtc: false,
+    liveBtc: false, liveEvm: false, allowStaleEvmFallback: true,
     allowStaleBtcFallback: true,
   });
   const slice = unified.breakdown.protocolPositionMarksUsd;
@@ -146,7 +146,7 @@ test("protocol marks add into unifiedNavUsd alongside EVM and BTC", async () => 
   });
   const unified = await loadUnifiedOperatingCapital({
     dataDir: dir,
-    liveBtc: false,
+    liveBtc: false, liveEvm: false, allowStaleEvmFallback: true,
     allowStaleBtcFallback: true,
   });
   assert.equal(unified.evmAggregateUsd, 400);
@@ -165,7 +165,7 @@ test("stale jsonl fallback is refused by default and forces halt", async () => {
     autopilotSnapshot: { summary: { capitalManager: { estimatedAssetValueUsd: 500 } } },
     btcRow: { observedAt: "2026-05-10T00:00:00Z", totalUsd: 999.99 },
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
+  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false, liveEvm: false, allowStaleEvmFallback: true });
   assert.equal(unified.btcL1Usd, null);
   assert.ok(unified.flags.includes("source_missing"));
   assert.equal(unified.halt, true);
@@ -183,7 +183,7 @@ test("stale jsonl fallback flagged as halt-eligible even when value present", as
   });
   const unified = await loadUnifiedOperatingCapital({
     dataDir: dir,
-    liveBtc: false,
+    liveBtc: false, liveEvm: false, allowStaleEvmFallback: true,
     allowStaleBtcFallback: true,
   });
   assert.equal(unified.breakdown.btcL1Usd.source, "btc-nav-history.jsonl");
