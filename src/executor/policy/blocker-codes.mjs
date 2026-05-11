@@ -152,7 +152,7 @@ function codeForLegacy(raw, context = {}) {
   if (text.includes("hf_breach") || text.includes("hf_below") || text.includes("liquidation")) return "hard_safety_stop:hf_breach";
   if (text.includes("entry_asset_not_whitelisted")) return "code_required:entry_asset_not_whitelisted";
   if (text.includes("matched_token_missing")) return "code_required:matched_token_missing";
-  if (text.includes("manual_operator_review_required")) return "manual_review:manual_operator_review_required";
+  if (text.includes("manual_operator_review_required")) return "filter:manual_operator_review_required";
   if (text.includes("unknown_token") || text.includes("whitelist")) return "hard_safety_stop:unknown_token";
 
   if (text.includes("capital_too_small") || text.includes("insufficient_capital")) return "economic_no_go:capital_too_small";
