@@ -1749,6 +1749,15 @@ export async function runAllChainAutopilot({
     });
 
     await runJsonStep({
+      name: "protocol_position_mark_refresh",
+      args: ["src/cli/mark-protocol-positions.mjs", "--write", "--json"],
+      runCommandImpl,
+      cwd,
+      timeoutMs: Math.min(60_000, timeoutMs),
+      steps,
+    });
+
+    await runJsonStep({
       name: "campaign_aware_opportunities",
       args: ["src/cli/report-campaign-aware-opportunities.mjs", "--json"],
       runCommandImpl,
@@ -2365,6 +2374,15 @@ export async function runAllChainAutopilot({
     runCommandImpl,
     cwd,
     timeoutMs,
+    steps,
+  });
+
+  await runJsonStep({
+    name: "async_settlement_watcher",
+    args: ["src/cli/run-async-settlement-watcher.mjs", "--json", "--write"],
+    runCommandImpl,
+    cwd,
+    timeoutMs: Math.min(60_000, timeoutMs),
     steps,
   });
 

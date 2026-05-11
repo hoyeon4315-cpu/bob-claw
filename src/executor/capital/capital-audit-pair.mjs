@@ -132,6 +132,7 @@ export function buildCapitalAuditClosureRecord({
   receiptRecord = null,
   source = "receipt_reconciliation_backfill",
   observedAt = new Date().toISOString(),
+  gracePeriodMs = 0,
 } = {}) {
   const intentHash = auditRecord.intentHash;
   const strategyId = auditRecord.strategyId || "unknown";
@@ -141,9 +142,14 @@ export function buildCapitalAuditClosureRecord({
     (auditRecord.lifecycle?.stage === "reverted" ? "failed" : null) ||
     (auditRecord.lifecycle?.stage === "confirmed" ? "reconciled" : null) ||
     (isGatewayBtcOnrampBroadcastOnly ? "reconciled" : null);
+  const hasClosure = ["reconciled", "failed", "final_failed"].includes(reconciliationStatus);
+  const hasGrace = !hasClosure && Number.isFinite(gracePeriodMs) && gracePeriodMs > 0;
+  const graceExpiresAt = hasGrace
+    ? new Date(new Date(observedAt).getTime() + gracePeriodMs).toISOString()
+    : null;
   return {
     schemaVersion: 1,
-    status: ["reconciled", "failed", "final_failed"].includes(reconciliationStatus) ? "closed" : "pending",
+    status: hasClosure ? "closed" : hasGrace ? "pending_with_grace" : "pending",
     stage: "post_reconciliation",
     source,
     observedAt,
@@ -152,12 +158,14 @@ export function buildCapitalAuditClosureRecord({
     intentHash,
     txHash,
     reconciliationStatus,
+    gracePeriodMs: hasGrace ? gracePeriodMs : null,
+    graceExpiresAt,
     realizedGasUsd: receiptRecord?.realized?.actualKnownCostUsd ?? auditRecord.realized?.actualKnownCostUsd ?? null,
     slippageBps: receiptRecord?.realized?.realizedFillVsEstimateBps ?? auditRecord.realized?.slippageBps ?? null,
     protocolPositionMarkDelta: null,
     receiptKind: receiptRecord?.kind || null,
     validation: {
-      ok: ["reconciled", "failed", "final_failed"].includes(reconciliationStatus),
+      ok: hasClosure,
       method: source,
     },
   };

@@ -490,6 +490,24 @@ function fakeCommand({ args }) {
       json: null,
     };
   }
+  if (name.endsWith("mark-protocol-positions.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: { observedAt: new Date().toISOString(), eventCount: 0, successCount: 0, failureCount: 0 },
+    };
+  }
+  if (name.endsWith("run-async-settlement-watcher.mjs")) {
+    return {
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      json: { schemaVersion: 1, observedAt: new Date().toISOString(), pendingCount: 0, processedCount: 0, processed: [] },
+    };
+  }
   throw new Error(`unexpected command ${name}`);
 }
 

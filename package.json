@@ -282,6 +282,8 @@
     "watch:gateway-updates": "node src/cli/watch-gateway-updates.mjs",
     "watch:gateway-updates:autopilot": "node src/cli/run-gateway-update-autopilot.mjs --execute --write",
     "status:protocol-position-marks": "node src/cli/mark-protocol-positions.mjs",
+    "mark:protocol-positions": "node src/cli/mark-protocol-positions.mjs --write --json",
+    "run:async-settlement-watcher": "node src/cli/run-async-settlement-watcher.mjs",
     "status:dashboard": "node src/cli/status-dashboard.mjs",
     "status:dashboard:light": "node src/cli/status-dashboard.mjs --skip-shadow-cycle --skip-canary-input-refresh",
     "auto:gate-self-heal": "node src/cli/run-gate-self-heal.mjs",
