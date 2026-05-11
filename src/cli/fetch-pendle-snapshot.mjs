@@ -64,6 +64,18 @@ async function main() {
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, JSON.stringify(wrapped, null, 2) + "\n");
 
+  const marketsAllPath = resolve(`data/snapshots/pendle-${chainId}-markets-all-latest.json`);
+  const marketsAll = {
+    schemaVersion: 1,
+    fetchedAt,
+    source: "pendle-public-rest",
+    endpoint: url,
+    chainId,
+    markets: Array.isArray(response?.results) ? response.results : [],
+  };
+  mkdirSync(dirname(marketsAllPath), { recursive: true });
+  writeFileSync(marketsAllPath, JSON.stringify(marketsAll, null, 2) + "\n");
+
   if (args.json) {
     process.stdout.write(JSON.stringify(wrapped) + "\n");
   } else {
