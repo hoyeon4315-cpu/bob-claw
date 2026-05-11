@@ -59,7 +59,6 @@ const REQUIRED_CONFIG_FIELDS = Object.freeze([
 ]);
 
 const STRING_CONFIG_FIELDS = Object.freeze(["id", "label", "strategyType", "sourceAsset"]);
-const CHAIN_CONFIG_FIELDS = Object.freeze(["chain"]);
 
 function finite(v) {
   return Number.isFinite(v) ? v : null;
@@ -220,12 +219,15 @@ function projectedEconomics(config, pool) {
 function receiptEvidence(receipts = []) {
   const signerBacked = receipts.filter((r) => r?.signerBacked === true);
   const passed = signerBacked.filter((r) => r?.result === "passed");
-  const realized = passed.reduce((sum, r) => sum + (Number(r.realizedNetUsd) || 0), 0);
+  const realized = passed.reduce(
+    (sum, r) => sum + (Number.isFinite(Number(r.realizedNetUsd)) ? Number(r.realizedNetUsd) : 0),
+    0,
+  );
   const entryExitProvenCount = signerBacked.filter((r) => r?.entryExitProven === true).length;
   return Object.freeze({
     signerBackedCount: signerBacked.length,
     passedCount: passed.length,
-    realizedNetUsd: passed.length > 0 ? round(realized) : null,
+    realizedNetUsd: passed.length > 0 && Number.isFinite(realized) ? round(realized) : null,
     entryExitProvenCount,
   });
 }
