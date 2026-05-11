@@ -283,7 +283,9 @@ export function buildReceiptReconciliation({
       ? finiteOrNull(-actualKnownCostUsd)
       : Number.isFinite(expectedInputUsd) && Number.isFinite(actualOutputValueUsd)
         ? finiteOrNull(actualOutputValueUsd - expectedInputUsd - actualKnownCostUsd)
-        : null;
+        : Number.isFinite(actualOutputValueUsd)
+          ? finiteOrNull(actualOutputValueUsd - actualKnownCostUsd)
+          : null;
   const realizedNetPnlSats = integerOrNull(usdToSats(realizedNetPnlUsd, btcUsd));
   const estimatedNetPnlUsd = expectedNetPnl(routeContext);
   const estimatedNetPnlSats = integerOrNull(usdToSats(estimatedNetPnlUsd, btcUsd));
