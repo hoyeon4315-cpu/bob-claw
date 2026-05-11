@@ -616,6 +616,7 @@ export async function scanWholeWalletInventory({
   }
 
   const tokenEntries = [];
+  const erc4626PendingCandidates = [];
   const universeTargets = assetUniverseTokenTargets(assetUniverse);
   const tokenMetadata = Object.fromEntries(universeTargets.map((target) => [tokenBalanceKey(target), target]));
   for (const chain of chains) {
@@ -658,6 +659,28 @@ export async function scanWholeWalletInventory({
             balance: result.balance.toString(),
             rpcUrl: result.rpcUrl || null,
           });
+          if (enrichedMetadata.valuation?.kind === "erc4626_preview" && !metadata.registered) {
+            erc4626PendingCandidates.push({
+              schemaVersion: 1,
+              source: "erc4626_auto_probe",
+              event: "erc4626_vault_token_detected",
+              observedAt: enrichedMetadata.valuation.observedAt,
+              chain,
+              address: target.token,
+              symbol: enrichedMetadata.ticker || enrichedMetadata.symbol || null,
+              decimals: enrichedMetadata.decimals ?? 18,
+              underlyingToken: enrichedMetadata.valuation.underlyingToken,
+              underlyingSymbol: enrichedMetadata.valuation.underlyingSymbol,
+              underlyingDecimals: enrichedMetadata.valuation.underlyingDecimals,
+              underlyingAssets: enrichedMetadata.valuation.underlyingAssets,
+              underlyingDecimal: enrichedMetadata.valuation.underlyingDecimal,
+              estimatedUsd: enrichedMetadata.estimatedUsdOverride ?? null,
+              rpcUrl: enrichedMetadata.valuation.rpcUrl || null,
+              classification: "erc4626_vault_share",
+              rationale: `ERC4626 convertToAssets probe succeeded; underlying=${enrichedMetadata.valuation.underlyingSymbol}`,
+              requestedAction: "commit_token_registry_and_protocol_binding",
+            });
+          }
         }
       } catch (error) {
         tokenEntries.push({
@@ -723,7 +746,7 @@ export async function scanWholeWalletInventory({
     }
   }
 
-  return buildWholeWalletInventory({
+  const inventory = buildWholeWalletInventory({
     address,
     bitcoinAddress,
     nativeBalances: Object.fromEntries(nativeEntries),
@@ -738,6 +761,10 @@ export async function scanWholeWalletInventory({
     assetUniverse,
     tokenMetadata,
   });
+  if (erc4626PendingCandidates.length > 0) {
+    inventory.erc4626PendingWhitelist = erc4626PendingCandidates;
+  }
+  return inventory;
 }
 
 export function latestWholeWalletInventoryForAddress(records = [], address) {
