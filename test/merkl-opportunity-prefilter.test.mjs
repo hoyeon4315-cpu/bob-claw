@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { evaluateMerklOpportunity } from "../src/strategy/merkl-opportunity-prefilter.mjs";
+import {
+  MERKL_OPPORTUNITY_POLICY,
+  SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY,
+  selectMerklOpportunityPolicy,
+} from "../src/config/merkl-opportunity-policy.mjs";
 
 function buildOpportunity(overrides = {}) {
   return {
@@ -126,4 +131,32 @@ test("POINT hard reject candidate remains clamped at zero score", () => {
 
   assert.ok(pointReward.hardBlockers.includes("point_reward_program"));
   assert.equal(pointReward.score, 0);
+});
+
+test("selectMerklOpportunityPolicy switches to small-capital profile when operatingCapitalUsd < 1000", () => {
+  assert.equal(selectMerklOpportunityPolicy(449).profileId, SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY.profileId);
+  assert.equal(selectMerklOpportunityPolicy(999).profileId, SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY.profileId);
+  assert.equal(selectMerklOpportunityPolicy(1000).profileId, MERKL_OPPORTUNITY_POLICY.profileId);
+  assert.equal(selectMerklOpportunityPolicy(null).profileId, MERKL_OPPORTUNITY_POLICY.profileId);
+});
+
+test("small-capital profile clears tvl_below_family_floor for $1.4M eth_fixed_yield Base Pendle pool", () => {
+  const opportunity = buildOpportunity({
+    opportunityId: "pendle-base-eth-fixed-1",
+    chain: "base",
+    family: "eth_fixed_yield",
+    executionSurface: "fixedYield",
+    mappedStrategyId: "pendle-yt-canary",
+    tvlUsd: 1_459_557,
+    aprPct: 5.5,
+    nativeAprPct: 5.5,
+    incentiveAprPct: 0,
+    hasBtcExposure: false,
+  });
+
+  const aggressive = evaluateMerklOpportunity(opportunity, { operatingCapitalUsd: 5000 });
+  const smallCap = evaluateMerklOpportunity(opportunity, { operatingCapitalUsd: 449 });
+
+  assert.ok(aggressive.hardBlockers.includes("tvl_below_family_floor"));
+  assert.ok(!smallCap.hardBlockers.includes("tvl_below_family_floor"));
 });

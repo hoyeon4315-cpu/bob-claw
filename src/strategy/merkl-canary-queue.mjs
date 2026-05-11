@@ -1,4 +1,5 @@
-import { MERKL_OPPORTUNITY_POLICY } from "../config/merkl-opportunity-policy.mjs";
+import { MERKL_OPPORTUNITY_POLICY, selectMerklOpportunityPolicy } from "../config/merkl-opportunity-policy.mjs";
+import { resolvePendleMerklBinding } from "./pendle-merkl-binding-join.mjs";
 import { evaluateMerklAutoEntry } from "../config/merkl-auto-entry.mjs";
 import { buildProtocolCanaryBindingPlan } from "../defi/protocol-canary-bindings.mjs";
 import { isSupportedBindingKind } from "../executor/protocol-binding-registry.mjs";
@@ -241,15 +242,25 @@ function buildPreflightSteps(item = {}) {
   return steps;
 }
 
-function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY) {
+function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY, { pendleMarkets = [], now = Date.now() } = {}) {
   const template = EXECUTION_TEMPLATES[item.executionSurface] || {
     canaryKind: "enter_exit_tiny_generic_position",
     nextAction: "build_generic_protocol_canary",
   };
+  let bindingSource = item.protocolBinding;
+  let pendleJoined = false;
+  if (!bindingSource && String(item.protocolId || "").toLowerCase() === "pendle") {
+    const joined = resolvePendleMerklBinding({ opportunity: item, markets: pendleMarkets, now });
+    if (joined) {
+      bindingSource = joined;
+      pendleJoined = true;
+    }
+  }
   const protocolBindingPlan = buildProtocolCanaryBindingPlan({
     opportunity: item,
-    binding: item.protocolBinding,
+    binding: bindingSource,
   });
+  if (pendleJoined) protocolBindingPlan.bindingSource = "pendle_markets_api";
   const pendleYtEv = evaluatePendleYtEv({
     ...item,
     protocolBindingPlan,
@@ -306,7 +317,8 @@ function attachAutoEntry(queueItem = {}) {
 
 export function buildMerklCanaryQueue({
   report = null,
-  policy = MERKL_OPPORTUNITY_POLICY,
+  policy,
+  operatingCapitalUsd,
   limit = null,
   now = null,
   inventorySnapshot = null,
@@ -315,18 +327,20 @@ export function buildMerklCanaryQueue({
   representativeRuns = [],
   autopilotReports = [],
   chainQuota = DEFAULT_CHAIN_QUOTA,
+  pendleMarkets = [],
 } = {}) {
+  const resolvedPolicy = policy || selectMerklOpportunityPolicy(operatingCapitalUsd);
   const sourceItems = report?.opportunities || report?.topCandidates || [];
   const candidates = sourceItems
     .filter((item) => item?.decision === "candidate")
     .filter((item) => item?.validationMode === "tiny_live_canary_only")
     .filter((item) => item?.mappedStrategyId)
     .filter((item) => !(item?.type === "ERC20LOGPROCESSOR" && item?.action === "HOLD" && !item?.protocolId))
-    .map((item) => ({ ...item, priorityScore: priorityScore(item, policy) }))
+    .map((item) => ({ ...item, priorityScore: priorityScore(item, resolvedPolicy) }))
     .sort(compareQueue);
   const selectedCandidates = selectCandidatesWithChainQuota(candidates, { limit, chainQuota });
   const queue = selectedCandidates.candidates
-    .map((item, index) => buildQueueItem(item, index, policy))
+    .map((item, index) => buildQueueItem(item, index, resolvedPolicy, { pendleMarkets, now: now ? new Date(now).getTime() : Date.now() }))
     .map((item) => applyMerklCanaryExecutionReadiness(item, {
       inventorySnapshot,
       canaryExecutions,
@@ -365,7 +379,7 @@ export function buildMerklCanaryQueue({
     schemaVersion: 1,
     generatedAt,
     sourceReportGeneratedAt: report?.generatedAt || null,
-    policyProfile: report?.policyProfile || policy.profileId,
+    policyProfile: report?.policyProfile || resolvedPolicy.profileId,
     automationModel: {
       llmRole: "code_and_queue_only",
       signingRole: "deterministic_policy_and_signer_only",

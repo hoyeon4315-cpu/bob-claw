@@ -4,6 +4,7 @@ import { config } from "../config/env.mjs";
 import { MERKL_OPPORTUNITY_POLICY } from "../config/merkl-opportunity-policy.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
+import { loadOperatingCapitalUsd } from "../lib/operating-capital-snapshot.mjs";
 import { sendTelegramMessage } from "../notify/telegram.mjs";
 import { buildMerklOpportunityReport } from "../strategy/merkl-opportunity-plan.mjs";
 import { runMerklOpportunityWatch } from "../watch/merkl-opportunity-watch.mjs";
@@ -52,9 +53,11 @@ async function main() {
     timeoutMs: MERKL_OPPORTUNITY_POLICY.api.requestTimeoutMs,
     previousSnapshot: previousRecord?.snapshot || null,
   });
+  const operatingCapitalUsd = await loadOperatingCapitalUsd();
   const report = buildMerklOpportunityReport({
     opportunities: result.opportunities,
     campaigns: result.campaigns,
+    operatingCapitalUsd,
     now: result.observedAt,
   });
   const store = new JsonlStore(config.dataDir);

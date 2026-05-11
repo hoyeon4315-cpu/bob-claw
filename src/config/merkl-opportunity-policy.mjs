@@ -1,4 +1,4 @@
-import { SMALL_CAPITAL_CAMPAIGN_MODE } from "./small-capital-campaign-mode.mjs";
+import { SMALL_CAPITAL_CAMPAIGN_MODE, isSmallCapitalMode } from "./small-capital-campaign-mode.mjs";
 
 export const MERKL_OPPORTUNITY_POLICY = Object.freeze({
   profileId: "aggressive_multi_asset_payback_v2",
@@ -213,4 +213,13 @@ export function minTvlForFamily(family, policy = MERKL_OPPORTUNITY_POLICY) {
 
 export function chainEligibleForEntry(chain, policy = MERKL_OPPORTUNITY_POLICY) {
   return policy.entry.eligibleEntryChains.includes(chain);
+}
+
+export function selectMerklOpportunityPolicy(operatingCapitalUsd) {
+  if (operatingCapitalUsd == null || !Number.isFinite(Number(operatingCapitalUsd))) {
+    return MERKL_OPPORTUNITY_POLICY;
+  }
+  return isSmallCapitalMode(operatingCapitalUsd)
+    ? SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY
+    : MERKL_OPPORTUNITY_POLICY;
 }

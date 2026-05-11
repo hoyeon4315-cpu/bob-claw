@@ -3,9 +3,22 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
+import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
+import { loadOperatingCapitalUsd } from "../lib/operating-capital-snapshot.mjs";
 import { buildMerklCanaryQueue } from "../strategy/merkl-canary-queue.mjs";
+
+const PENDLE_SNAPSHOT_CHAIN_IDS = [1, 8453, 56, 10, 130, 146];
+
+async function loadPendleMarkets(dataDir) {
+  const all = [];
+  for (const chainId of PENDLE_SNAPSHOT_CHAIN_IDS) {
+    const snapshot = await readJsonIfExists(join(dataDir, "snapshots", `pendle-${chainId}-markets-all-latest.json`));
+    if (Array.isArray(snapshot?.markets)) all.push(...snapshot.markets);
+  }
+  return all;
+}
 import { latestTreasuryInventoryForAddress } from "../strategy/merkl-canary-execution-readiness.mjs";
 
 function parseArgs(argv) {
@@ -41,14 +54,18 @@ async function main() {
   ]);
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, report?.address || inventoryRecords.at(-1)?.address || null);
+  const operatingCapitalUsd = await loadOperatingCapitalUsd();
+  const pendleMarkets = await loadPendleMarkets(config.dataDir);
   const queue = buildMerklCanaryQueue({
     report,
+    operatingCapitalUsd,
     limit: args.limit,
     inventorySnapshot,
     canaryExecutions,
     positionRecords,
     representativeRuns,
     autopilotReports: autopilotExecutions,
+    pendleMarkets,
   });
 
   if (args.write) {

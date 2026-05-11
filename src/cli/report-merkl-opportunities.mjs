@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { MERKL_OPPORTUNITY_POLICY } from "../config/merkl-opportunity-policy.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { loadOperatingCapitalUsd } from "../lib/operating-capital-snapshot.mjs";
 import { buildMerklOpportunityReport } from "../strategy/merkl-opportunity-plan.mjs";
 import { fetchMerklUniverse } from "../watch/merkl-opportunity-watch.mjs";
 
@@ -42,9 +43,11 @@ async function main() {
     timeoutMs: MERKL_OPPORTUNITY_POLICY.api.requestTimeoutMs,
   });
 
+  const operatingCapitalUsd = await loadOperatingCapitalUsd();
   const report = buildMerklOpportunityReport({
     opportunities: universe.opportunities,
     campaigns: universe.campaigns,
+    operatingCapitalUsd,
   });
 
   if (args.write) {

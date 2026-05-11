@@ -1,4 +1,4 @@
-import { MERKL_OPPORTUNITY_POLICY } from "../config/merkl-opportunity-policy.mjs";
+import { MERKL_OPPORTUNITY_POLICY, selectMerklOpportunityPolicy } from "../config/merkl-opportunity-policy.mjs";
 import { evaluateMerklOpportunities } from "./merkl-opportunity-prefilter.mjs";
 import { normalizeMerklOpportunities } from "./merkl-opportunity-normalizer.mjs";
 
@@ -56,24 +56,26 @@ function buildRotationPlan(items = [], policy = MERKL_OPPORTUNITY_POLICY) {
 export function buildMerklOpportunityReport({
   opportunities = [],
   campaigns = [],
-  policy = MERKL_OPPORTUNITY_POLICY,
+  policy,
+  operatingCapitalUsd,
   now = null,
 } = {}) {
+  const resolvedPolicy = policy || selectMerklOpportunityPolicy(operatingCapitalUsd);
   const normalized = normalizeMerklOpportunities(opportunities, { campaigns, now });
-  const evaluated = evaluateMerklOpportunities(normalized, { policy }).sort(compareOpportunities);
+  const evaluated = evaluateMerklOpportunities(normalized, { policy: resolvedPolicy }).sort(compareOpportunities);
   const summary = summarizeCounts(evaluated);
   const topCandidates = evaluated.filter((item) => item.decision === "candidate").slice(0, 10);
   const topWatchlist = evaluated.filter((item) => item.decision === "watch").slice(0, 10);
-  const rotationPlan = buildRotationPlan(evaluated, policy);
+  const rotationPlan = buildRotationPlan(evaluated, resolvedPolicy);
 
   return {
     schemaVersion: 1,
     generatedAt: now || new Date().toISOString(),
-    policyProfile: policy.profileId,
+    policyProfile: resolvedPolicy.profileId,
     validationModel: {
       dryRunRole: "preflight_only",
       primaryEconomicEvidence: "tiny_live_canary",
-      scaleUpRule: `requires >= ${policy.entry.minHoursRemainingForScaleUp}h remaining campaign window plus live receipt evidence`,
+      scaleUpRule: `requires >= ${resolvedPolicy.entry.minHoursRemainingForScaleUp}h remaining campaign window plus live receipt evidence`,
     },
     summary: {
       opportunityCount: opportunities.length,

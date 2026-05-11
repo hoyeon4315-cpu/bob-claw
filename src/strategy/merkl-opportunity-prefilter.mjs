@@ -1,4 +1,9 @@
-import { MERKL_OPPORTUNITY_POLICY, chainEligibleForEntry, minTvlForFamily } from "../config/merkl-opportunity-policy.mjs";
+import {
+  MERKL_OPPORTUNITY_POLICY,
+  chainEligibleForEntry,
+  minTvlForFamily,
+  selectMerklOpportunityPolicy,
+} from "../config/merkl-opportunity-policy.mjs";
 
 function bandFromApr(aprPct, thresholds = {}) {
   if (!Number.isFinite(aprPct)) return "low";
@@ -106,11 +111,12 @@ function overfitRiskLevel(flags = []) {
   return flags.length ? "low" : "minimal";
 }
 
-export function evaluateMerklOpportunity(opportunity, { policy = MERKL_OPPORTUNITY_POLICY } = {}) {
-  const hardBlockers = hardBlockersForOpportunity(opportunity, policy);
-  const watchReasons = watchReasonsForOpportunity(opportunity, policy);
-  const overfitFlags = buildOverfitFlags(opportunity, policy);
-  const score = scoreOpportunity(opportunity, { hardBlockers, watchReasons, overfitFlags }, policy);
+export function evaluateMerklOpportunity(opportunity, { policy, operatingCapitalUsd } = {}) {
+  const resolvedPolicy = policy || selectMerklOpportunityPolicy(operatingCapitalUsd);
+  const hardBlockers = hardBlockersForOpportunity(opportunity, resolvedPolicy);
+  const watchReasons = watchReasonsForOpportunity(opportunity, resolvedPolicy);
+  const overfitFlags = buildOverfitFlags(opportunity, resolvedPolicy);
+  const score = scoreOpportunity(opportunity, { hardBlockers, watchReasons, overfitFlags }, resolvedPolicy);
   const decision =
     hardBlockers.length > 0 ? "blocked" : watchReasons.length > 0 ? "watch" : "candidate";
 
@@ -127,6 +133,7 @@ export function evaluateMerklOpportunity(opportunity, { policy = MERKL_OPPORTUNI
   };
 }
 
-export function evaluateMerklOpportunities(opportunities = [], { policy = MERKL_OPPORTUNITY_POLICY } = {}) {
-  return (opportunities || []).map((item) => evaluateMerklOpportunity(item, { policy }));
+export function evaluateMerklOpportunities(opportunities = [], { policy, operatingCapitalUsd } = {}) {
+  const resolvedPolicy = policy || selectMerklOpportunityPolicy(operatingCapitalUsd);
+  return (opportunities || []).map((item) => evaluateMerklOpportunity(item, { policy: resolvedPolicy }));
 }
