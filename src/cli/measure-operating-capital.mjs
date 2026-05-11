@@ -47,6 +47,7 @@ async function main() {
   console.log(`unifiedNavUsd=${unified.unifiedNavUsd}`);
   console.log(`evmAggregateUsd=${unified.evmAggregateUsd}`);
   console.log(`btcL1Usd=${unified.btcL1Usd}`);
+  console.log(`protocolMarksUsd=${unified.protocolMarksUsd}`);
   console.log(`evmDiscrepancyPct=${unified.evmDiscrepancyPct}`);
   console.log(`flags=${unified.flags.join(",") || "none"}`);
   console.log(`halt=${unified.halt}`);

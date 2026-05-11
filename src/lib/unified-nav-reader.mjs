@@ -252,28 +252,53 @@ async function loadBtcL1Usd(dataDir, { liveFetch = true, allowStaleFallback = fa
   };
 }
 
-async function loadClosedProtocolMarksUsd(dataDir) {
+const MARK_EVENT_NAMES = new Set(["mark", "position_marked"]);
+
+async function loadProtocolPositionMarksUsd(dataDir) {
   const auditPairs = await lastJsonlRowsByStrategy(join(dataDir, "capital-audit-pairs.jsonl"));
   const closedStrategies = new Set();
   for (const [strategy, row] of auditPairs.entries()) {
     if (row?.status === "closed") closedStrategies.add(strategy);
   }
   const positions = await latestMarkPerPositionId(join(dataDir, "protocol-position-marks.jsonl"));
-  let total = 0;
-  let positionCount = 0;
+  let totalAll = 0;
+  let totalClosedOnly = 0;
+  let positionCountAll = 0;
+  let positionCountClosed = 0;
+  let staleFailedCount = 0;
+  const perPosition = [];
   for (const mark of positions.values()) {
-    if (mark.event !== "mark") continue;
+    if (!MARK_EVENT_NAMES.has(mark.event)) {
+      if (mark.event === "position_mark_failed") staleFailedCount += 1;
+      continue;
+    }
     const valueUsd = finite(mark.valueUsd);
-    if (valueUsd == null) continue;
-    if (mark.strategyId && closedStrategies.size > 0 && !closedStrategies.has(mark.strategyId)) continue;
-    total += valueUsd;
-    positionCount += 1;
+    if (valueUsd == null || valueUsd <= 0) continue;
+    totalAll += valueUsd;
+    positionCountAll += 1;
+    if (!mark.strategyId || closedStrategies.has(mark.strategyId)) {
+      totalClosedOnly += valueUsd;
+      positionCountClosed += 1;
+    }
+    perPosition.push({
+      positionId: mark.positionId,
+      strategyId: mark.strategyId,
+      protocolId: mark.protocolId,
+      chain: mark.chain,
+      valueUsd,
+      observedAt: mark.observedAt,
+      auditPairStatus: closedStrategies.has(mark.strategyId) ? "closed" : "open_or_unknown",
+    });
   }
   return {
-    source: "protocol-position-marks.jsonl (closed audit-pair strategies only)",
-    valueUsd: positionCount > 0 ? total : null,
-    positionCount,
-    note: "already included in evmAutopilotUsd via injectProtocolPositionsIntoLatestSnapshot; reported separately for audit",
+    source: "protocol-position-marks.jsonl (latest position_marked per positionId)",
+    valueUsd: positionCountAll > 0 ? totalAll : null,
+    positionCount: positionCountAll,
+    closedAuditPairSubsetUsd: positionCountClosed > 0 ? totalClosedOnly : null,
+    closedAuditPairSubsetCount: positionCountClosed,
+    staleFailedAdapterCount: staleFailedCount,
+    perPosition,
+    note: "ALL open marked positions are added to unified NAV; the closed-audit-pair subset is reported for double-count audit only",
   };
 }
 
@@ -298,12 +323,12 @@ export async function loadUnifiedOperatingCapital({
   liveBtc = true,
   allowStaleBtcFallback = false,
 } = {}) {
-  const [evmWallet, evmAutopilot, bobL2Wbtc, btcL1, closedMarks] = await Promise.all([
+  const [evmWallet, evmAutopilot, bobL2Wbtc, btcL1, protocolMarks] = await Promise.all([
     loadEvmWalletUsd(dataDir),
     loadEvmAutopilotUsd(dataDir),
     loadBobL2WbtcUsd(dataDir),
     loadBtcL1Usd(dataDir, { liveFetch: liveBtc, allowStaleFallback: allowStaleBtcFallback }),
-    loadClosedProtocolMarksUsd(dataDir),
+    loadProtocolPositionMarksUsd(dataDir),
   ]);
 
   const evmDiscrepancyPct = discrepancyPct(evmWallet.valueUsd, evmAutopilot.valueUsd);
@@ -319,8 +344,9 @@ export async function loadUnifiedOperatingCapital({
   if (evmAutopilot.valueUsd == null) missingSources.push("evmAutopilotUsd");
   if (btcL1.valueUsd == null) missingSources.push("btcL1Usd");
 
+  const protocolMarksUsd = protocolMarks?.valueUsd ?? null;
   const unifiedNavUsd = evmAggregate != null && btcL1.valueUsd != null
-    ? evmAggregate + btcL1.valueUsd
+    ? evmAggregate + btcL1.valueUsd + (protocolMarksUsd ?? 0)
     : null;
 
   const flags = [];
@@ -342,12 +368,13 @@ export async function loadUnifiedOperatingCapital({
       flags.includes("evm_source_disagreement") ||
       flags.includes("source_missing") ||
       flags.includes("btc_l1_stale_fallback"),
+    protocolMarksUsd,
     breakdown: {
       evmWalletUsd: evmWallet,
       evmAutopilotUsd: evmAutopilot,
       bobL2WbtcUsd: bobL2Wbtc,
       btcL1Usd: btcL1,
-      closedProtocolMarksUsd: closedMarks,
+      protocolPositionMarksUsd: protocolMarks,
     },
   };
 }

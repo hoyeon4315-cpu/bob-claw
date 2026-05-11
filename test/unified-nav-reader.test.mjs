@@ -105,7 +105,7 @@ test("unified NAV halts when a required source is missing", async () => {
   assert.ok(unified.missingSources.includes("btcL1Usd"));
 });
 
-test("unified NAV restricts closed-protocol-marks to closed audit-pair strategies", async () => {
+test("protocol-position-marks adds all open marks to NAV; closed-pair subset reported for audit", async () => {
   const dir = await makeFixture({
     treasuryRow: { summary: { estimatedWalletUsd: 500 }, tokens: [] },
     autopilotSnapshot: { summary: { capitalManager: { estimatedAssetValueUsd: 500 } } },
@@ -115,8 +115,9 @@ test("unified NAV restricts closed-protocol-marks to closed audit-pair strategie
       { strategyId: "open-strat", status: "open" },
     ],
     positionMarks: [
-      { positionId: "p1", event: "mark", strategyId: "closed-strat", valueUsd: 25 },
-      { positionId: "p2", event: "mark", strategyId: "open-strat", valueUsd: 75 },
+      { positionId: "p1", event: "position_marked", strategyId: "closed-strat", valueUsd: 25 },
+      { positionId: "p2", event: "position_marked", strategyId: "open-strat", valueUsd: 75 },
+      { positionId: "p3", event: "position_mark_failed", strategyId: "open-strat", valueUsd: null },
     ],
   });
   const unified = await loadUnifiedOperatingCapital({
@@ -124,8 +125,34 @@ test("unified NAV restricts closed-protocol-marks to closed audit-pair strategie
     liveBtc: false,
     allowStaleBtcFallback: true,
   });
-  assert.equal(unified.breakdown.closedProtocolMarksUsd.positionCount, 1);
-  assert.equal(unified.breakdown.closedProtocolMarksUsd.valueUsd, 25);
+  const slice = unified.breakdown.protocolPositionMarksUsd;
+  assert.equal(slice.positionCount, 2);
+  assert.equal(slice.valueUsd, 100);
+  assert.equal(slice.closedAuditPairSubsetUsd, 25);
+  assert.equal(slice.closedAuditPairSubsetCount, 1);
+  assert.equal(slice.staleFailedAdapterCount, 1);
+  assert.equal(unified.protocolMarksUsd, 100);
+});
+
+test("protocol marks add into unifiedNavUsd alongside EVM and BTC", async () => {
+  const dir = await makeFixture({
+    treasuryRow: { summary: { estimatedWalletUsd: 400 }, tokens: [] },
+    autopilotSnapshot: { summary: { capitalManager: { estimatedAssetValueUsd: 400 } } },
+    btcRow: { totalUsd: 200 },
+    positionMarks: [
+      { positionId: "p1", event: "position_marked", strategyId: "s1", valueUsd: 65.24 },
+      { positionId: "p2", event: "position_marked", strategyId: "s1", valueUsd: 45.78 },
+    ],
+  });
+  const unified = await loadUnifiedOperatingCapital({
+    dataDir: dir,
+    liveBtc: false,
+    allowStaleBtcFallback: true,
+  });
+  assert.equal(unified.evmAggregateUsd, 400);
+  assert.equal(unified.btcL1Usd, 200);
+  assert.equal(unified.protocolMarksUsd, 111.02);
+  assert.equal(Math.round(unified.unifiedNavUsd * 100) / 100, 711.02);
 });
 
 test("stale jsonl fallback is refused by default and forces halt", async () => {
