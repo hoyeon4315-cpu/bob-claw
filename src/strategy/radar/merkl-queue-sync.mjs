@@ -4,6 +4,7 @@ import {
   resolveTinyCanaryExpectedHoldDays,
 } from "../../config/sizing.mjs";
 import { splitCandidateBlockers } from "../../executor/policy/blocker-codes.mjs";
+import { matchOperatorApproval } from "../../config/operator-approval-registry.mjs";
 import { appendRadarJsonl, readRadarJsonl } from "./jsonl.mjs";
 
 const OBSERVATION_EXECUTION_PATH = "gateway_destination";
@@ -131,6 +132,18 @@ function rewardTokenType(item = {}) {
 export function diagnoseMerklQueueReadiness(item = {}) {
   const queueStatus = item.queueStatus || null;
   if (queueStatus === "ready_for_tiny_live_canary") return null;
+
+  // If operator has explicitly approved this scope, downgrade review requirement
+  if (matchOperatorApproval({
+    scopeType: "merkl_protocol",
+    scopeId: `${item.protocolId || item.protocolName || "unknown"}:${item.chain || "unknown"}`,
+    chain: item.chain || null,
+    protocolId: item.protocolId || item.protocolName || null,
+    family: item.family || null,
+  })) {
+    return null;
+  }
+
   const autoEntryBlockers = Array.isArray(item.autoEntry?.blockers) ? item.autoEntry.blockers : [];
   const bindingPlan = item.protocolBindingPlan || {};
   const readiness = item.executionReadiness || {};

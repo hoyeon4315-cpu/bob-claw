@@ -133,7 +133,6 @@ const MISSING_CAPABILITY_REFILL_BLOCKERS = new Set([
 const OPERATOR_ACTION_REFILL_BLOCKERS = new Set([
   "dev_lock_active",
   "signer_execution_failed",
-  "manual_operator_review_required",
   "funding_source_missing",
   "funding_source_manual_only",
   "funding_source_manual_review",

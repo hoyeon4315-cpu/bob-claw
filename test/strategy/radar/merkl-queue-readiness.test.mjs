@@ -44,8 +44,9 @@ test("Merkl queue not-ready persists as manual review with diagnosis after refre
     { generatedAt: "2026-05-09T00:00:00.000Z", queue: [] },
     queueItem(),
   );
-  assert.equal(candidate.gateStatus, "blocked");
-  assert.ok(candidate.blockers.includes("manual_operator_review_required"));
+  assert.equal(candidate.gateStatus, "review_only");
+  assert.equal(candidate.blockers.includes("manual_operator_review_required"), false);
+  assert.ok(candidate.filters.includes("manual_operator_review_required"));
   assert.equal(candidate.blockers.includes("merkl_queue_not_ready_for_tiny_live_canary"), false);
   assert.equal(
     candidate.metadata.queueReadinessDiagnosis.originalBlocker,

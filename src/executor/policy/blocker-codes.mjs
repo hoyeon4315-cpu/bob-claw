@@ -75,7 +75,7 @@ const REQUIRED = [
   entry("code_required", "entry_asset_not_whitelisted", "Entry asset not whitelisted", { severity: "warning", expectedRetryShape: "code_queue" }),
   entry("code_required", "matched_token_missing", "Matched token missing", { severity: "warning", expectedRetryShape: "code_queue" }),
   entry("manual_review", "unknown_blocker_code", "Unknown blocker code", { severity: "warning", expectedRetryShape: "manual" }),
-  entry("manual_review", "manual_operator_review_required", "Manual operator review required", { severity: "warning", expectedRetryShape: "manual" }),
+  entry("filter", "manual_operator_review_required", "Manual operator review required", { severity: "warning", expectedRetryShape: "manual" }),
   entry("payback_lifecycle", "payback_settlement_pending", "Payback settlement pending", { severity: "warning", expectedRetryShape: "periodic" }),
   entry("payback_lifecycle", "profit_attribution_gap", "Profit attribution gap", { severity: "warning", expectedRetryShape: "periodic" }),
 ];
