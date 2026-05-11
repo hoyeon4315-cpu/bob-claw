@@ -53,6 +53,46 @@ const PROTOCOL_CONFIGS = [
       assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     },
   },
+  // Moonwell Base — operator memory 2026-04-27 records ~$128 cbBTC supply position.
+  // mTokens are public canonical contracts; reader returns empty rows when balance is zero.
+  {
+    reader: "moonwell",
+    chain: "base",
+    params: {
+      marketAddresses: {
+        mWETH: "0x628ff693426583D9a7FB391E54366292F509D457",
+        mUSDC: "0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22",
+        mUSDbC: "0x703843C3379b52F9FF486c9f5892218d2a065cC8",
+        mcbBTC: "0xF877ACaFA28c19b96727966690b2f44d35aD5976",
+      },
+    },
+  },
+  // Aave V3 Ethereum mainnet — operator memory records ~$25 RLUSD position on Horizon market.
+  // Horizon is a separate Aave V3 deployment; main-pool aTokens cover USDC/WETH/WBTC paths.
+  {
+    reader: "aaveV3",
+    chain: "ethereum",
+    params: {
+      aTokens: {
+        aEthUSDC: "0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c",
+        aEthWETH: "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8",
+        aEthWBTC: "0x5Ee5bf7ae06D1Be5997A1A72006FE6C607eC6DE8",
+        aEthUSDT: "0x23878914EFE38d27C4D67Ab83ed1b93A74D4086a",
+      },
+    },
+  },
+  // Aave V3 Base — common bluechip aTokens for coverage.
+  {
+    reader: "aaveV3",
+    chain: "base",
+    params: {
+      aTokens: {
+        aBasUSDC: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB",
+        aBasWETH: "0xD4a0e0b9149BCee3C920d2E00b5dE09138fd8bb7",
+        aBascbBTC: "0xE91D153E0b41518A2Ce8Dd3D7944Fa863463A97d",
+      },
+    },
+  },
 ];
 
 async function getReconciledPositions() {

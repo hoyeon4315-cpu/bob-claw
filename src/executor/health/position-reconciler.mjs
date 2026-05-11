@@ -154,6 +154,50 @@ const PROTOCOL_READERS = {
 
   // Aerodrome Slipstream CL (Base)
   aerodrome: readAerodromePositions,
+
+  // Aave V3 supply positions via aToken.balanceOf — returns interest-accrued underlying balance.
+  // aTokens is a map { symbol: aTokenAddress }; iteration is sequential to avoid RPC rate-limits.
+  async aaveV3({ chain, signerAddress, aTokens = {} }) {
+    if (!aTokens || Object.keys(aTokens).length === 0) return [];
+    const results = [];
+    try {
+      const { ethers } = await import("ethers");
+      const cfg = EVM_CHAIN_CONFIGS[chain];
+      if (!cfg) return null;
+      const provider = new ethers.JsonRpcProvider(cfg.rpcUrl);
+      const aTokenAbi = [
+        "function balanceOf(address) view returns (uint256)",
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)",
+        "function UNDERLYING_ASSET_ADDRESS() view returns (address)",
+      ];
+      for (const [symbol, address] of Object.entries(aTokens)) {
+        try {
+          const aToken = new ethers.Contract(address, aTokenAbi, provider);
+          const bal = await aToken.balanceOf(signerAddress);
+          if (bal === 0n) continue;
+          const [dec, underlying] = await Promise.all([
+            aToken.decimals().catch(() => 18),
+            aToken.UNDERLYING_ASSET_ADDRESS().catch(() => null),
+          ]);
+          results.push({
+            protocol: "aave-v3",
+            chain,
+            symbol,
+            aTokenAddress: address,
+            assetAddress: underlying,
+            balance: bal.toString(),
+            decimals: Number(dec),
+          });
+        } catch {
+          // skip this market
+        }
+      }
+    } catch {
+      return null;
+    }
+    return results;
+  },
 };
 
 export async function reconcilePositions({
