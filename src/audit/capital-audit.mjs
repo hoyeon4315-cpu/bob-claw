@@ -98,7 +98,14 @@ function flattenTreasuryBalances(snapshot = null) {
     kind: "token",
     startOrEnd: entry.actualDecimal ?? null,
   }));
-  return [...native, ...tokens];
+  const positions = (snapshot.positions || []).map((entry) => ({
+    key: `position:${entry.chain}:${entry.positionId}`,
+    chain: entry.chain,
+    asset: entry.assetSymbol || entry.protocolId || "protocol_position",
+    kind: "protocol_position",
+    startOrEnd: entry.valueUsd ?? null,
+  }));
+  return [...native, ...tokens, ...positions];
 }
 
 export function buildCapitalAuditScope({
@@ -696,6 +703,41 @@ function buildBroadcastBreakdown(transactions = []) {
   return rows;
 }
 
+function injectProtocolPositionsIntoLatestSnapshot(treasurySnapshots = [], protocolPositionMarks = []) {
+  if (!treasurySnapshots.length || !protocolPositionMarks.length) return treasurySnapshots;
+  const latestByPosition = new Map();
+  for (const mark of protocolPositionMarks) {
+    if (mark.event !== "position_marked") continue;
+    const existing = latestByPosition.get(mark.positionId);
+    if (!existing || new Date(mark.observedAt) > new Date(existing.observedAt)) {
+      latestByPosition.set(mark.positionId, mark);
+    }
+  }
+  const positions = [...latestByPosition.values()].map((mark) => ({
+    chain: mark.chain,
+    positionId: mark.positionId,
+    protocolId: mark.protocolId,
+    assetSymbol: mark.assetSymbol || mark.protocolId || "protocol_position",
+    assetAmount: mark.assetAmount ?? null,
+    valueUsd: mark.valueUsd ?? null,
+    shareBalance: mark.shareBalance ?? null,
+    assetAddress: mark.assetAddress ?? null,
+    observedAt: mark.observedAt,
+  }));
+  const last = treasurySnapshots[treasurySnapshots.length - 1];
+  const positionsValueUsd = positions
+    .map((p) => p.valueUsd)
+    .filter(Number.isFinite)
+    .reduce((sum, v) => sum + v, 0);
+  const enrichedSummary = last.summary
+    ? {
+        ...last.summary,
+        estimatedWalletUsd: (last.summary.estimatedWalletUsd ?? 0) + positionsValueUsd,
+      }
+    : { estimatedWalletUsd: positionsValueUsd };
+  return [...treasurySnapshots.slice(0, -1), { ...last, positions, summary: enrichedSummary }];
+}
+
 export function buildCapitalAuditReport({
   generatedAt = new Date().toISOString(),
   signerAuditRecords = [],
@@ -714,6 +756,7 @@ export function buildCapitalAuditReport({
     purpose: "operating_capital_ingress",
     includeObservationOnly: false,
   }),
+  protocolPositionMarks = [],
 } = {}) {
   const broadcasts = latestBroadcastSignerRecords(signerAuditRecords);
   const scope = buildCapitalAuditScope({
@@ -775,7 +818,8 @@ export function buildCapitalAuditReport({
     };
   });
 
-  const inventory = buildInventorySummary(treasurySnapshots);
+  const enrichedTreasurySnapshots = injectProtocolPositionsIntoLatestSnapshot(treasurySnapshots, protocolPositionMarks);
+  const inventory = buildInventorySummary(enrichedTreasurySnapshots);
   const offrampSummaries = buildOfframpExecutionSummaries({
     executions: gatewayBtcOfframpExecutions,
     receiptsByTxHash,
@@ -985,6 +1029,7 @@ export async function collectCapitalAuditInputs({
     marketPriceSnapshots,
     gasSnapshots,
     bitcoinFeeSnapshots,
+    protocolPositionMarks,
   ] = await Promise.all([
     readSignerAuditLog({ rootDir }),
     readJsonl(dataDir, "treasury-inventory"),
@@ -995,6 +1040,7 @@ export async function collectCapitalAuditInputs({
     readJsonl(dataDir, "market-price-snapshots"),
     readJsonl(dataDir, "gas-snapshots"),
     readJsonl(dataDir, "bitcoin-fee-snapshots"),
+    readJsonl(dataDir, "protocol-position-marks"),
   ]);
 
   const scope = buildCapitalAuditScope({
@@ -1097,5 +1143,6 @@ export async function collectCapitalAuditInputs({
     prices,
     approvedOperatorBtcAddresses: listApprovedOperatorBtcAddresses({ purpose: "deposit_watch" }),
     issues,
+    protocolPositionMarks,
   };
 }

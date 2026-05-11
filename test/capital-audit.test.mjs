@@ -599,6 +599,104 @@ test("capital audit report includes combined EVM and native BTC totals", () => {
   assert.ok(Math.abs(report.summary.combinedDeltaUsd - (-7.6)) < 1e-9);
 });
 
+test("capital audit report injects protocol position marks into treasury inventory", () => {
+  const report = buildCapitalAuditReport({
+    signerAuditRecords: [],
+    treasurySnapshots: [
+      {
+        observedAt: "2026-05-10T00:00:00.000Z",
+        summary: { estimatedWalletUsd: 400 },
+      },
+      {
+        observedAt: "2026-05-11T00:00:00.000Z",
+        summary: { estimatedWalletUsd: 468 },
+      },
+    ],
+    protocolPositionMarks: [
+      {
+        event: "position_marked",
+        observedAt: "2026-05-11T01:00:00.000Z",
+        positionId: "protocol:base:yo:1:erc4626",
+        chain: "base",
+        protocolId: "yo",
+        assetSymbol: "USDC",
+        valueUsd: 65.24,
+      },
+      {
+        event: "position_marked",
+        observedAt: "2026-05-10T12:00:00.000Z",
+        positionId: "protocol:ethereum:morpho:2:erc4626",
+        chain: "ethereum",
+        protocolId: "morpho",
+        assetSymbol: "USDC",
+        valueUsd: 75.0,
+      },
+    ],
+    gatewayBtcOfframpExecutions: [],
+    gatewayBtcOnrampExecutions: [],
+    gatewayBtcConsolidationExecutions: [],
+    nativeDexExperimentExecutions: [],
+    transactionsByTxHash: {},
+    receiptsByTxHash: {},
+    bitcoinHistoriesByAddress: {},
+    prices: { btc: 80000, tokenByKey: { btc: 80000 } },
+  });
+
+  const protocolDeltas = report.inventory.deltas.filter((d) => d.kind === "protocol_position");
+  assert.equal(protocolDeltas.length, 2);
+  const yoDelta = protocolDeltas.find((d) => d.asset === "USDC" && d.chain === "base");
+  assert.ok(Math.abs(yoDelta.delta - 65.24) < 1e-9);
+  assert.ok(Math.abs(report.summary.treasuryEndUsd - (468 + 65.24 + 75)) < 1e-6);
+  assert.ok(Math.abs(report.summary.treasuryDeltaUsd - (468 + 65.24 + 75 - 400)) < 1e-6);
+  assert.ok(Math.abs(report.summary.combinedDeltaUsd - (468 + 65.24 + 75 - 400)) < 1e-6);
+});
+
+test("capital audit prefers latest position mark per positionId", () => {
+  const report = buildCapitalAuditReport({
+    signerAuditRecords: [],
+    treasurySnapshots: [
+      {
+        observedAt: "2026-05-10T00:00:00.000Z",
+        summary: { estimatedWalletUsd: 100 },
+      },
+      {
+        observedAt: "2026-05-11T00:00:00.000Z",
+        summary: { estimatedWalletUsd: 100 },
+      },
+    ],
+    protocolPositionMarks: [
+      {
+        event: "position_marked",
+        observedAt: "2026-05-10T00:00:00.000Z",
+        positionId: "p1",
+        chain: "base",
+        protocolId: "yo",
+        valueUsd: 10,
+      },
+      {
+        event: "position_marked",
+        observedAt: "2026-05-11T02:00:00.000Z",
+        positionId: "p1",
+        chain: "base",
+        protocolId: "yo",
+        valueUsd: 20,
+      },
+    ],
+    gatewayBtcOfframpExecutions: [],
+    gatewayBtcOnrampExecutions: [],
+    gatewayBtcConsolidationExecutions: [],
+    nativeDexExperimentExecutions: [],
+    transactionsByTxHash: {},
+    receiptsByTxHash: {},
+    bitcoinHistoriesByAddress: {},
+    prices: { btc: 80000, tokenByKey: { btc: 80000 } },
+  });
+
+  const protocolDeltas = report.inventory.deltas.filter((d) => d.kind === "protocol_position");
+  assert.equal(protocolDeltas.length, 1);
+  assert.ok(Math.abs(protocolDeltas[0].delta - 20) < 1e-9);
+});
+
 test("capital audit scope includes onramp recipient in EVM addresses", () => {
   const scope = buildCapitalAuditScope({
     signerAuditRecords: [],
