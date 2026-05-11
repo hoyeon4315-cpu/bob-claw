@@ -58,8 +58,11 @@ test("pendle-yt-canary caps are declared and not transport-clamped", () => {
   assert.equal(caps.caps.perTxUsd, 10);
   assert.equal(caps.caps.perDayUsd, 90);
   assert.equal(caps.caps.perChainUsd.base, 90);
+  assert.equal(caps.caps.perChainUsd.ethereum, 30);
+  assert.equal(caps.caps.perChainUsd.optimism, 30);
   assert.equal(caps.caps.maxDailyLossUsd, 25);
   assert.equal(caps.caps.tinyLivePerTxUsd, 10);
-  assert.equal(caps.autoExecute, false);
+  // Operator override (2026-05-11, aggressive direction): live tiny canary enabled.
+  assert.equal(caps.autoExecute, true);
   assert.equal(caps.effectiveCapSource, undefined);
 });

@@ -1028,18 +1028,31 @@ export const STRATEGY_CAPS = Object.freeze({
   "pendle-yt-canary": Object.freeze({
     strategyId: "pendle-yt-canary",
     label: "Pendle YT canary",
-    autoExecute: false,
+    // Operator override (2026-05-11, aggressive direction): enabled for live
+    // tiny canary execution. The deterministic EV gate (pendle-yt-ev.mjs)
+    // still rejects sub-positive intents, caps below clamp every broadcast,
+    // and the kill-switch / drawdown / consecutive-failure guards apply
+    // identically. autoExecute does not bypass any policy check — it only
+    // opens the door for committed-cap-bounded broadcasts.
+    autoExecute: true,
     intentTtlMs: 60_000,
     exposure: Object.freeze({
       protocols: Object.freeze(["pendle"]),
-      assetFamily: "btc_wrappers",
-      btcDenominated: true,
+      assetFamilies: Object.freeze([
+        "btc_wrappers",
+        "eth_family",
+        "stable_carry",
+        "non_core_yield",
+      ]),
+      btcDenominated: false,
     }),
     caps: Object.freeze({
       perTxUsd: 10,
       perDayUsd: 90,
       perChainUsd: Object.freeze({
         base: 90,
+        ethereum: 30,
+        optimism: 30,
       }),
       maxDailyLossUsd: 25,
       maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
@@ -1047,6 +1060,8 @@ export const STRATEGY_CAPS = Object.freeze({
     }),
     gasFloat: Object.freeze({
       base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+      ethereum: Object.freeze({ minUsd: 5, targetUsd: 10 }),
+      optimism: Object.freeze({ minUsd: 3, targetUsd: 6 }),
     }),
   }),
 });
