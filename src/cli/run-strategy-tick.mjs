@@ -39,6 +39,7 @@ import { buildChainScoreLedger } from "../strategy/chain-score-ledger.mjs";
 import { normalizeExecutionIntent } from "../executor/signer/signer-interface.mjs";
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
 import { evaluateBeefyFoldingAdapter, buildDefaultBeefyFoldingConfig } from "../strategy/beefy-folding-adapter.mjs";
+import { evaluateDefiLlamaYieldAdapter, buildDefaultDefiLlamaYieldConfig } from "../strategy/defillama-yield-adapter.mjs";
 import { evaluatePendlePtLbtcAdapter, buildDefaultPendlePtLbtcConfig } from "../strategy/pendle-pt-lbtc-adapter.mjs";
 import { evaluateAerodromeClAdapter, buildDefaultAerodromeClConfig } from "../strategy/aerodrome-cl-adapter.mjs";
 import { evaluatePendlePtSolvBtcAdapter, buildDefaultPendlePtSolvBtcConfig } from "../strategy/pendle-pt-solvbtc-bbn-adapter.mjs";
@@ -241,6 +242,12 @@ const ADAPTERS = Object.freeze({
     buildConfig: buildDefaultBeefyFoldingConfig,
     snapshotPrefixes: ["beefy-", "gateway-", "moonwell-"],
     protocol: "beefy",
+  },
+  "defillama-yield-portfolio": {
+    evaluate: aggressiveEvaluate(evaluateDefiLlamaYieldAdapter, 25),
+    buildConfig: buildDefaultDefiLlamaYieldConfig,
+    snapshotPrefixes: ["defillama-", "gateway-"],
+    protocol: "defillama",
   },
   "pendle-pt-lbtc-base": {
     evaluate: aggressiveEvaluate(evaluatePendlePtLbtcAdapter, 25),

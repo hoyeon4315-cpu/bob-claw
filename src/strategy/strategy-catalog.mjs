@@ -371,6 +371,21 @@ export function buildStrategyCatalog({
       ],
     },
     {
+      id: "defillama-yield-portfolio",
+      label: "DefiLlama yield portfolio rotation",
+      status: "analysis_only",
+      reason: "adapter_wired_shadow_only",
+      evidence: {
+        adapterStage: "shadow_ready",
+        autoExecute: false,
+        note: "Evaluates top DefiLlama yield pools across Gateway destinations. Admit OFF until receipt-backed validation.",
+      },
+      commands: [
+        "npm run snapshot:defillama -- --write",
+        "npm run report:strategy-catalog -- --write",
+      ],
+    },
+    {
       id: "triangular_flash_btc",
       label: "BTC triangular / flash arbitrage",
       status: btcTriangleStatus.status,

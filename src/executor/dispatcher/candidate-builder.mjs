@@ -37,6 +37,7 @@ const STRATEGY_PROTOCOL = Object.freeze({
   "berachain-bend-bex-bgt": "berachain-bend-bex",
   "gmx-v2-perp-basis-avax": "gmx-v2",
   "beefy-folding-vault": "beefy",
+  "defillama-yield-portfolio": "defillama",
   "wrapped-btc-loop-base-moonwell": "moonwell",
   "recursive_wrapped_btc_lending_loop": "moonwell",
 });
