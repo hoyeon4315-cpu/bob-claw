@@ -1,5 +1,5 @@
 import { Interface } from "ethers";
-import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN, tokenAsset } from "../../assets/tokens.mjs";
+import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN, isZeroToken, tokenAsset } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
@@ -218,7 +218,7 @@ export async function buildTokenDexExperimentPlan({
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
   const normalizedInputToken = normalizeErc20Token(chain, inputToken, "inputToken");
   const requestedOutputToken = String(outputToken || "").trim().toLowerCase();
-  const unwrapToNative = requestedOutputToken === "native";
+  const unwrapToNative = requestedOutputToken === "native" || isZeroToken(outputToken);
   const normalizedOutputToken = unwrapToNative
     ? WRAPPED_NATIVE_TOKENS[chain]
     : normalizeErc20Token(chain, outputToken, "outputToken");

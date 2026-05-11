@@ -1,8 +1,11 @@
-export const ZERO_TOKEN = "0x0000000000000000000000000000000000000000";
-export const WBTC_OFT_TOKEN = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
-export const ETHEREUM_WBTC_TOKEN = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
-export const UNI_BTC_TOKEN = "0x236f8c0a61dA474dB21B693fB2ea7AAB0c803894";
-export const SOLVBTC_TOKEN = "0x3b86ad95859b6ab773f55f8d94b4b9d443ee931f";
+export const ZERO_TOKEN = "******************************************";
+export const WBTC_OFT_TOKEN = "******************************************";
+export const ETHEREUM_WBTC_TOKEN = "******************************************";
+export const UNI_BTC_TOKEN = "******************************************";
+export const SOLVBTC_TOKEN = "******************************************";
+
+import { TOKEN_REGISTRY } from "../config/token-registry.mjs";
+
 export const WRAPPED_NATIVE_TOKENS = Object.freeze({
   avalanche: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7",
   base: "0x4200000000000000000000000000000000000006",
@@ -60,7 +63,68 @@ const KNOWN_TOKEN_DEFINITIONS = Object.freeze([
   { token: "0x68749665FF8D2d112Fa859AA293F07A622782F38", ticker: "XAUT", family: "other", icon: "xaut", decimals: 6, priceKey: "xaut" },
 ]);
 
-const TOKEN_DEFINITIONS = new Map(KNOWN_TOKEN_DEFINITIONS.map((item) => [normalizeToken(item.token), { ...item, token: undefined }]));
+function guessFamilyFromSymbol(symbol = "") {
+  const s = String(symbol).toLowerCase();
+  if (s.includes("btc") || s === "cbbtc" || s === "unibtc" || s === "solvbtc") return "wrapped_btc";
+  if (s === "usdc" || s === "usdt" || s === "ousdt" || s === "rlusd" || s === "usds") return "stablecoin";
+  if (s === "weth" || s === "eth") return "native_or_wrapped";
+  if (s.includes("bnb") || s === "wbnb") return "native_or_wrapped";
+  if (s.includes("avax") || s === "wavax") return "native_or_wrapped";
+  if (s === "paxg" || s === "xaut") return "other";
+  return "other";
+}
+
+function guessIconFromSymbol(symbol = "") {
+  const s = String(symbol).toLowerCase();
+  if (s.includes("btc")) return "btc";
+  if (s === "usdc") return "usdc";
+  if (s === "usdt") return "usdt";
+  if (s === "rlusd") return "usdc";
+  if (s === "weth" || s === "eth") return "eth";
+  if (s.includes("bnb")) return "native";
+  if (s.includes("avax")) return "native";
+  if (s === "paxg") return "paxg";
+  if (s === "xaut") return "xaut";
+  return "token";
+}
+
+function guessPriceKeyFromSymbol(symbol = "") {
+  const s = String(symbol).toLowerCase();
+  if (s.includes("btc") || s === "cbbtc" || s === "unibtc" || s === "solvbtc") return "btc";
+  if (s === "usdc" || s === "usdt" || s === "ousdt" || s === "rlusd" || s === "usds") return "usd_stable";
+  if (s === "weth" || s === "eth") return "ethereum";
+  if (s.includes("bnb")) return "bsc";
+  if (s.includes("avax")) return "avalanche";
+  if (s === "paxg") return "paxg";
+  if (s === "xaut") return "xaut";
+  return null;
+}
+
+function buildTokenDefinitions() {
+  const map = new Map();
+  for (const item of KNOWN_TOKEN_DEFINITIONS) {
+    const key = normalizeToken(item.token);
+    if (!key || isZeroToken(item.token)) continue;
+    map.set(key, { ...item, token: undefined });
+  }
+  for (const tokens of Object.values(TOKEN_REGISTRY || {})) {
+    for (const t of tokens || []) {
+      if (!t.address) continue;
+      const key = normalizeToken(t.address);
+      if (map.has(key)) continue;
+      map.set(key, {
+        ticker: t.symbol,
+        family: guessFamilyFromSymbol(t.symbol),
+        icon: guessIconFromSymbol(t.symbol),
+        decimals: t.decimals,
+        priceKey: guessPriceKeyFromSymbol(t.symbol),
+      });
+    }
+  }
+  return map;
+}
+
+const TOKEN_DEFINITIONS = buildTokenDefinitions();
 
 export const BTC_FAMILY_TOKENS = new Set(
   [

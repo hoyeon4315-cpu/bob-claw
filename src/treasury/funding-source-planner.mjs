@@ -1006,16 +1006,16 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
     candidates.push(reserveTransferCandidate(action, true));
   }
 
-  if (policy.refillPolicy.enableDexRefill && !sourcePinned) {
+  if (policy.refillPolicy.enableDexRefill) {
     if (action.type === "refill_native") {
-      candidates.push(nativeSwapCandidate(action, plan, policy.walletMode !== "dual_wallet"));
+      candidates.push(nativeSwapCandidate(action, plan, policy.walletMode !== "dual_wallet" && !sourcePinned));
     } else if (action.type === "refill_token") {
-      candidates.push(tokenToTokenSwapCandidate(action, plan, policy, policy.walletMode !== "dual_wallet"));
-      candidates.push(tokenSwapCandidate(action, plan, policy.walletMode !== "dual_wallet"));
+      candidates.push(tokenToTokenSwapCandidate(action, plan, policy, policy.walletMode !== "dual_wallet" && !sourcePinned));
+      candidates.push(tokenSwapCandidate(action, plan, policy.walletMode !== "dual_wallet" && !sourcePinned));
     }
   }
 
-  if (policy.refillPolicy.enableCrossChainRefill) {
+  if (policy.refillPolicy.enableCrossChainRefill && !sourcePinned) {
     candidates.push(crossChainCandidate(action, plan, policy, routeContext, gatewayAvailability));
     candidates.push(...alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContext }));
   }
