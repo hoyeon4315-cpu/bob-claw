@@ -28,6 +28,7 @@ export const TOKEN_REGISTRY = Object.freeze({
     { symbol: "WETH",  address: "0x4200000000000000000000000000000000000006", decimals: 18 },
     { symbol: "mwUSDC", address: "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca", decimals: 18 },
     { symbol: "steakUSDC", address: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183", decimals: 18 },
+    { symbol: "apxUSD", address: "0x6aE9CF67d57E49c55F900933f5dcFC4B63461d6E", decimals: 18 },
   ],
   bsc: [
     { symbol: "USDC", address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", decimals: 18 },
