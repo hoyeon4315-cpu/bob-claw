@@ -184,10 +184,27 @@ async function loadBtcL1UsdLive() {
   }
 }
 
-async function loadBtcL1Usd(dataDir, { liveFetch = true } = {}) {
+async function loadBtcL1Usd(dataDir, { liveFetch = true, allowStaleFallback = false } = {}) {
   if (liveFetch) {
     const live = await loadBtcL1UsdLive();
     if (live.valueUsd != null) return live;
+    if (!allowStaleFallback) {
+      return {
+        ...live,
+        source: live.source || "esplora_live",
+        valueUsd: null,
+        fallback: false,
+        note: "esplora live fetch failed; stale jsonl fallback refused because recorded rows reflect money_loop projection, not chain truth",
+      };
+    }
+  } else if (!allowStaleFallback) {
+    return {
+      source: "esplora_live",
+      valueUsd: null,
+      observedAt: null,
+      fallback: false,
+      note: "liveBtc=false and allowStaleBtcFallback=false — refusing to read jsonl projection",
+    };
   }
   let contents = "";
   try {
@@ -226,7 +243,13 @@ async function loadBtcL1Usd(dataDir, { liveFetch = true } = {}) {
   }
   const row = records.at(-1);
   const value = finite(row?.totalUsd);
-  return { source: "btc-nav-history.jsonl", valueUsd: value, observedAt: row?.observedAt || null, fallback: true };
+  return {
+    source: "btc-nav-history.jsonl",
+    valueUsd: value,
+    observedAt: row?.observedAt || null,
+    fallback: true,
+    warning: "btc-nav-history.jsonl stores money_loop accumulator projection, not on-chain balance — only used because allowStaleFallback=true",
+  };
 }
 
 async function loadClosedProtocolMarksUsd(dataDir) {
@@ -273,12 +296,13 @@ export async function loadUnifiedOperatingCapital({
   dataDir = config.dataDir,
   discrepancyThresholdPct = DEFAULT_DISCREPANCY_THRESHOLD_PCT,
   liveBtc = true,
+  allowStaleBtcFallback = false,
 } = {}) {
   const [evmWallet, evmAutopilot, bobL2Wbtc, btcL1, closedMarks] = await Promise.all([
     loadEvmWalletUsd(dataDir),
     loadEvmAutopilotUsd(dataDir),
     loadBobL2WbtcUsd(dataDir),
-    loadBtcL1Usd(dataDir, { liveFetch: liveBtc }),
+    loadBtcL1Usd(dataDir, { liveFetch: liveBtc, allowStaleFallback: allowStaleBtcFallback }),
     loadClosedProtocolMarksUsd(dataDir),
   ]);
 
@@ -302,6 +326,7 @@ export async function loadUnifiedOperatingCapital({
   const flags = [];
   if (evmDiscrepancyFlag) flags.push(evmDiscrepancyFlag);
   if (missingSources.length > 0) flags.push("source_missing");
+  if (btcL1.fallback === true) flags.push("btc_l1_stale_fallback");
 
   return {
     schemaVersion: 1,
@@ -313,7 +338,10 @@ export async function loadUnifiedOperatingCapital({
     evmDiscrepancyPct,
     flags,
     missingSources,
-    halt: flags.includes("evm_source_disagreement") || flags.includes("source_missing"),
+    halt:
+      flags.includes("evm_source_disagreement") ||
+      flags.includes("source_missing") ||
+      flags.includes("btc_l1_stale_fallback"),
     breakdown: {
       evmWalletUsd: evmWallet,
       evmAutopilotUsd: evmAutopilot,

@@ -37,7 +37,7 @@ async function makeFixture({
   return dir;
 }
 
-test("unified NAV sums EVM aggregate + BTC L1 when sources agree", async () => {
+test("unified NAV breakdown values resolve from fixture when stale BTC fallback explicitly allowed (still halts policy)", async () => {
   const dir = await makeFixture({
     treasuryRow: {
       observedAt: "2026-05-11T00:00:00Z",
@@ -50,13 +50,18 @@ test("unified NAV sums EVM aggregate + BTC L1 when sources agree", async () => {
     },
     btcRow: { observedAt: "2026-05-10T07:00:00Z", totalUsd: 500.83 },
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
-  assert.equal(unified.halt, false);
+  const unified = await loadUnifiedOperatingCapital({
+    dataDir: dir,
+    liveBtc: false,
+    allowStaleBtcFallback: true,
+  });
   assert.equal(unified.btcL1Usd, 500.83);
   assert.equal(unified.evmAggregateUsd, 468.95);
   assert.equal(unified.unifiedNavUsd, 969.78);
   assert.equal(unified.breakdown.bobL2WbtcUsd.valueUsd, 34.65);
-  assert.equal(operatingCapitalUsdFromUnified(unified), 969.78);
+  assert.equal(unified.halt, true, "stale BTC fallback must halt policy even when sum resolves");
+  assert.ok(unified.flags.includes("btc_l1_stale_fallback"));
+  assert.equal(operatingCapitalUsdFromUnified(unified), null);
 });
 
 test("unified NAV halts when EVM sources disagree by more than threshold", async () => {
@@ -71,7 +76,12 @@ test("unified NAV halts when EVM sources disagree by more than threshold", async
     },
     btcRow: { totalUsd: 500 },
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, discrepancyThresholdPct: 10, liveBtc: false });
+  const unified = await loadUnifiedOperatingCapital({
+    dataDir: dir,
+    discrepancyThresholdPct: 10,
+    liveBtc: false,
+    allowStaleBtcFallback: true,
+  });
   assert.equal(unified.halt, true);
   assert.ok(unified.flags.includes("evm_source_disagreement"));
   assert.equal(operatingCapitalUsdFromUnified(unified), null);
@@ -109,12 +119,16 @@ test("unified NAV restricts closed-protocol-marks to closed audit-pair strategie
       { positionId: "p2", event: "mark", strategyId: "open-strat", valueUsd: 75 },
     ],
   });
-  const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
+  const unified = await loadUnifiedOperatingCapital({
+    dataDir: dir,
+    liveBtc: false,
+    allowStaleBtcFallback: true,
+  });
   assert.equal(unified.breakdown.closedProtocolMarksUsd.positionCount, 1);
   assert.equal(unified.breakdown.closedProtocolMarksUsd.valueUsd, 25);
 });
 
-test("liveBtc fixture path is opt-out only — default queries Esplora", async () => {
+test("stale jsonl fallback is refused by default and forces halt", async () => {
   const dir = await makeFixture({
     treasuryRow: {
       observedAt: "2026-05-11T00:00:00Z",
@@ -125,7 +139,29 @@ test("liveBtc fixture path is opt-out only — default queries Esplora", async (
     btcRow: { observedAt: "2026-05-10T00:00:00Z", totalUsd: 999.99 },
   });
   const unified = await loadUnifiedOperatingCapital({ dataDir: dir, liveBtc: false });
+  assert.equal(unified.btcL1Usd, null);
+  assert.ok(unified.flags.includes("source_missing"));
+  assert.equal(unified.halt, true);
+});
+
+test("stale jsonl fallback flagged as halt-eligible even when value present", async () => {
+  const dir = await makeFixture({
+    treasuryRow: {
+      observedAt: "2026-05-11T00:00:00Z",
+      summary: { estimatedWalletUsd: 500 },
+      tokens: [],
+    },
+    autopilotSnapshot: { summary: { capitalManager: { estimatedAssetValueUsd: 500 } } },
+    btcRow: { observedAt: "2026-05-10T00:00:00Z", totalUsd: 999.99 },
+  });
+  const unified = await loadUnifiedOperatingCapital({
+    dataDir: dir,
+    liveBtc: false,
+    allowStaleBtcFallback: true,
+  });
   assert.equal(unified.breakdown.btcL1Usd.source, "btc-nav-history.jsonl");
   assert.equal(unified.breakdown.btcL1Usd.valueUsd, 999.99);
   assert.equal(unified.breakdown.btcL1Usd.fallback, true);
+  assert.ok(unified.flags.includes("btc_l1_stale_fallback"));
+  assert.equal(unified.halt, true);
 });
