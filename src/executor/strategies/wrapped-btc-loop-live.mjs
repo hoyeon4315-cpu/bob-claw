@@ -177,7 +177,6 @@ function normalizeLoopStep(step = {}, { phase, index, now, strategyId, defaultAm
       expectedTxTo: step.metadata?.expectedTxTo || step.quote?.txTo || step.tx.to,
       scenarioId: step.scenarioId || null,
       phase,
-      skipAutoIngest: true,
     },
   };
 }

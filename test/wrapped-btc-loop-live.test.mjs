@@ -95,7 +95,7 @@ const priceOracleInterface = new Interface([
   "function getUnderlyingPrice(address mToken) view returns (uint256)",
 ]);
 
-test("wrapped loop live plan builds signer intents with batch auto-ingest disabled", async () => {
+test("wrapped loop live plan builds signer intents without skipAutoIngest", async () => {
   const plan = await buildWrappedBtcLoopScenarioPlan({
     bindingsDocument: bindingsFixture(),
     scenarioId: "healthy_baseline",
@@ -104,7 +104,7 @@ test("wrapped loop live plan builds signer intents with batch auto-ingest disabl
 
   assert.equal(plan.entryIntents.length, 1);
   assert.equal(plan.unwindIntents.length, 1);
-  assert.equal(plan.entryIntents[0].metadata.skipAutoIngest, true);
+  assert.equal(plan.entryIntents[0].metadata.skipAutoIngest, undefined);
   assert.equal(plan.unwindIntents[0].executionReason, "risk_unwind");
   assert.equal(plan.entryIntents[0].quote.observedAt, "2026-04-17T00:00:00.000Z");
   assert.equal(plan.entryIntents[0].intentId, "wrapped-btc-loop-base-moonwell:entry:approve");

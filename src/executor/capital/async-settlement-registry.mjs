@@ -32,3 +32,15 @@ export function listAsyncSettlementFamilies() {
 export function clearAsyncSettlementRegistry() {
   REGISTRY.clear();
 }
+
+export function resolveAsyncSettlementHandler(strategyId) {
+  if (!strategyId) return null;
+  const exact = REGISTRY.get(strategyId);
+  if (exact) return exact;
+  for (const [familyId, handler] of REGISTRY) {
+    if (typeof familyId === "string" && strategyId.includes(familyId)) {
+      return handler;
+    }
+  }
+  return null;
+}

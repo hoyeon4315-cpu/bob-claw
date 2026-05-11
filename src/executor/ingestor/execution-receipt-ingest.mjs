@@ -6,6 +6,12 @@ import { buildReceiptReconciliation } from "../../ledger/receipt-reconciliation.
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../../market/prices.mjs";
 import { readJsonl } from "../../lib/jsonl-read.mjs";
 import { JsonlStore } from "../../lib/jsonl-store.mjs";
+import {
+  getAsyncSettlementHandler,
+  hasAsyncSettlementHandler,
+  registerAsyncSettlementHandler,
+  resolveAsyncSettlementHandler,
+} from "../capital/async-settlement-registry.mjs";
 
 function lowercase(value) {
   return typeof value === "string" ? value.toLowerCase() : null;
@@ -511,17 +517,68 @@ async function findProtocolPositionProof(txHash, dataDir) {
   return null;
 }
 
+async function findWrappedBtcLoopProof(txHash, dataDir) {
+  if (!txHash) return null;
+  const normalizedTxHash = String(txHash).toLowerCase();
+  const proofFile = join(dataDir, "wrapped-btc-loop-live-success-latest.json");
+  const liveProof = await readJsonIfExists(proofFile);
+  if (!liveProof || !liveProof.success) return null;
+  const entryHashes = Array.isArray(liveProof.entryTxHashes) ? liveProof.entryTxHashes : [];
+  const unwindHashes = Array.isArray(liveProof.unwindTxHashes) ? liveProof.unwindTxHashes : [];
+  const allHashes = [...entryHashes, ...unwindHashes].map((h) => String(h).toLowerCase());
+  if (!allHashes.includes(normalizedTxHash)) return null;
+  return {
+    status: "delivered",
+    observedDelta: "1",
+    proofSource: "wrapped_btc_loop_live_proof",
+  };
+}
+
+function initAsyncSettlementHandlers() {
+  if (hasAsyncSettlementHandler("merkl_portfolio")) return;
+  registerAsyncSettlementHandler("merkl_portfolio", {
+    gracePeriodMs: 300_000,
+    destinationProofReader: findProtocolPositionProof,
+  });
+  registerAsyncSettlementHandler("wrapped_btc_loop", {
+    gracePeriodMs: 600_000,
+    destinationProofReader: findWrappedBtcLoopProof,
+  });
+}
+
+async function findSettlementProof(pair, dataDir) {
+  initAsyncSettlementHandlers();
+  const handler = resolveAsyncSettlementHandler(pair.strategyId || "");
+  if (handler) {
+    const proof = await handler.destinationProofReader(pair.txHash, dataDir);
+    if (proof) return proof;
+  }
+  const fallback = await findProtocolPositionProof(pair.txHash, dataDir);
+  return fallback || null;
+}
+
 export async function runAsyncSettlementWatcher({
   dataDir = config.dataDir,
   store = new JsonlStore(dataDir),
   priceReader = getCoinGeckoPricesUsd,
+  enabled = config.asyncSettlementEnabled,
 } = {}) {
+  if (!enabled) {
+    return {
+      schemaVersion: 1,
+      observedAt: new Date().toISOString(),
+      pendingCount: 0,
+      processedCount: 0,
+      processed: [],
+      skippedReason: "async_settlement_disabled",
+    };
+  }
   const pendingPairs = (await readJsonl(dataDir, "capital-audit-pairs").catch(() => []))
     .filter((r) => r.status === "pending" || r.status === "pending_with_grace")
     .filter((r) => r.txHash && r.intentHash);
   const processed = [];
   for (const pair of pendingPairs) {
-    const proof = await findProtocolPositionProof(pair.txHash, dataDir);
+    const proof = await findSettlementProof(pair, dataDir);
     if (!proof) continue;
     const receiptRecord = buildReceiptReconciliation({
       kind: "erc4626_protocol_canary",

@@ -101,6 +101,7 @@ export const config = {
   dataDir: getEnv("BOB_CLAW_DATA_DIR", "./data"),
   liveModeFlagPath: getEnv("BOB_CLAW_LIVE_MODE_FLAG", "./state/live-mode.enabled"),
   emergencyStopFlagPath: getEnv("BOB_CLAW_EMERGENCY_STOP_FLAG", "./state/emergency-stop"),
+  asyncSettlementEnabled: getBooleanEnv("BOB_CLAW_ASYNC_SETTLEMENT_ENABLED", false),
   approveEthereumL1Routes: getBooleanEnv("BOB_CLAW_APPROVE_ETHEREUM_L1", true),
   telegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
   telegramChatId: getEnv("TELEGRAM_CHAT_ID", ""),

@@ -2377,14 +2377,16 @@ export async function runAllChainAutopilot({
     steps,
   });
 
-  await runJsonStep({
-    name: "async_settlement_watcher",
-    args: ["src/cli/run-async-settlement-watcher.mjs", "--json", "--write"],
-    runCommandImpl,
-    cwd,
-    timeoutMs: Math.min(60_000, timeoutMs),
-    steps,
-  });
+  if (config.asyncSettlementEnabled) {
+    await runJsonStep({
+      name: "async_settlement_watcher",
+      args: ["src/cli/run-async-settlement-watcher.mjs", "--json", "--write"],
+      runCommandImpl,
+      cwd,
+      timeoutMs: Math.min(60_000, timeoutMs),
+      steps,
+    });
+  }
 
   const summary = {
     officialChainCount: chains.length,
