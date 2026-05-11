@@ -41,14 +41,23 @@ function parseArgs(argv) {
   };
 }
 
-function runNodeScript(script, args = []) {
+function runNodeScript(script, args = [], { timeoutMs = 120_000 } = {}) {
   const result = spawnSync(process.execPath, [resolve(ROOT, script), ...args], {
     cwd: process.cwd(),
     env: process.env,
     encoding: "utf8",
+    timeout: timeoutMs,
+    killSignal: "SIGTERM",
   });
   const stdout = result.stdout.trim();
   const stderr = result.stderr.trim();
+  if (result.error && result.error.code === "ETIMEDOUT") {
+    const error = new Error(`Command timed out after ${timeoutMs}ms: node ${script}`);
+    error.stdout = stdout;
+    error.stderr = stderr;
+    error.timedOut = true;
+    throw error;
+  }
   const toleratedTargetedGasRefreshFailure =
     script === "src/cli/estimate-gateway-gas.mjs" &&
     result.status !== 0 &&
@@ -73,27 +82,39 @@ export function refreshCanaryInputsIfNeeded({ state, address, runScript = runNod
   const canaryInputRefresh = planCanaryInputRefresh(state);
   if (!canaryInputRefresh.shouldRefresh) return { refreshed: false, refresh: canaryInputRefresh };
 
+  const partialErrors = [];
+  function runPartial(script, args = []) {
+    try {
+      return runScript(script, args);
+    } catch (error) {
+      partialErrors.push({ script, args, message: error.message, timedOut: error.timedOut || false });
+      return null;
+    }
+  }
+
   if (canaryInputRefresh.inputKeys.includes("market")) {
-    runScript("src/cli/price-snapshot.mjs");
+    runPartial("src/cli/price-snapshot.mjs");
   }
   if (canaryInputRefresh.inputKeys.includes("gateway_quote")) {
     try {
       runScript("src/cli/verify-gateway.mjs", buildCanaryInputRefreshVerifyArgs(canaryInputRefresh) || []);
     } catch (error) {
-      if (!isTargetedGatewayRefreshRouteMiss(error)) throw error;
+      if (!isTargetedGatewayRefreshRouteMiss(error)) {
+        partialErrors.push({ script: "src/cli/verify-gateway.mjs", message: error.message, timedOut: error.timedOut || false });
+      }
     }
   }
   if (canaryInputRefresh.inputKeys.includes("src_gas")) {
-    runScript("src/cli/gas-snapshot.mjs", buildCanaryInputRefreshGasSnapshotArgs(canaryInputRefresh) || []);
+    runPartial("src/cli/gas-snapshot.mjs", buildCanaryInputRefreshGasSnapshotArgs(canaryInputRefresh) || []);
   }
   if (canaryInputRefresh.inputKeys.includes("exact_gas")) {
-    runScript("src/cli/estimate-gateway-gas.mjs", buildCanaryInputRefreshExactGasArgs(canaryInputRefresh, address) || []);
+    runPartial("src/cli/estimate-gateway-gas.mjs", buildCanaryInputRefreshExactGasArgs(canaryInputRefresh, address) || []);
   }
   if (canaryInputRefresh.inputKeys.includes("dex_quote")) {
-    runScript("src/cli/quote-dex.mjs", buildCanaryInputRefreshDexArgs(canaryInputRefresh) || []);
+    runPartial("src/cli/quote-dex.mjs", buildCanaryInputRefreshDexArgs(canaryInputRefresh) || []);
   }
-  runScript("src/cli/score-gateway.mjs", buildCanaryInputRefreshScoringArgs(canaryInputRefresh));
-  return { refreshed: true, refresh: canaryInputRefresh };
+  runPartial("src/cli/score-gateway.mjs", buildCanaryInputRefreshScoringArgs(canaryInputRefresh));
+  return { refreshed: true, refresh: canaryInputRefresh, partial: partialErrors.length > 0, partialErrors };
 }
 
 function watcherReasonLabel(kind, reason) {
@@ -325,6 +346,18 @@ async function main() {
       address: watchState.address || null,
     });
     if (refreshed.refreshed) {
+      if (refreshed.partial) {
+        console.error(`[status-dashboard] Partial refresh completed with ${refreshed.partialErrors.length} error(s):`);
+        for (const err of refreshed.partialErrors) {
+          console.error(`  - ${err.script}${err.timedOut ? " (timed out)" : ""}: ${err.message}`);
+        }
+        status.partialRefresh = true;
+        status.partialRefreshErrors = refreshed.partialErrors.map((e) => ({
+          script: e.script,
+          timedOut: e.timedOut,
+          message: e.message,
+        }));
+      }
       context = await buildCurrentDashboardContext({ dataDir: config.dataDir, address: watchState.address || null });
       status = context.dashboardStatus;
       watchState = context.state;
