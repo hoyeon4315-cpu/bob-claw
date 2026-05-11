@@ -8,6 +8,13 @@ const DEFAULT_DISCREPANCY_THRESHOLD_PCT = 10;
 const TAIL_CHUNK_BYTES = 256 * 1024;
 const ESPLORA_BASE = process.env.BTC_ESPLORA_BASE || "https://mempool.space/api";
 const BTC_FETCH_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_AGE_MS = Number(process.env.UNIFIED_NAV_MAX_AGE_MS || 15 * 60_000); // 15 min
+
+function ageMs(observedAt, now = Date.now()) {
+  if (!observedAt) return null;
+  const t = new Date(observedAt).getTime();
+  return Number.isFinite(t) ? now - t : null;
+}
 
 function finite(value) {
   const numeric = Number(value);
@@ -103,14 +110,26 @@ async function streamJsonlMap(absolutePath, keySelector) {
 
 async function loadEvmWalletUsd(dataDir) {
   const row = await lastJsonlRow(join(dataDir, "treasury-inventory.jsonl"));
+  const observedAt = row?.observedAt || null;
   const value = finite(row?.summary?.estimatedWalletUsd);
-  return { source: "treasury-inventory.jsonl", valueUsd: value, observedAt: row?.observedAt || null };
+  return {
+    source: "treasury-inventory.jsonl",
+    valueUsd: value,
+    observedAt,
+    ageMs: ageMs(observedAt),
+  };
 }
 
 async function loadEvmAutopilotUsd(dataDir) {
   const snapshot = await readJsonIfExists(join(dataDir, "all-chain-autopilot-latest.json"));
+  const observedAt = snapshot?.observedAt || null;
   const value = finite(snapshot?.summary?.capitalManager?.estimatedAssetValueUsd);
-  return { source: "all-chain-autopilot-latest.json", valueUsd: value, observedAt: snapshot?.observedAt || null };
+  return {
+    source: "all-chain-autopilot-latest.json",
+    valueUsd: value,
+    observedAt,
+    ageMs: ageMs(observedAt),
+  };
 }
 
 async function loadBobL2WbtcUsd(dataDir) {
@@ -322,6 +341,7 @@ export async function loadUnifiedOperatingCapital({
   discrepancyThresholdPct = DEFAULT_DISCREPANCY_THRESHOLD_PCT,
   liveBtc = true,
   allowStaleBtcFallback = false,
+  maxRecordedAgeMs = DEFAULT_MAX_AGE_MS,
 } = {}) {
   const [evmWallet, evmAutopilot, bobL2Wbtc, btcL1, protocolMarks] = await Promise.all([
     loadEvmWalletUsd(dataDir),
@@ -353,6 +373,11 @@ export async function loadUnifiedOperatingCapital({
   if (evmDiscrepancyFlag) flags.push(evmDiscrepancyFlag);
   if (missingSources.length > 0) flags.push("source_missing");
   if (btcL1.fallback === true) flags.push("btc_l1_stale_fallback");
+  const staleSources = [];
+  for (const [name, slice] of [["evmWalletUsd", evmWallet], ["evmAutopilotUsd", evmAutopilot]]) {
+    if (slice.ageMs != null && slice.ageMs > maxRecordedAgeMs) staleSources.push(name);
+  }
+  if (staleSources.length > 0) flags.push("recorded_source_stale");
 
   return {
     schemaVersion: 1,
@@ -367,7 +392,10 @@ export async function loadUnifiedOperatingCapital({
     halt:
       flags.includes("evm_source_disagreement") ||
       flags.includes("source_missing") ||
-      flags.includes("btc_l1_stale_fallback"),
+      flags.includes("btc_l1_stale_fallback") ||
+      flags.includes("recorded_source_stale"),
+    staleSources,
+    maxRecordedAgeMs,
     protocolMarksUsd,
     breakdown: {
       evmWalletUsd: evmWallet,
