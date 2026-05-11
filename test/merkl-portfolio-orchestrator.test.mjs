@@ -83,6 +83,51 @@ test("execute mode refreshes inventory with a validated treasury policy after ex
   assert.ok(scanArgs.policy.supportedChains.includes("base"));
 });
 
+test("execute mode treats position_closed_with_residual as closed in exit report status", async () => {
+  const report = await runMerklPortfolioOrchestrator({
+    execute: true,
+    write: false,
+    runExitImpl: async () => ({
+      status: "positions_closed",
+      preflight: { senderAddress: "0x000000000000000000000000000000000000dEaD" },
+      summary: {
+        activePositionCount: 1,
+        exitReadyCount: 1,
+        closedCount: 1,
+        holdCount: 0,
+        executionErrorCount: 0,
+      },
+      evaluations: [
+        {
+          status: "exit_ready",
+          positionId: "p1",
+        },
+      ],
+      executions: [
+        {
+          status: "position_closed_with_residual",
+          execution: {
+            signerResult: {
+              broadcast: { txHash: "0xpartial" },
+            },
+          },
+        },
+      ],
+    }),
+    scanInventoryImpl: async () => ({ native: [], tokens: [] }),
+    runAllocatorImpl: async () => ({
+      status: "blocked",
+      blockedReason: "no_portfolio_entry_ready",
+      plan: { entryQueue: [] },
+      executions: [],
+    }),
+  });
+
+  assert.equal(report.exit.status, "positions_closed");
+  assert.equal(report.exit.exitsExecuted, 1);
+  assert.equal(report.exit.txHashes[0], "0xpartial");
+});
+
 test("report preserves allocator graduation request summary without executing it", async () => {
   const report = await runMerklPortfolioOrchestrator({
     execute: true,

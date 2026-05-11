@@ -579,7 +579,7 @@ export async function runMerklPortfolioExit({
       appendRecord: (record) => store.append("merkl-portfolio-positions", record),
     }));
   }
-  const closedCount = executions.filter((item) => item.status === "position_closed" || item.status === "position_reconciled_zero_balance").length;
+  const closedCount = executions.filter((item) => item.status === "position_closed" || item.status === "position_reconciled_zero_balance" || item.status === "position_closed_with_residual").length;
   const executionErrorCount = executions.filter((item) => item.status === "error").length;
   const report = {
     schemaVersion: 1,
