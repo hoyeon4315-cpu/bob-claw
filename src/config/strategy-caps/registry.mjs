@@ -1025,4 +1025,28 @@ export const STRATEGY_CAPS = Object.freeze({
       avalanche: Object.freeze({ minUsd: 3, targetUsd: 6 }),
     }),
   }),
+  "pendle-yt-canary": Object.freeze({
+    strategyId: "pendle-yt-canary",
+    label: "Pendle YT canary",
+    autoExecute: false,
+    intentTtlMs: 60_000,
+    exposure: Object.freeze({
+      protocols: Object.freeze(["pendle"]),
+      assetFamily: "btc_wrappers",
+      btcDenominated: true,
+    }),
+    caps: Object.freeze({
+      perTxUsd: 10,
+      perDayUsd: 90,
+      perChainUsd: Object.freeze({
+        base: 90,
+      }),
+      maxDailyLossUsd: 25,
+      maxFailedGasCost24hUsd: DEFAULT_FAILED_GAS_COST_24H_USD,
+      tinyLivePerTxUsd: 10,
+    }),
+    gasFloat: Object.freeze({
+      base: Object.freeze({ minUsd: 10, targetUsd: 20 }),
+    }),
+  }),
 });
