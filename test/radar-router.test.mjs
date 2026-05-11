@@ -319,7 +319,33 @@ test("buildRadarCanaryIntent propagates Gateway route proof into bridged intents
   });
 });
 
-test("buildRadarCanaryIntent blocks non-stable reward tokens without exit liquidity proof", () => {
+test("buildRadarCanaryIntent blocks non-stable reward tokens without exit liquidity proof when policy is not aggressive", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate({
+      displayedAprPct: 20_000,
+      rewardTokenType: "defaultRewardToken",
+      rewardToken: "AERO",
+    }),
+    policy: { ...calibratedPolicy, calibrationStatus: "unresolved" },
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+    costLedger: {
+      p90GasCostUsdForChain: () => 0.12,
+      p90BridgeCostUsdForRoute: () => 0,
+      p90ClaimCostUsdForProtocol: () => 0.1,
+      p90RewardSwapCostUsdForToken: () => 0.1,
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(result.blockers.includes("radar_policy_not_calibrated_aggressive"));
+});
+
+test("buildRadarCanaryIntent allows self-proof canary for aggressive v1 at committed notional", () => {
   const result = buildRadarCanaryIntent({
     packet,
     candidate: candidate({
@@ -341,6 +367,34 @@ test("buildRadarCanaryIntent blocks non-stable reward tokens without exit liquid
     },
   });
 
-  assert.equal(result.status, "blocked");
-  assert.ok(result.blockers.includes("reward_exit_liquidity_unproven"));
+  assert.equal(result.status, "ready");
+  assert.equal(result.intent.metadata.selfProofCanary, true);
+  assert.equal(result.intent.amountUsd, 25);
+});
+
+test("buildRadarCanaryIntent does not flag self-proof when liquidity is already proven", () => {
+  const result = buildRadarCanaryIntent({
+    packet,
+    candidate: candidate({
+      displayedAprPct: 20_000,
+      rewardTokenType: "defaultRewardToken",
+      rewardToken: "AERO",
+      rewardTokenDexDepthUsd: 100,
+    }),
+    policy: calibratedPolicy,
+    strategyCapsById: {
+      "wrapped-btc-loop-base-moonwell": {
+        caps: { tinyLivePerTxUsd: 25 },
+      },
+    },
+    costLedger: {
+      p90GasCostUsdForChain: () => 0.12,
+      p90BridgeCostUsdForRoute: () => 0,
+      p90ClaimCostUsdForProtocol: () => 0.1,
+      p90RewardSwapCostUsdForToken: () => 0.1,
+    },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.intent.metadata.selfProofCanary, undefined);
 });

@@ -68,6 +68,18 @@ function rewardExitLiquidityProven(candidate = {}, amountUsd) {
   return depthUsd !== null && depthUsd >= amountUsd * 3;
 }
 
+const EXECUTABLE_EXECUTION_PATHS = Object.freeze([
+  "gateway_destination",
+  "base_native_evm",
+  "gateway_to_evm_bridged",
+]);
+
+function isSelfProofCanaryEligible(candidate = {}, policy = {}) {
+  if (policy?.calibrationStatus !== "calibrated_aggressive_v1") return false;
+  if (!EXECUTABLE_EXECUTION_PATHS.includes(candidate.executionPath)) return false;
+  return true;
+}
+
 export function buildRadarCanaryIntent({
   packet = {},
   candidate = {},
@@ -144,7 +156,9 @@ export function buildRadarCanaryIntent({
     radarPerCanaryUsd,
     candidateAmountUsd ?? Number.POSITIVE_INFINITY,
   );
-  if (!rewardExitLiquidityProven(candidate, amountUsd)) {
+  const liquidityProven = rewardExitLiquidityProven(candidate, amountUsd);
+  const selfProofEligible = !liquidityProven && isSelfProofCanaryEligible(candidate, policy);
+  if (!liquidityProven && !selfProofEligible) {
     return {
       status: "blocked",
       blockers: ["reward_exit_liquidity_unproven"],
@@ -206,6 +220,7 @@ export function buildRadarCanaryIntent({
         gatewayRoute: gatewayProof?.route,
         btcPaybackConversionRequired: true,
         promotedAt: now,
+        ...(selfProofEligible ? { selfProofCanary: true } : {}),
       },
     },
     gate,
