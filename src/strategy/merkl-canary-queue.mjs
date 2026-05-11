@@ -249,11 +249,24 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY,
   };
   let bindingSource = item.protocolBinding;
   let pendleJoined = false;
-  if (!bindingSource && String(item.protocolId || "").toLowerCase() === "pendle") {
-    const joined = resolvePendleMerklBinding({ opportunity: item, markets: pendleMarkets, now });
-    if (joined) {
-      bindingSource = joined;
-      pendleJoined = true;
+  if (String(item.protocolId || "").toLowerCase() === "pendle") {
+    const needsEnrichment = !bindingSource
+      || !(bindingSource.maturity || bindingSource.ytExpiry)
+      || !bindingSource.ytTokenAddress;
+    if (needsEnrichment) {
+      const joined = resolvePendleMerklBinding({ opportunity: item, markets: pendleMarkets, now });
+      if (joined) {
+        bindingSource = bindingSource ? { ...joined, ...bindingSource, ...joined } : joined;
+        // override addresses + maturity with snapshot truth; keep merkl extras
+        bindingSource.marketAddress = joined.marketAddress;
+        bindingSource.ytTokenAddress = joined.ytTokenAddress;
+        bindingSource.shareTokenAddress = joined.shareTokenAddress;
+        bindingSource.assetAddress = joined.assetAddress || bindingSource.assetAddress;
+        bindingSource.maturity = joined.maturity;
+        bindingSource.ytExpiry = joined.ytExpiry;
+        bindingSource.impliedAprPct = joined.impliedAprPct ?? bindingSource.impliedAprPct;
+        pendleJoined = true;
+      }
     }
   }
   const protocolBindingPlan = buildProtocolCanaryBindingPlan({

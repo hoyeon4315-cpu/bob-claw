@@ -3,7 +3,30 @@ const PENDLE_PROTOCOL_ID = "pendle";
 function normalizeAddress(value) {
   if (!value || typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
-  return trimmed.startsWith("0x") && trimmed.length === 42 ? trimmed : null;
+  if (trimmed.startsWith("0x") && trimmed.length === 42) return trimmed;
+  const m = trimmed.match(/^(\d+)-(0x[0-9a-f]{40})$/);
+  return m ? m[2] : null;
+}
+
+function chainIdFromAddrField(value) {
+  if (typeof value !== "string") return null;
+  const m = value.trim().toLowerCase().match(/^(\d+)-0x[0-9a-f]{40}$/);
+  return m ? Number(m[1]) : null;
+}
+
+function tokenRef(value) {
+  if (value && typeof value === "object") {
+    return {
+      address: normalizeAddress(value.address),
+      symbol: value.symbol ?? null,
+      decimals: Number.isFinite(value.decimals) ? Number(value.decimals) : null,
+    };
+  }
+  return {
+    address: normalizeAddress(value),
+    symbol: null,
+    decimals: null,
+  };
 }
 
 function chainIdFromName(chain) {
@@ -38,18 +61,29 @@ function maturityMs(value) {
   return Number.isFinite(time) ? time : null;
 }
 
+function poolAddressFromDepositUrl(url) {
+  if (typeof url !== "string") return null;
+  const m = url.match(/\/pools\/(0x[0-9a-fA-F]{40})/);
+  return m ? m[1].toLowerCase() : null;
+}
+
 export function findPendleMarket({ markets = [], opportunity = {} } = {}) {
   if (!Array.isArray(markets) || markets.length === 0) return null;
   const poolAddress = normalizeAddress(
     opportunity.poolAddress ??
-      opportunity.identifier ??
-      opportunity.opportunityIdentifier ??
       opportunity.address,
-  );
+  )
+    ?? poolAddressFromDepositUrl(opportunity.depositUrl)
+    ?? poolAddressFromDepositUrl(opportunity.protocolBinding?.depositUrl)
+    ?? normalizeAddress(opportunity.identifier ?? opportunity.opportunityIdentifier);
   const opportunityChainId = opportunity.chainId ?? chainIdFromName(opportunity.chain);
   const matches = markets.filter((market) => {
     if (!market || typeof market !== "object") return false;
-    if (opportunityChainId != null && market.chainId != null && market.chainId !== opportunityChainId) return false;
+    const marketChainId = market.chainId
+      ?? chainIdFromAddrField(market.pt)
+      ?? chainIdFromAddrField(market.yt)
+      ?? chainIdFromAddrField(market.underlyingAsset);
+    if (opportunityChainId != null && marketChainId != null && marketChainId !== opportunityChainId) return false;
     const marketAddress = normalizeAddress(market.address);
     if (poolAddress && marketAddress && marketAddress === poolAddress) return true;
     return false;
@@ -65,21 +99,21 @@ export function buildPendleBindingFromMarket(market, { now = Date.now(), minMatu
   const bufferMs = minMaturityBufferHours * 3_600_000;
   if (expiryMs - now <= bufferMs) return null;
 
-  const yt = market.yt || {};
-  const pt = market.pt || {};
-  const underlying = market.underlyingAsset || market.underlying || {};
+  const yt = tokenRef(market.yt);
+  const pt = tokenRef(market.pt);
+  const underlying = tokenRef(market.underlyingAsset || market.underlying);
   const details = market.details || {};
 
   const binding = {
     instrument: "yt",
     marketAddress: normalizeAddress(market.address),
-    ytTokenAddress: normalizeAddress(yt.address),
-    ytTokenSymbol: yt.symbol || null,
-    shareTokenAddress: normalizeAddress(pt.address),
-    shareTokenSymbol: pt.symbol || null,
-    assetAddress: normalizeAddress(underlying.address),
-    assetSymbol: underlying.symbol || null,
-    assetDecimals: Number.isFinite(underlying.decimals) ? Number(underlying.decimals) : null,
+    ytTokenAddress: yt.address,
+    ytTokenSymbol: yt.symbol,
+    shareTokenAddress: pt.address,
+    shareTokenSymbol: pt.symbol,
+    assetAddress: underlying.address,
+    assetSymbol: underlying.symbol,
+    assetDecimals: underlying.decimals,
     maturity: new Date(expiryMs).toISOString(),
     ytExpiry: new Date(expiryMs).toISOString(),
     impliedAprPct: numericApyToPct(details.impliedApy),
