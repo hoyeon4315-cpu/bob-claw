@@ -14,6 +14,7 @@ import {
   resolveTinyCanaryExpectedHoldDays,
   tinyCanarySameChainRoundTripCostUsd,
 } from "../config/sizing.mjs";
+import { protocolsMatch } from "../config/protocol-id-aliases.mjs";
 
 const MERKL_OPPORTUNITIES_URL = "https://api.merkl.xyz/v4/opportunities";
 const DEFILLAMA_URL = "https://yields.llama.fi/pools";
@@ -84,7 +85,19 @@ function getHoursRemaining(campaignEndTime, nowMs = Date.now()) {
   return (end - nowMs) / 36e5;
 }
 
-function getDefiLlamaPool(merklItem, defiLlamaPools) {
+function tokenSymbol(token) {
+  if (typeof token === "string") return token.toLowerCase();
+  return (token?.displaySymbol || token?.symbol || "").toLowerCase();
+}
+
+function poolSymbols(pool) {
+  return String(pool?.symbol || "")
+    .toLowerCase()
+    .split(/[-/,\s]+/)
+    .filter(Boolean);
+}
+
+export function getDefiLlamaPool(merklItem, defiLlamaPools) {
   const chain = normalizeChain(merklItem.chain?.name || merklItem.chain);
   const protocol = (merklItem.protocol?.id || merklItem.protocol || "").toLowerCase();
   // Try to match by project + chain + symbol overlap
@@ -92,13 +105,12 @@ function getDefiLlamaPool(merklItem, defiLlamaPools) {
     const pChain = normalizeChain(pool.chain);
     const pProject = (pool.project || "").toLowerCase();
     if (pChain !== chain) return false;
-    // Loose project match
-    if (!pProject.includes(protocol) && !protocol.includes(pProject)) return false;
+    if (!protocolsMatch(protocol, pProject)) return false;
     // Symbol overlap if available
-    const merklSymbols = (merklItem.tokens || []).map((t) => (t.displaySymbol || t.symbol || "").toLowerCase());
-    const poolSymbols = (pool.symbol || "").toLowerCase().split("-");
-    if (merklSymbols.length && poolSymbols.length) {
-      return merklSymbols.some((s) => poolSymbols.includes(s));
+    const merklSymbols = (merklItem.tokens || []).map(tokenSymbol).filter(Boolean);
+    const symbols = poolSymbols(pool);
+    if (merklSymbols.length && symbols.length) {
+      return merklSymbols.some((s) => symbols.includes(s));
     }
     return true;
   });

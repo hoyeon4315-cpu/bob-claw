@@ -3,6 +3,7 @@ import { test, describe } from "node:test";
 import {
   fetchMerklOpportunities,
   fetchDefiLlamaPools,
+  getDefiLlamaPool,
   buildCampaignAwareCandidates,
   classifyRewardToken,
   campaignReportChainIds,
@@ -144,6 +145,44 @@ describe("fetchDefiLlamaPools", () => {
     const data = { data: [{ chain: "Base", project: "aerodrome", apy: 12, tvlUsd: 200_000 }] };
     const result = await fetchDefiLlamaPools({ fetchFn: mockFetch(data) });
     assert.deepStrictEqual(result, data.data);
+  });
+});
+
+describe("getDefiLlamaPool protocol aliases", () => {
+  test("matches Merkl lending protocol aliases to DefiLlama projects on chain and token overlap", () => {
+    const pools = [
+      { chain: "Base", project: "morpho-blue", symbol: "cbBTC-USDC", pool: "morpho-base-cbbtc-usdc" },
+      { chain: "Ethereum", project: "aave-v3", symbol: "USDC", pool: "aave-eth-usdc" },
+      { chain: "Base", project: "compound-v3", symbol: "USDC", pool: "compound-base-usdc" },
+      { chain: "Avalanche", project: "euler", symbol: "USDC", pool: "euler-avax-usdc" },
+      { chain: "Base", project: "moonwell", symbol: "cbBTC", pool: "moonwell-base-cbbtc" },
+      { chain: "BNB", project: "pendle", symbol: "USDC", pool: "pendle-bsc-usdc" },
+    ];
+
+    assert.equal(
+      getDefiLlamaPool({ chain: "Base", protocol: { id: "morpho" }, tokens: ["cbBTC", "USDC"] }, pools)?.pool,
+      "morpho-base-cbbtc-usdc",
+    );
+    assert.equal(
+      getDefiLlamaPool({ chain: "Ethereum", protocol: { id: "aave" }, tokens: [{ symbol: "USDC" }] }, pools)?.pool,
+      "aave-eth-usdc",
+    );
+    assert.equal(
+      getDefiLlamaPool({ chain: "Base", protocol: { id: "compound" }, tokens: [{ displaySymbol: "USDC" }] }, pools)?.pool,
+      "compound-base-usdc",
+    );
+    assert.equal(
+      getDefiLlamaPool({ chain: "Avalanche", protocol: { id: "euler-v2" }, tokens: [{ symbol: "USDC" }] }, pools)?.pool,
+      "euler-avax-usdc",
+    );
+    assert.equal(
+      getDefiLlamaPool({ chain: "Base", protocol: { id: "moonwell" }, tokens: [{ symbol: "cbBTC" }] }, pools)?.pool,
+      "moonwell-base-cbbtc",
+    );
+    assert.equal(
+      getDefiLlamaPool({ chain: "BNB Chain", protocol: { id: "pendle" }, tokens: [{ symbol: "USDC" }] }, pools)?.pool,
+      "pendle-bsc-usdc",
+    );
   });
 });
 
