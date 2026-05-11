@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 
 import { appendFile, mkdir, readFile } from "node:fs/promises";
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { RADAR_POLICY } from "../config/radar-policy.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
-import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
-import { resolveDevLockPath } from "../runtime/dev-lock.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { evaluateAutoKillTriggers } from "../risk/auto-kill-triggers.mjs";
@@ -24,6 +20,7 @@ import {
   readSharePriceUnwindProofRecords,
   writeSharePriceUnwindProofRecords,
 } from "../executor/proof/share-price-unwind-proof.mjs";
+import { readLiveBroadcastGlobalGuards } from "./live-broadcast-guards.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 const EXECUTION_PATHS = new Set(["gateway_destination", "base_native_evm", "gateway_to_evm_bridged"]);
@@ -50,17 +47,6 @@ function parseArgs(argv = []) {
     refreshRadar,
     proofPath: optionValue(argv, "--proof-path"),
   };
-}
-
-async function fileExists(path) {
-  if (!path) return false;
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
 }
 
 async function readJsonIfExists(path) {
@@ -172,24 +158,6 @@ function radarLaneBudgetState(auditRecords = [], now = new Date().toISOString())
   const spentUsd = today.reduce((sum, record) => sum + Number(record.amountUsd ?? record.intent?.amountUsd ?? 0), 0);
   const openCount = today.filter((record) => record.lifecycle?.stage !== "confirmed" && record.lifecycle?.stage !== "reverted").length;
   return { spentUsd, openCount };
-}
-
-async function defaultReadGuards({
-  execute = false,
-  strategyTickStatus = null,
-  killSwitchPath = resolveKillSwitchPath(),
-  devLockPath = resolveDevLockPath(),
-} = {}) {
-  const blockers = [];
-  const killSwitchActive = await fileExists(killSwitchPath);
-  const devLockActive = execute && await fileExists(devLockPath);
-  if (killSwitchActive) blockers.push("kill_switch_active");
-  if (devLockActive) blockers.push("dev_lock_active");
-  const readyForLiveBroadcast = (strategyTickStatus?.strategies || []).some((row) =>
-    row?.layerStatus?.runtimeExecutable === true || row?.policyReadiness?.policyOk === true,
-  );
-  if (execute && readyForLiveBroadcast === false) blockers.push("readiness_guard_blocked");
-  return { ok: blockers.length === 0, blockers, readyForLiveBroadcast, killSwitchActive, devLockActive };
 }
 
 function candidateBaseBlockers(candidate = {}, policy = RADAR_POLICY) {
@@ -537,7 +505,7 @@ async function runCli(argv = process.argv.slice(2), { cwd = process.cwd(), now =
     readJsonIfExists(join(dashboardDir, "strategy-tick-status.json")),
     readSharePriceUnwindProofRecords(proofPath).catch(() => []),
   ]);
-  const guards = await defaultReadGuards({ execute: args.execute, strategyTickStatus });
+  const guards = await readLiveBroadcastGlobalGuards({ execute: args.execute, strategyTickStatus });
   const autoKill = evaluateAutoKillTriggers({ auditRecords, now: new Date(now) });
   const strategyCapsById = Object.fromEntries(listStrategyCaps().map((item) => [item.strategyId, item]));
   const costLedger = buildRadarCostLedger({ auditRecords });

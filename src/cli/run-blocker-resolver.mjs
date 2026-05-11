@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { BLOCKER_RESOLUTION_CONFIG, buildBlockerResolutionConfig } from "../config/blocker-resolution.mjs";
-import { resolveDevLockPath } from "../runtime/dev-lock.mjs";
-import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { normalizeBlocker, paramsHash as blockerParamsHash, isFilterBlockerCode, isHardSafetyStop } from "../executor/policy/blocker-codes.mjs";
@@ -21,6 +17,7 @@ import {
   reconcilePendingDispatches,
 } from "../executor/blocker-resolution/dispatch-tracker.mjs";
 import { buildBlockerFunnelSlice } from "../status/blocker-funnel-slice.mjs";
+import { readLiveBroadcastGlobalGuards } from "./live-broadcast-guards.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
@@ -49,17 +46,6 @@ function parseArgs(argv = []) {
     json: hasFlag(argv, "--json"),
     loop: hasFlag(argv, "--loop"),
   };
-}
-
-async function fileExists(path) {
-  if (!path) return false;
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
 }
 
 async function readJsonIfExists(path) {
@@ -99,24 +85,6 @@ async function acquireLock(lockPath, { now = new Date().toISOString(), staleMs =
 
 async function releaseLock(lockPath) {
   await rm(lockPath, { force: true }).catch(() => {});
-}
-
-async function defaultReadGlobalGuards({
-  execute = false,
-  killSwitchPath = resolveKillSwitchPath(),
-  devLockPath = resolveDevLockPath(),
-  strategyTickStatus = null,
-} = {}) {
-  const blockers = [];
-  if (await fileExists(killSwitchPath)) blockers.push("kill_switch_active");
-  if (execute && await fileExists(devLockPath)) blockers.push("dev_lock_active");
-  const readyForLiveBroadcast = (strategyTickStatus?.strategies || []).some((row) => row?.layerStatus?.runtimeExecutable === true || row?.policyReadiness?.policyOk === true);
-  if (execute && readyForLiveBroadcast === false) blockers.push("readiness_guard_blocked");
-  return {
-    ok: blockers.length === 0,
-    blockers,
-    readyForLiveBroadcast,
-  };
 }
 
 function firstBlocker(row = {}) {
@@ -247,7 +215,7 @@ export async function runBlockerResolverCli(
     cwd = process.cwd(),
     dataDir = config.dataDir,
     dashboardDir = join(cwd, "dashboard", "public"),
-    readGlobalGuards = defaultReadGlobalGuards,
+    readGlobalGuards = readLiveBroadcastGlobalGuards,
     executeAction = async (action) => ({ ok: true, actionType: action.type, enqueued: action.type === "operational_intent" }),
     now = new Date().toISOString(),
   } = {},

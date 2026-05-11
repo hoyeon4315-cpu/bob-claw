@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
 import { appendFile, mkdir, readFile } from "node:fs/promises";
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import { BLOCKER_RESOLUTION_CONFIG } from "../config/blocker-resolution.mjs";
-import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
-import { resolveDevLockPath } from "../runtime/dev-lock.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
@@ -18,6 +14,7 @@ import { buildSiblingProxyEdgeRecords } from "../strategy/economics/sibling-prox
 import { solveMinViableNotional } from "../strategy/economics/min-viable-notional.mjs";
 import { classifyFloorFeasibility } from "../strategy/economics/floor-feasibility-classifier.mjs";
 import { buildCapitalRoutingPlan } from "../executor/capital/capital-routing-plan.mjs";
+import { readLiveBroadcastGlobalGuards } from "./live-broadcast-guards.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
@@ -43,17 +40,6 @@ export function parseArgs(argv = []) {
   };
 }
 
-async function fileExists(path) {
-  if (!path) return false;
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
 async function readJsonIfExists(path) {
   try {
     return JSON.parse(await readFile(path, "utf8"));
@@ -72,22 +58,6 @@ function finiteNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-async function defaultReadGlobalGuards({
-  execute = false,
-  strategyTickStatus = null,
-  killSwitchPath = resolveKillSwitchPath(),
-  devLockPath = resolveDevLockPath(),
-} = {}) {
-  const blockers = [];
-  const killSwitchActive = await fileExists(killSwitchPath);
-  const devLockActive = execute && await fileExists(devLockPath);
-  if (killSwitchActive) blockers.push("kill_switch_active");
-  if (devLockActive) blockers.push("dev_lock_active");
-  const readyForLiveBroadcast = (strategyTickStatus?.strategies || []).some((row) => row?.layerStatus?.runtimeExecutable === true || row?.policyReadiness?.policyOk === true);
-  if (execute && readyForLiveBroadcast === false) blockers.push("readiness_guard_blocked");
-  return { ok: blockers.length === 0, blockers, readyForLiveBroadcast, killSwitchActive, devLockActive };
 }
 
 function blockerStrategyIds(blockerFunnel = {}) {
@@ -211,7 +181,7 @@ export async function runCapitalRoutingPlanCli(
     strategies = null,
     snapshots = null,
     treasurySnapshot = null,
-    readGlobalGuards = defaultReadGlobalGuards,
+    readGlobalGuards = readLiveBroadcastGlobalGuards,
     enqueueJob = defaultEnqueueJob,
     now = new Date().toISOString(),
   } = {},
