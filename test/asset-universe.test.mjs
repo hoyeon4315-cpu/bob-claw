@@ -55,7 +55,7 @@ test("asset universe derives token targets from receipts, signer intents, inboun
 
   assert.equal(universe.status, "needs_review");
   assert.equal(universe.targets.some((target) => target.chain === "base" && target.symbol === "USDC" && target.registered), true);
-  assert.equal(universe.targets.some((target) => target.chain === "base" && target.token === "0x0000000f2eb9f69274678c76222b35eec7588a65" && target.trackingStatus === "protocol_reader_covered"), true);
+  assert.equal(universe.targets.some((target) => target.chain === "base" && target.token === "0x0000000f2eb9f69274678c76222b35eec7588a65" && target.coveredByFreshProtocolReader), true);
   assert.equal(universe.unknownTargets.some((target) => target.token === "0x1234567890123456789012345678901234567890"), true);
   assert.equal(assetUniverseTokenTargets(universe).some((target) => target.token === "0x1234567890123456789012345678901234567890"), true);
 });
