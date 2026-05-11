@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
-import { buildPendleDirectCanaryFeed } from "../strategy/pendle-direct-canary-source.mjs";
+import { buildPendleDirectCanaryFeed, buildPendleDirectCanaryFeedOnChain } from "../strategy/pendle-direct-canary-source.mjs";
 
 const PENDLE_SNAPSHOT_CHAIN_IDS = [1, 8453, 56, 10, 130, 146];
 
@@ -29,8 +29,10 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
+    onChain: flags.has("--on-chain"),
     limit: entries.limit ? Number(entries.limit) : null,
     minTvlOverride: entries["min-tvl"] ? Number(entries["min-tvl"]) : null,
+    notional: entries.notional ? Number(entries.notional) : null,
   };
 }
 
@@ -56,11 +58,18 @@ async function main() {
     ? Object.fromEntries(Object.keys(DEFAULT_MIN_TVL_BY_FAMILY).map((k) => [k, args.minTvlOverride]))
     : DEFAULT_MIN_TVL_BY_FAMILY;
 
-  const candidates = buildPendleDirectCanaryFeed({
-    snapshotsByChainId,
-    now: Date.now(),
-    minTvlByFamily,
-  });
+  const candidates = args.onChain
+    ? await buildPendleDirectCanaryFeedOnChain({
+        snapshotsByChainId,
+        now: Date.now(),
+        minTvlByFamily,
+        notionalUsd: args.notional ?? undefined,
+      })
+    : buildPendleDirectCanaryFeed({
+        snapshotsByChainId,
+        now: Date.now(),
+        minTvlByFamily,
+      });
   const limited = args.limit ? candidates.slice(0, args.limit) : candidates;
 
   const report = {

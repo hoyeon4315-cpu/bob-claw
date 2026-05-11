@@ -1,4 +1,5 @@
 import { resolvePendleMerklBinding, findPendleMarket, buildPendleBindingFromMarket } from "./pendle-merkl-binding-join.mjs";
+import { buildPendleFairValueQuote, buildPendleOnChainExitQuote } from "../research/pendle-yt-on-chain-quote.mjs";
 
 const ASSET_FAMILY_RULES = [
   { test: /BTC$/i, family: "btc_fixed_yield" },
@@ -30,9 +31,19 @@ const EXIT_QUOTE_DEFAULT_NOTIONAL_USD = 10;
 
 export function buildSyntheticPendleExitQuote(market, { notionalUsd = EXIT_QUOTE_DEFAULT_NOTIONAL_USD } = {}) {
   const tvl = market?.details?.totalTvl ?? null;
+  const impliedApy = market?.details?.impliedApy ?? null;
+  const expiryMs = market?.expiry ? new Date(market.expiry).getTime() : null;
+  // Prefer Pendle fair-value model (uses impliedApy + maturity) over raw TVL proxy.
+  if (Number.isFinite(impliedApy) && impliedApy > 0 && Number.isFinite(expiryMs)) {
+    const fv = buildPendleFairValueQuote({
+      impliedApyDecimal: impliedApy,
+      expiryMs,
+      marketTvlUsd: tvl,
+      notionalUsd,
+    });
+    if (fv && !fv.error) return fv;
+  }
   if (!Number.isFinite(tvl) || tvl < EXIT_QUOTE_TVL_MIN_USD) return null;
-  // Synthetic proxy: at TVL≥$100k a $10 exit is essentially zero price impact.
-  // Slippage bps scales with notional/TVL ratio (basis-point linear approximation).
   const slippageBps = Math.max(1, Math.round((notionalUsd / tvl) * 10_000));
   return {
     source: "tvl_proxy",
@@ -43,6 +54,35 @@ export function buildSyntheticPendleExitQuote(market, { notionalUsd = EXIT_QUOTE
     notionalUsd,
     note: "Synthetic exit-quote from Pendle market TVL — signer must verify on-chain depth before broadcast",
   };
+}
+
+export async function buildPendleDirectCanaryCandidateOnChain(market, { chainId, chain, now = Date.now(), notionalUsd = EXIT_QUOTE_DEFAULT_NOTIONAL_USD } = {}) {
+  const candidate = buildPendleDirectCanaryCandidate(market, { chainId, now });
+  if (!candidate) return null;
+  const expiryMs = market?.expiry ? new Date(market.expiry).getTime() : null;
+  const impliedApy = market?.details?.impliedApy ?? null;
+  try {
+    const onChainQuote = await buildPendleOnChainExitQuote({
+      chain: chain || candidate.chain,
+      marketAddress: market.address,
+      impliedApyDecimal: impliedApy,
+      expiryMs,
+      marketTvlUsd: market?.details?.totalTvl ?? null,
+      notionalUsd,
+      now,
+    });
+    if (onChainQuote && !onChainQuote.error) {
+      candidate.exitQuote = onChainQuote;
+      candidate.protocolBinding = {
+        ...candidate.protocolBinding,
+        exitQuote: onChainQuote,
+        ytExitQuote: onChainQuote,
+      };
+    }
+  } catch {
+    // keep synthetic fallback already attached in buildPendleDirectCanaryCandidate
+  }
+  return candidate;
 }
 
 export function buildPendleDirectCanaryCandidate(market, { chainId, now = Date.now() } = {}) {
@@ -73,6 +113,32 @@ export function buildPendleDirectCanaryCandidate(market, { chainId, now = Date.n
     protocolBinding: enrichedBinding,
     exitQuote,
   };
+}
+
+export async function buildPendleDirectCanaryFeedOnChain({ snapshotsByChainId = {}, now = Date.now(), minTvlByFamily = null, notionalUsd } = {}) {
+  const tasks = [];
+  for (const [chainIdKey, snapshot] of Object.entries(snapshotsByChainId)) {
+    if (!snapshot || !Array.isArray(snapshot.markets)) continue;
+    const chainId = Number(chainIdKey);
+    const chain = chainName(chainId);
+    for (const market of snapshot.markets) {
+      tasks.push(
+        buildPendleDirectCanaryCandidateOnChain(market, { chainId, chain, now, notionalUsd })
+          .catch(() => null),
+      );
+    }
+  }
+  const candidates = (await Promise.all(tasks)).filter((c) => c != null);
+  if (minTvlByFamily) {
+    for (let i = candidates.length - 1; i >= 0; i -= 1) {
+      const floor = minTvlByFamily[candidates[i].family];
+      if (Number.isFinite(floor) && candidates[i].tvlUsd != null && candidates[i].tvlUsd < floor) {
+        candidates.splice(i, 1);
+      }
+    }
+  }
+  candidates.sort((a, b) => (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0));
+  return candidates;
 }
 
 export function buildPendleDirectCanaryFeed({ snapshotsByChainId = {}, now = Date.now(), minTvlByFamily = null } = {}) {
