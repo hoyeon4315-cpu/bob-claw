@@ -25,6 +25,26 @@ function maturityHours(expiryIso, now) {
   return (t - now) / 3_600_000;
 }
 
+const EXIT_QUOTE_TVL_MIN_USD = 100_000;
+const EXIT_QUOTE_DEFAULT_NOTIONAL_USD = 10;
+
+export function buildSyntheticPendleExitQuote(market, { notionalUsd = EXIT_QUOTE_DEFAULT_NOTIONAL_USD } = {}) {
+  const tvl = market?.details?.totalTvl ?? null;
+  if (!Number.isFinite(tvl) || tvl < EXIT_QUOTE_TVL_MIN_USD) return null;
+  // Synthetic proxy: at TVL≥$100k a $10 exit is essentially zero price impact.
+  // Slippage bps scales with notional/TVL ratio (basis-point linear approximation).
+  const slippageBps = Math.max(1, Math.round((notionalUsd / tvl) * 10_000));
+  return {
+    source: "tvl_proxy",
+    outputUsd: notionalUsd,
+    depthUsd: Math.min(tvl * 0.01, notionalUsd * 1000),
+    slippageBps,
+    costUsd: notionalUsd * (slippageBps / 10_000),
+    notionalUsd,
+    note: "Synthetic exit-quote from Pendle market TVL — signer must verify on-chain depth before broadcast",
+  };
+}
+
 export function buildPendleDirectCanaryCandidate(market, { chainId, now = Date.now() } = {}) {
   if (!market || typeof market !== "object") return null;
   const binding = buildPendleBindingFromMarket(market, { now });
@@ -33,6 +53,8 @@ export function buildPendleDirectCanaryCandidate(market, { chainId, now = Date.n
   const tvl = market?.details?.totalTvl ?? null;
   const impliedApy = market?.details?.impliedApy ?? null;
   const matHours = maturityHours(market.expiry, now);
+  const exitQuote = buildSyntheticPendleExitQuote(market);
+  const enrichedBinding = exitQuote ? { ...binding, exitQuote, ytExitQuote: exitQuote } : binding;
   return {
     source: "pendle_markets_api_direct",
     opportunityId: `pendle-direct:${chainId}:${(market.address || "").toLowerCase()}`,
@@ -48,7 +70,8 @@ export function buildPendleDirectCanaryCandidate(market, { chainId, now = Date.n
     aprPct: impliedApy != null ? impliedApy * 100 : null,
     maturity: binding.maturity,
     maturityHours: matHours,
-    protocolBinding: binding,
+    protocolBinding: enrichedBinding,
+    exitQuote,
   };
 }
 
