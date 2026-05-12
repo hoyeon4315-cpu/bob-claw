@@ -128,6 +128,14 @@ function runChecks(files) {
     return namingStatus;
   }
 
+  const complexityStatus = runCommand(process.execPath, [
+    "scripts/validate-cyclomatic-complexity.mjs",
+    ...plan.includedFiles,
+  ]);
+  if (complexityStatus !== 0) {
+    return complexityStatus;
+  }
+
   if (plan.nodeTestFiles.length > 0) {
     const status = runCommand(process.execPath, ["--test", ...plan.nodeTestFiles]);
     if (status !== 0) {
