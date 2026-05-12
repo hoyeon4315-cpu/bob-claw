@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { REPO_ROOT, repoPath } from "./helpers/repo-root.mjs";
 
 test("set destination economics inputs writes numeric fields into overrides", async () => {
   const { readFile, mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
@@ -35,13 +36,13 @@ test("set destination economics inputs writes numeric fields into overrides", as
   await execFileAsync(
     "node",
     [
-      "/Users/love/BOB Claw/src/cli/set-destination-economics-inputs.mjs",
+      repoPath("src/cli/set-destination-economics-inputs.mjs"),
       "--template-id=base:stablecoin_lending_carry",
       '--set-json={"grossReturnBps":120,"depositFeeBps":10,"withdrawFeeBps":10,"unwindSlippageBps":20}',
       "--write",
     ],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env: {
         ...process.env,
         BOB_CLAW_DATA_DIR: dataDir,
