@@ -335,7 +335,8 @@
     "audit:trailing-30d": "node src/cli/audit-trailing-30d.mjs --json",
     "lint": "npm run lint:readiness",
     "lint:fix": "npm run lint:readiness -- --fix",
-    "lint:readiness": "eslint src/config/env.mjs src/estimator/load-canary-state.mjs src/runtime/executor-runtime-readiness.mjs src/status/current-dashboard-context.mjs src/status/all-chain-autopilot-slice.mjs src/status/dashboard-status.mjs src/cli/check-executor-runtime.mjs src/cli/check-full-automation-readiness.mjs test/load-canary-state.test.mjs test/executor-runtime-readiness.test.mjs test/all-chain-autopilot-cli.test.mjs test/all-chain-autopilot-idle-dispatch.test.mjs test/all-chain-autopilot.test.mjs test/dashboard-status.test.mjs test/dashboard-status-write.test.mjs --max-warnings=0"
+    "lint:readiness": "eslint src/config/env.mjs src/estimator/load-canary-state.mjs src/runtime/executor-runtime-readiness.mjs src/status/current-dashboard-context.mjs src/status/all-chain-autopilot-slice.mjs src/status/dashboard-status.mjs src/cli/check-executor-runtime.mjs src/cli/check-full-automation-readiness.mjs test/load-canary-state.test.mjs test/executor-runtime-readiness.test.mjs test/all-chain-autopilot-cli.test.mjs test/all-chain-autopilot-idle-dispatch.test.mjs test/all-chain-autopilot.test.mjs test/dashboard-status.test.mjs test/dashboard-status-write.test.mjs --max-warnings=0",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "engines": {
     "node": ">=20"
@@ -350,6 +351,8 @@
     "esbuild": "^0.28.0",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.3.0",
-    "globals": "^17.6.0"
+    "globals": "^17.6.0",
+    "@types/node": "^25.7.0",
+    "typescript": "^6.0.3"
   }
 }
