@@ -123,6 +123,11 @@ function runChecks(files) {
     }
   }
 
+  const namingStatus = runCommand(process.execPath, ["scripts/validate-naming-conventions.mjs", ...plan.includedFiles]);
+  if (namingStatus !== 0) {
+    return namingStatus;
+  }
+
   if (plan.nodeTestFiles.length > 0) {
     const status = runCommand(process.execPath, ["--test", ...plan.nodeTestFiles]);
     if (status !== 0) {
