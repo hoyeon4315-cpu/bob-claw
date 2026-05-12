@@ -342,7 +342,8 @@
     "prepare": "husky",
     "validate:naming": "node scripts/validate-naming-conventions.mjs --check",
     "report:complexity": "node scripts/report-cyclomatic-complexity.mjs",
-    "validate:complexity": "node scripts/validate-cyclomatic-complexity.mjs --base origin/main"
+    "validate:complexity": "node scripts/validate-cyclomatic-complexity.mjs --base origin/main",
+    "check:large-files": "node scripts/check-large-files.mjs"
   },
   "engines": {
     "node": ">=20"
