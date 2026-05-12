@@ -20,6 +20,9 @@ state/
 !.claude/agents/*.md
 !.claude/agent-memory/
 !.claude/agent-memory/**/MEMORY.md
+!.claude/skills/
+!.claude/skills/*/
+!.claude/skills/*/SKILL.md
 !.claude/settings.json
 !.claude/launch.json
 .claude/settings.local.json
