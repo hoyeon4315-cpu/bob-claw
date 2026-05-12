@@ -17,6 +17,7 @@ This page is the documentation entry point. Keep `AGENTS.md` small enough to loa
 - `docs/codex-playbook.md` - coding-agent prompt discipline and repo-specific traps.
 - `docs/system-map.md` - current architecture and source/generated/audit boundaries.
 - `docs/harness-engineering.md` - testing, staging, cleanup, and dashboard harness rules.
+- `docs/reference/agent-automation-reference.generated.md` - generated command and source-area reference for agent sessions (`npm run docs:generate`).
 - `docs/operator-memory.md` - dated operator memory archive kept out of the always-loaded operating law.
 - `docs/merkl-protocol-bindings.md` - Merkl protocol binding registry and orchestrator details.
 - `docs/dashboard-context.md` - required reading before dashboard UI changes.
