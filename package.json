@@ -322,6 +322,7 @@
     "check:agents-freshness": "node scripts/check-agents-freshness.mjs",
     "report:promotion-pr-preview": "node src/cli/promotion-pr-preview.mjs",
     "report:policy-coverage": "node src/cli/report-policy-coverage.mjs",
+    "report:metrics-snapshot": "node src/cli/report-metrics-snapshot.mjs",
     "test": "node scripts/run-node-tests.mjs --scope=all",
     "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=65 --test-coverage-functions=80 --test-coverage-include=src/executor/policy/*.mjs --test-coverage-include=src/executor/payback/*.mjs --test-coverage-include=src/risk/auto-kill-triggers.mjs --test test/executor-policy-coverage.test.mjs test/executor-policy-index.test.mjs test/gateway-availability.test.mjs test/auto-kill-triggers.test.mjs test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs test/payback-quote-proof-matrix.test.mjs",
     "test:integration": "node scripts/run-node-tests.mjs --scope=integration",
