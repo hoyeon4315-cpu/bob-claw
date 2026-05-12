@@ -5,8 +5,10 @@ on:
     types: [opened, synchronize]
     paths:
       - ".github/workflows/auto-pr-validate.yml"
+      - ".github/workflows/deploy-dashboard-cloudflare.yml"
       - "package.json"
       - "package-lock.json"
+      - "docs/operations/dashboard-deploy-automation.md"
       - "docs/readiness/dead-code-baseline.json"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
