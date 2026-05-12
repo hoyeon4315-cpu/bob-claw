@@ -316,6 +316,7 @@
     "perf:test": "node scripts/track-node-test-performance.mjs --label=test --artifact-dir=artifacts/build-performance --script=test",
     "perf:dashboard:build": "node scripts/track-build-performance.mjs --label=dashboard-build --artifact-dir=artifacts/build-performance -- npm run dashboard:build",
     "perf:agent-readiness": "npm run perf:check:dead-code && npm run perf:check:tech-debt && npm run perf:check:duplicate-code && npm run perf:check:architecture && npm run perf:test && npm run perf:dashboard:build",
+    "check:skills-config": "node scripts/check-skills-config.mjs",
     "report:promotion-pr-preview": "node src/cli/promotion-pr-preview.mjs",
     "report:policy-coverage": "node src/cli/report-policy-coverage.mjs",
     "test": "node scripts/run-node-tests.mjs --scope=all",
