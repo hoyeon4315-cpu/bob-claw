@@ -344,7 +344,9 @@
     "report:complexity": "node scripts/report-cyclomatic-complexity.mjs",
     "validate:complexity": "node scripts/validate-cyclomatic-complexity.mjs --base origin/main",
     "check:large-files": "node scripts/check-large-files.mjs",
-    "check:dead-code": "node scripts/check-dead-code.mjs"
+    "check:dead-code": "node scripts/check-dead-code.mjs",
+    "check:duplicate-code": "node scripts/check-duplicate-code.mjs",
+    "report:duplicate-code": "node scripts/check-duplicate-code.mjs --report-only"
   },
   "engines": {
     "node": ">=20"
@@ -364,6 +366,7 @@
     "typescript": "^6.0.3",
     "prettier": "^3.8.3",
     "knip": "^6.12.2",
+    "jscpd": "^4.1.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.4"
   },
