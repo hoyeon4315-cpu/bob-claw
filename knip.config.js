@@ -4,14 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = new URL(".", import.meta.url);
 const ROOT_PATH = fileURLToPath(ROOT);
-const PACKAGE_JSON = JSON.parse(
-  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
-);
+const PACKAGE_JSON = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
 function collectCommandEntries(command) {
-  return [
-    ...command.matchAll(/(?:node|bash)\s+([^\s&|;]+(?:\.(?:cjs|js|mjs|sh)))/g),
-  ].map(([, file]) => file);
+  return [...command.matchAll(/(?:node|bash)\s+([^\s&|;]+(?:\.(?:cjs|js|mjs|sh)))/g)].map(([, file]) => file);
 }
 
 function walkFiles(dirPath, predicate, files = []) {
@@ -38,17 +34,14 @@ function collectPathReferencedEntries() {
       /\.(?:mjs|cjs|js|yml|yaml)$/.test(filePath),
     )) {
       const source = readFileSync(absolutePath, "utf8");
-      for (const match of source.matchAll(literalPathPattern))
-        entries.add(match[1]);
+      for (const match of source.matchAll(literalPathPattern)) entries.add(match[1]);
     }
   }
 
   return [...entries];
 }
 
-const scriptEntries = Object.values(PACKAGE_JSON.scripts ?? {}).flatMap(
-  collectCommandEntries,
-);
+const scriptEntries = Object.values(PACKAGE_JSON.scripts ?? {}).flatMap(collectCommandEntries);
 const referencedEntries = collectPathReferencedEntries();
 
 const operatorEntryFiles = [
@@ -65,23 +58,14 @@ const operatorEntryFiles = [
 ];
 
 const entry = [
-  ...new Set([
-    ...scriptEntries,
-    ...referencedEntries,
-    ...operatorEntryFiles,
-    "test/**/*.test.mjs",
-  ]),
+  ...new Set([...scriptEntries, ...referencedEntries, ...operatorEntryFiles, "test/**/*.test.mjs"]),
 ].sort();
 
 export default {
   // Fail fast when Knip thinks config is incomplete instead of papering over false positives.
   treatConfigHintsAsErrors: true,
   entry,
-  project: [
-    "src/cli/**/*.{mjs,sh}",
-    "research/**/*.{js,mjs,cjs}",
-    "dashboard/public/**/*.jsx",
-  ],
+  project: ["src/cli/**/*.{mjs,sh}", "research/**/*.{js,mjs,cjs}", "dashboard/public/**/*.jsx"],
   ignoreFiles: [
     // Generated dashboard bundles and local preview trees are operational artifacts, not source inputs.
     ".claude/**",

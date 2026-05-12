@@ -1,21 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  compareIssueSets,
-  normalizeKnipFileIssues,
-  readBaselineIssues,
-} from "../scripts/check-dead-code.mjs";
+import { compareIssueSets, normalizeKnipFileIssues, readBaselineIssues } from "../scripts/check-dead-code.mjs";
 
 test("normalizeKnipFileIssues returns sorted unique file entries", () => {
   const issues = normalizeKnipFileIssues({
-    issues: [
-      { file: "src/cli/b.mjs" },
-      { file: "src/cli/a.mjs" },
-      { file: "src/cli/b.mjs" },
-      { file: "" },
-      {},
-    ],
+    issues: [{ file: "src/cli/b.mjs" }, { file: "src/cli/a.mjs" }, { file: "src/cli/b.mjs" }, { file: "" }, {}],
   });
 
   assert.deepEqual(issues, ["src/cli/a.mjs", "src/cli/b.mjs"]);
@@ -24,11 +14,7 @@ test("normalizeKnipFileIssues returns sorted unique file entries", () => {
 test("readBaselineIssues returns sorted unique baseline paths", () => {
   const issues = readBaselineIssues(
     JSON.stringify({
-      issues: [
-        { path: "src/cli/c.mjs" },
-        { path: "src/cli/a.mjs" },
-        { path: "src/cli/c.mjs" },
-      ],
+      issues: [{ path: "src/cli/c.mjs" }, { path: "src/cli/a.mjs" }, { path: "src/cli/c.mjs" }],
     }),
   );
 
