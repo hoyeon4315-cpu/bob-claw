@@ -8,6 +8,7 @@ dashboard/public/dashboard-status.json
 dashboard/public/money-loop-status.json
 dist/
 coverage/
+artifacts/build-performance/
 *.log
 logs/
 state/
