@@ -7,6 +7,8 @@ on:
       - ".github/workflows/auto-pr-validate.yml"
       - "package.json"
       - "package-lock.json"
+      - "docs/readiness/dead-code-baseline.json"
+      - "knip.config.js"
       - "src/config/**"
       - "src/strategy/**"
       - "src/risk/**"
@@ -28,6 +30,7 @@ jobs:
         with:
           node-version: "20"
       - run: npm ci
+      - run: npm run check:dead-code
       - run: npm run test
       - name: dryrun opportunity candidate
         run: npm run dryrun:opportunity-candidate -- --id=placeholder || true

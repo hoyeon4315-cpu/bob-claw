@@ -343,7 +343,8 @@
     "validate:naming": "node scripts/validate-naming-conventions.mjs --check",
     "report:complexity": "node scripts/report-cyclomatic-complexity.mjs",
     "validate:complexity": "node scripts/validate-cyclomatic-complexity.mjs --base origin/main",
-    "check:large-files": "node scripts/check-large-files.mjs"
+    "check:large-files": "node scripts/check-large-files.mjs",
+    "check:dead-code": "node scripts/check-dead-code.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -362,6 +363,7 @@
     "@types/node": "^25.7.0",
     "typescript": "^6.0.3",
     "prettier": "^3.8.3",
+    "knip": "^6.12.2",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.4"
   },

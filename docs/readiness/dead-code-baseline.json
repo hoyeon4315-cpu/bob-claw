@@ -1,0 +1,98 @@
+{
+  "description": "Audited unused-file candidates kept visible until a dedicated live-path review can safely remove or rewire them.",
+  "updatedAt": "2026-05-12",
+  "issues": [
+    {
+      "path": "research/regimeClassifier.mjs",
+      "reason": "Readiness-only fix keeps the current research backlog visible instead of deleting or blanket-ignoring it."
+    },
+    {
+      "path": "src/cli/add-destination-economics-observation.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/all-chain-autopilot.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/build-emergency-unwind-intent.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/build-merkl-active-snapshot.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/build-portfolio.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/build-tiny-live-canary-intent.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/dry-run-pendle-yt.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/dry-run-policy-evaluation.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/fetch-gateway-round-trip-quote.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/fetch-moonwell-snapshot.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/find-extended-route.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/find-optimal-btc-route.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/fix-dashboard-launchd.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/manage-alpha-to-canary-launchd.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/manage-self-healing-watchdogs.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/measure-operating-capital.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/quote-route.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/report-chain-readiness-matrix.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/report-pendle-direct-canaries.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/run-self-healing-check.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/seed-mock-receipts.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    },
+    {
+      "path": "src/cli/sim-triangular-arb.mjs",
+      "reason": "Potential CLI backlog item retained for later live-path audit."
+    }
+  ]
+}
