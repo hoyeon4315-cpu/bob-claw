@@ -32,7 +32,7 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ["src/**/*.mjs", "test/**/*.mjs", "research/**/*.mjs", "*.mjs"],
+    files: ["src/**/*.mjs", "scripts/**/*.mjs", "test/**/*.mjs", "research/**/*.mjs", "*.mjs"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
