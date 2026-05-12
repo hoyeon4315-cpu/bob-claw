@@ -28,6 +28,7 @@ const EXCLUDED_PREFIXES = Object.freeze([
   "tmp/",
 ]);
 const EXCLUDED_DASHBOARD_PUBLIC_NAMES = new Set(["_headers", "index.html"]);
+const EXCLUDED_FILE_NAMES = new Set(["npm-shrinkwrap.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"]);
 const SOURCE_EXTENSIONS = new Set([
   ".cjs",
   ".css",
@@ -57,6 +58,12 @@ function isExcludedPath(filePath) {
     return true;
   }
   if (EXCLUDED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+    return true;
+  }
+  if (EXCLUDED_FILE_NAMES.has(basename(normalized))) {
+    return true;
+  }
+  if (/^docs\/readiness\/[^/]+-baseline\.json$/u.test(normalized)) {
     return true;
   }
   if (normalized.startsWith("dashboard/public/")) {
@@ -94,7 +101,9 @@ function runGitFilesCommand(args) {
     encoding: "buffer",
   });
   if (result.status !== 0) {
-    throw new Error(result.stderr?.toString("utf8") || result.stdout?.toString("utf8") || `git ${args.join(" ")} failed`);
+    throw new Error(
+      result.stderr?.toString("utf8") || result.stdout?.toString("utf8") || `git ${args.join(" ")} failed`,
+    );
   }
   return result.stdout
     .toString("utf8")

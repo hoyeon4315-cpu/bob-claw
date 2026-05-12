@@ -1,0 +1,27 @@
+{
+  "absolute": false,
+  "gitignore": true,
+  "maxLines": 5000,
+  "maxSize": "1mb",
+  "minLines": 12,
+  "minTokens": 100,
+  "mode": "mild",
+  "pattern": "**/*.{mjs,js,jsx}",
+  "ignore": [
+    "**/node_modules/**",
+    "**/.cloudflare/**",
+    "**/.playwright-cli/**",
+    "**/.wrangler/**",
+    "**/coverage/**",
+    "**/data/**",
+    "**/dist/**",
+    "**/logs/**",
+    "**/out/**",
+    "dashboard/public/*.js",
+    "dashboard/public/*.json",
+    "graphify-out/**",
+    "src/graphify-out/**"
+  ],
+  "reporters": ["json"],
+  "output": ".jscpd-report"
+}

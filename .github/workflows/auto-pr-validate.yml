@@ -8,6 +8,9 @@ on:
       - "package.json"
       - "package-lock.json"
       - "docs/readiness/dead-code-baseline.json"
+      - "docs/readiness/duplicate-code-baseline.json"
+      - "docs/readiness/duplicate-code.md"
+      - ".jscpd.json"
       - "knip.config.js"
       - "src/config/**"
       - "src/strategy/**"
@@ -31,6 +34,7 @@ jobs:
           node-version: "20"
       - run: npm ci
       - run: npm run check:dead-code
+      - run: npm run check:duplicate-code
       - run: npm run test
       - name: dryrun opportunity candidate
         run: npm run dryrun:opportunity-candidate -- --id=placeholder || true
