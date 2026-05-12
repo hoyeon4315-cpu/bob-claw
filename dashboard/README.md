@@ -91,4 +91,8 @@ This deploy flow uses a repo-local `.cloudflare/` state directory and does not d
 
 ## CI
 
-No Cloudflare Pages auto-deploy workflow is present in this checkout. Run the deploy command manually.
+Release automation is configured in `.github/workflows/release-automation.yml`.
+Pull requests and pushes to `main` run a dry-run only. Cloudflare Pages deploys
+only from `workflow_dispatch` on `main` when `deploy_dashboard=true` and the
+`cloudflare-pages-production` environment allows the job. See
+`../docs/operations/release-automation.md`.
