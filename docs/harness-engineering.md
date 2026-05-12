@@ -25,20 +25,21 @@ Then read:
 
 1. `AGENTS.md`
 2. `docs/system-map.md`
-3. The nearest source module and its tests
+3. `docs/naming-conventions.md`
+4. The nearest source module and its tests
 
 ## Source Vs Generated
 
-| Treat As Source | Treat As Generated / Operational |
-| --- | --- |
-| `src/**/*.mjs` | `data/**` |
-| `test/**/*.test.mjs` | `logs/**` |
-| `docs/system-map.md` | `docs/current-status.md` |
-| `docs/harness-engineering.md` | `docs/session-handoff-*.md` |
-| `dashboard/public/*.jsx` | `dashboard/public/*.js` |
-| `dashboard/public/index.html` | `dashboard/public/*.json` |
-| `dashboard/public/_headers` | `.playwright-cli/**`, `.cloudflare/**`, `.wrangler/**` |
-| `docs/protocol-readers-unification.md` | `data/codex/**`, `data/health/**` |
+| Treat As Source                        | Treat As Generated / Operational                       |
+| -------------------------------------- | ------------------------------------------------------ |
+| `src/**/*.mjs`                         | `data/**`                                              |
+| `test/**/*.test.mjs`                   | `logs/**`                                              |
+| `docs/system-map.md`                   | `docs/current-status.md`                               |
+| `docs/harness-engineering.md`          | `docs/session-handoff-*.md`                            |
+| `dashboard/public/*.jsx`               | `dashboard/public/*.js`                                |
+| `dashboard/public/index.html`          | `dashboard/public/*.json`                              |
+| `dashboard/public/_headers`            | `.playwright-cli/**`, `.cloudflare/**`, `.wrangler/**` |
+| `docs/protocol-readers-unification.md` | `data/codex/**`, `data/health/**`                      |
 
 Generated public dashboard JSON can be useful locally but should not be mixed
 into source commits by accident. `src/session/git-ops-automation.mjs` excludes
@@ -106,6 +107,9 @@ the public artifact set.
 ## Strategy And Config Checklist
 
 - Import official Gateway chains from `src/config/gateway-destinations.mjs`.
+- Follow `docs/naming-conventions.md` for new file names and exported helper
+  names; preserve runtime ids, env vars, CLI flags, and persisted JSON fields
+  as compatibility surfaces instead of renaming them for style.
 - Normalize chain ids through `canonicalGatewayChain()` before scoring,
   allocating, or aggregating receipt evidence. `bnb`/`BNB Chain` must land on
   `bsc`; `avax` on `avalanche`; `berachain` on `bera`.
@@ -231,20 +235,20 @@ Use evidence-complete confidence before merging:
 
 ## Verification Matrix
 
-| Change Type | Minimum Verification |
-| --- | --- |
-| Docs only | `npm run graph:focus -- status` |
-| Git hygiene | `node --test test/repo-hygiene.test.mjs test/git-ops-automation.test.mjs` |
-| Gateway chain policy | `node --test test/diversification.test.mjs test/diversification-kpi.test.mjs test/all-chain-autopilot.test.mjs test/gateway-update-autopilot.test.mjs` |
-| Dev route remediation | `node --test test/route-remediation-autopilot.test.mjs` |
-| Codex LLM/dev harness | `node --test test/codex-llm.test.mjs test/phase35-cli.test.mjs test/auto-research-pipeline.test.mjs` |
+| Change Type                     | Minimum Verification                                                                                                                                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Docs only                       | `npm run graph:focus -- status`                                                                                                                                                                                                                   |
+| Git hygiene                     | `node --test test/repo-hygiene.test.mjs test/git-ops-automation.test.mjs`                                                                                                                                                                         |
+| Gateway chain policy            | `node --test test/diversification.test.mjs test/diversification-kpi.test.mjs test/all-chain-autopilot.test.mjs test/gateway-update-autopilot.test.mjs`                                                                                            |
+| Dev route remediation           | `node --test test/route-remediation-autopilot.test.mjs`                                                                                                                                                                                           |
+| Codex LLM/dev harness           | `node --test test/codex-llm.test.mjs test/phase35-cli.test.mjs test/auto-research-pipeline.test.mjs`                                                                                                                                              |
 | Protocol readers/position marks | `node --test test/protocol-reader-spec.test.mjs test/protocol-reader-registry.test.mjs test/protocol-readers.test.mjs test/protocol-position-marker.test.mjs test/protocol-position-marks-slice.test.mjs test/report-portfolio-coverage.test.mjs` |
-| Position health monitor | `node --test test/position-action-engine.test.mjs test/phase4-cli.test.mjs` |
-| Signer/policy | `node --test test/gateway-availability.test.mjs test/executor-policy-index.test.mjs` |
-| Watchdog/auto-kill | `node --test test/executor-watchdog-runner.test.mjs test/auto-kill-triggers.test.mjs test/auto-kill-triggers-extended.test.mjs` |
-| Payback | `node --test test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs` |
-| Dashboard UI/status | `node --test test/dashboard-status.test.mjs test/dashboard-app.test.mjs test/dashboard-live-slices.test.mjs test/dashboard-cache-headers.test.mjs && npm run dashboard:build` |
-| Any source refactor | `npm run check && npm test` |
+| Position health monitor         | `node --test test/position-action-engine.test.mjs test/phase4-cli.test.mjs`                                                                                                                                                                       |
+| Signer/policy                   | `node --test test/gateway-availability.test.mjs test/executor-policy-index.test.mjs`                                                                                                                                                              |
+| Watchdog/auto-kill              | `node --test test/executor-watchdog-runner.test.mjs test/auto-kill-triggers.test.mjs test/auto-kill-triggers-extended.test.mjs`                                                                                                                   |
+| Payback                         | `node --test test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs`                                                                                                                                   |
+| Dashboard UI/status             | `node --test test/dashboard-status.test.mjs test/dashboard-app.test.mjs test/dashboard-live-slices.test.mjs test/dashboard-cache-headers.test.mjs && npm run dashboard:build`                                                                     |
+| Any source refactor             | `npm run check && npm test`                                                                                                                                                                                                                       |
 
 Do not claim completion until the verification output has been read and the
 exit code is known.
