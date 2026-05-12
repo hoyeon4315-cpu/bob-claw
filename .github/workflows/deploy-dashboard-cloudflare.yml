@@ -1,0 +1,101 @@
+name: deploy-dashboard-cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      live_origin:
+        description: "Optional read-only live dashboard origin for /api/live-status and /api/live-events"
+        required: false
+        type: string
+  schedule:
+    # Twice weekly UTC. This deploys only the read-only Cloudflare Pages dashboard.
+    - cron: "17 3 * * 1,4"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-dashboard-cloudflare.yml"
+      - "dashboard/public/**"
+      - "package-lock.json"
+      - "package.json"
+      - "src/cli/build-dashboard-public.mjs"
+      - "src/cli/deploy-dashboard-cloudflare.mjs"
+      - "src/cli/status-dashboard.mjs"
+      - "src/cli/verify-dashboard-publish.mjs"
+      - "src/status/**"
+
+concurrency:
+  group: dashboard-cloudflare-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-dashboard:
+    name: Deploy read-only dashboard
+    runs-on: ubuntu-latest
+    environment:
+      name: dashboard-production
+      url: https://${{ vars.BOB_CLAW_CF_PAGES_PROJECT || 'bob-claw-dashboard' }}.pages.dev
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BOB_CLAW_CF_PAGES_PROJECT: ${{ vars.BOB_CLAW_CF_PAGES_PROJECT || 'bob-claw-dashboard' }}
+      BOB_CLAW_CF_PRODUCTION_BRANCH: ${{ vars.BOB_CLAW_CF_PRODUCTION_BRANCH || 'main' }}
+      DASHBOARD_LIVE_ORIGIN: ${{ inputs.live_origin || vars.BOB_CLAW_DASHBOARD_LIVE_ORIGIN || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      - name: Validate dashboard deploy configuration
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret is required for Cloudflare Pages deploys."
+            exit 1
+          fi
+          if [ -z "${BOB_CLAW_CF_PAGES_PROJECT:-}" ]; then
+            echo "::error::BOB_CLAW_CF_PAGES_PROJECT variable must resolve to a Pages project name."
+            exit 1
+          fi
+          echo "Cloudflare Pages project: ${BOB_CLAW_CF_PAGES_PROJECT}"
+          echo "Cloudflare Pages production branch: ${BOB_CLAW_CF_PRODUCTION_BRANCH}"
+
+      - name: Build dashboard shell
+        run: npm run dashboard:build
+
+      - name: Refresh public dashboard truth slices
+        run: npm run status:dashboard -- --commit-public
+
+      - name: Run report-only strategy tick
+        run: node src/cli/run-strategy-tick.mjs --all-strategies --json --quiet
+
+      - name: Refresh strategy tick publish slice
+        run: npm run report:strategy-tick-slice -- --json --quiet --commit-public
+
+      - name: Verify dashboard publish payload
+        run: npm run verify:dashboard-publish
+
+      - name: Deploy to Cloudflare Pages
+        run: |
+          args=(--skip-status)
+          if [ -n "${DASHBOARD_LIVE_ORIGIN:-}" ]; then
+            args+=(--live-origin="${DASHBOARD_LIVE_ORIGIN}")
+          else
+            args+=(--disable-live-origin)
+          fi
+          npm run deploy:dashboard:cloudflare -- "${args[@]}"
+
+      - name: Verify deployed dashboard endpoint
+        run: |
+          dashboard_url="https://${BOB_CLAW_CF_PAGES_PROJECT}.pages.dev/dashboard-status.json"
+          curl --fail --silent --show-error --location "$dashboard_url" --output /tmp/dashboard-status.json
+          node -e 'const fs=require("fs"); const payload=JSON.parse(fs.readFileSync("/tmp/dashboard-status.json","utf8")); if (!payload.schemaVersion || !payload.generatedAt) { throw new Error("deployed dashboard-status.json is missing schemaVersion or generatedAt"); } console.log(JSON.stringify({schemaVersion: payload.schemaVersion, generatedAt: payload.generatedAt}, null, 2));'
