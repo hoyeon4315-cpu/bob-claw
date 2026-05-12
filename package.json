@@ -316,6 +316,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:onramp": "node src/cli/check-gateway-onramp.mjs",
+    "check:dead-code": "knip --no-progress --include files --reporter compact --max-issues 24",
     "check:large-files": "node scripts/check-large-files.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "analyze:overfit": "node src/cli/analyze-spread-overfit.mjs --capital=1000 --min-profit=0.30",
@@ -359,6 +360,7 @@
     "esbuild": "^0.28.0",
     "eslint": "^10.3.0",
     "husky": "^9.1.7",
+    "knip": "^6.12.2",
     "lint-staged": "^17.0.4",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3"

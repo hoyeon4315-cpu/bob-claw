@@ -45,6 +45,12 @@ Generated public dashboard JSON can be useful locally but should not be mixed
 into source commits by accident. `src/session/git-ops-automation.mjs` excludes
 the known generated dashboard JSON slices by default.
 
+Dead-code detection is entrypoint-graph based: run `npm run check:dead-code`
+to execute `knip` against package-script entries, launchd/string-referenced
+CLIs, dynamic research candidate modules, and dashboard source entry files.
+The current `--max-issues 24` ceiling preserves visibility for the audited
+historical backlog while still failing if new unused-file findings are added.
+
 ## Safe Staging Rules
 
 - Stage exact files: `git add -- path1 path2 ...`
