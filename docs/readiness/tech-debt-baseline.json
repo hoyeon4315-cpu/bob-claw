@@ -1,0 +1,162 @@
+{
+  "description": "Audited technical-debt markers kept visible until a dedicated review updates the baseline.",
+  "updatedAt": "2026-05-12",
+  "scope": ["src", "docs", "test"],
+  "rules": {
+    "trackedMarkerFormat": ["TODO(ISSUE-123): reason", "TODO(owner): reason"],
+    "excludedScopes": [
+      "generated/runtime outputs",
+      "dashboard public JSON",
+      "logs",
+      "data snapshots",
+      "build artifacts",
+      "coverage",
+      "dependency/cache folders"
+    ]
+  },
+  "issues": [
+    {
+      "fingerprint": "3365b5c4a226b0156df3ec71d6d3a2f99eb2b20c",
+      "path": "docs/codex-playbook.md",
+      "line": 256,
+      "column": 24,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "호연님 결정 필요, 값 없으면 throw */,",
+      "markerText": "TODO: 호연님 결정 필요, 값 없으면 throw */,",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "bc92046a3acd892c3dce43e26d38f5c997c6c718",
+      "path": "docs/codex-playbook.md",
+      "line": 257,
+      "column": 28,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "동상 */,",
+      "markerText": "TODO: 동상 */,",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "df912480783f538c93ca1487ca6314da8dc267be",
+      "path": "docs/codex-playbook.md",
+      "line": 265,
+      "column": 22,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "결정 필요 */,",
+      "markerText": "TODO: 결정 필요 */,",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "67e4f69972be2b6064851bfe94f59cc9bbdf6e4a",
+      "path": "src/cli/manage-live-automation-launchd.mjs",
+      "line": 19,
+      "column": 4,
+      "kind": "TODO",
+      "trackingTag": "blocker-resolver",
+      "reason": "include `npm run blocker:resolve:loop` in the live",
+      "markerText": "TODO(blocker-resolver): include `npm run blocker:resolve:loop` in the live",
+      "trackedFormat": true
+    },
+    {
+      "fingerprint": "e9e7bb61855e5f720d1070a51d22a9746c49c035",
+      "path": "src/cli/run-executor-watchdog.mjs",
+      "line": 8,
+      "column": 4,
+      "kind": "TODO",
+      "trackingTag": "blocker-resolver",
+      "reason": "monitor logs/blocker-resolver-audit.jsonl heartbeat",
+      "markerText": "TODO(blocker-resolver): monitor logs/blocker-resolver-audit.jsonl heartbeat",
+      "trackedFormat": true
+    },
+    {
+      "fingerprint": "777dabef591d81cb2033632f0d137a581df576af",
+      "path": "src/cli/run-strategy-tick.mjs",
+      "line": 1026,
+      "column": 12,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })",
+      "markerText": "TODO: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "9ad90781a51efbd0772eca5c9494d965c99c40f2",
+      "path": "src/cli/run-strategy-tick.mjs",
+      "line": 1072,
+      "column": 12,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })",
+      "markerText": "TODO: buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "407ae39a30a69f3027803d83f61dedb1c5a77391",
+      "path": "src/cli/run-strategy-tick.mjs",
+      "line": 1082,
+      "column": 12,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "buildBerachainIntent({ poolAddress: bendPool.address, ... })",
+      "markerText": "TODO: buildBerachainIntent({ poolAddress: bendPool.address, ... })",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "8c916199fc9a70bbff634af723f7923c3c8f04c3",
+      "path": "src/config/protocol-addresses.mjs",
+      "line": 50,
+      "column": 6,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "verify Pendle PT LBTC pool/router addresses",
+      "markerText": "TODO: verify Pendle PT LBTC pool/router addresses",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "3aaa4020cd73df1a76ab65c8b4fd3b98719ba830",
+      "path": "src/config/protocol-addresses.mjs",
+      "line": 65,
+      "column": 6,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "verify Aerodrome CLAMM factory/router/pool addresses",
+      "markerText": "TODO: verify Aerodrome CLAMM factory/router/pool addresses",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "0fbcca7d8f98806ce98012ef28a8aaf046354f50",
+      "path": "src/config/protocol-addresses.mjs",
+      "line": 84,
+      "column": 6,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "verify GMX V2 perp vault/router addresses on Avalanche",
+      "markerText": "TODO: verify GMX V2 perp vault/router addresses on Avalanche",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "110f84e3f3e7f0ab70236deb91cd6358c64eeb4c",
+      "path": "src/config/protocol-addresses.mjs",
+      "line": 97,
+      "column": 6,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "verify BendDAO/BEX addresses on Berachain",
+      "markerText": "TODO: verify BendDAO/BEX addresses on Berachain",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "fabf34d8f520f276eaa12d79d2baf85aad4a3952",
+      "path": "src/strategy/auto-gas-manager.mjs",
+      "line": 150,
+      "column": 57,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "real capital",
+      "markerText": "TODO: real capital",
+      "trackedFormat": false
+    }
+  ]
+}
