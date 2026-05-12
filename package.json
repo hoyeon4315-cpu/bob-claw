@@ -304,6 +304,8 @@
     "dashboard:serve:static": "npm run dashboard:build && python3 -m http.server 8787 --directory dashboard/public",
     "deploy:dashboard:cloudflare": "node src/cli/deploy-dashboard-cloudflare.mjs",
     "deploy:dashboard:public-live": "node src/cli/deploy-dashboard-public-live.mjs",
+    "release-notes:preview": "node scripts/generate-release-notes.mjs --stdout",
+    "release-notes:write": "node scripts/generate-release-notes.mjs --write-changelog CHANGELOG.md",
     "perf:check:dead-code": "node scripts/track-build-performance.mjs --label=check-dead-code --artifact-dir=artifacts/build-performance -- npm run check:dead-code",
     "perf:check:tech-debt": "node scripts/track-build-performance.mjs --label=check-tech-debt --artifact-dir=artifacts/build-performance -- npm run check:tech-debt",
     "perf:check:duplicate-code": "node scripts/track-build-performance.mjs --label=check-duplicate-code --artifact-dir=artifacts/build-performance -- npm run check:duplicate-code",
