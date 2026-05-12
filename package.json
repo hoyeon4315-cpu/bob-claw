@@ -357,6 +357,7 @@
     "check:tech-debt": "node scripts/check-tech-debt.mjs",
     "check:duplicate-code": "node scripts/check-duplicate-code.mjs",
     "check:feature-flags": "node --test test/feature-flags.test.mjs",
+    "check:unused-dependencies": "node scripts/check-unused-dependencies.mjs",
     "check:architecture": "depcruise src scripts test dashboard/public",
     "report:duplicate-code": "node scripts/check-duplicate-code.mjs --report-only"
   },

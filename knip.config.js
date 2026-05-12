@@ -7,7 +7,9 @@ const ROOT_PATH = fileURLToPath(ROOT);
 const PACKAGE_JSON = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
 function collectCommandEntries(command) {
-  return [...command.matchAll(/(?:node|bash)\s+([^\s&|;]+(?:\.(?:cjs|js|mjs|sh)))/g)].map(([, file]) => file);
+  return [...String(command || "").matchAll(/(?:node|bash)\s+([^\s&|;]+(?:\.(?:cjs|js|mjs|sh)))/g)].map(
+    ([, file]) => file,
+  );
 }
 
 function walkFiles(dirPath, predicate, files = []) {
@@ -74,5 +76,9 @@ export default {
     "deploy-verify.cjs",
     "knip.config.js",
     "preview/**",
+  ],
+  ignoreDependencies: [
+    // Used through node_modules/jscpd/bin/jscpd by scripts/check-duplicate-code.mjs.
+    "jscpd",
   ],
 };

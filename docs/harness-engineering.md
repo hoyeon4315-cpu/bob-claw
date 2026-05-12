@@ -59,6 +59,14 @@ markers. The audited backlog lives in
 public JSON, logs, data snapshots, build artifacts, coverage, and dependency
 or cache directories stay out of scope.
 
+Unused-dependency detection is entrypoint-based too: run
+`npm run check:unused-dependencies` to execute `knip` against package-script
+entrypoints, workflow/string-referenced CLIs, dashboard source, research
+modules, and test entrypoints. Generated/runtime outputs, dashboard public
+JSON/JS bundles, logs, data snapshots, build artifacts, coverage, dependency
+folders, caches, and local browser scratch files stay out of scope. See
+`docs/readiness/unused-dependencies.md` for the documented ignore list.
+
 ## Safe Staging Rules
 
 - Stage exact files: `git add -- path1 path2 ...`
