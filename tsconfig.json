@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/lib/file-write.mjs",
+    "src/lib/json-safe.mjs",
+    "src/lib/jsonl-read.mjs",
+    "src/lib/jsonl-store.mjs",
+    "src/lib/shell-quote.mjs",
+    "test/repo-hygiene.test.mjs"
+  ],
+  "exclude": [
+    "data/**",
+    "logs/**",
+    "dashboard/public/*.json",
+    "node_modules/**"
+  ]
+}

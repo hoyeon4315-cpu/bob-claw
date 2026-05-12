@@ -3,15 +3,29 @@ import { access, open } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
+/**
+ * @param {unknown} error
+ * @returns {error is NodeJS.ErrnoException}
+ */
+function hasErrorCode(error) {
+  return Boolean(error && typeof error === "object" && "code" in error);
+}
+
+/**
+ * @param {string} baseDir
+ * @param {string} name
+ * @returns {Promise<unknown[]>}
+ */
 export async function readJsonl(baseDir, name) {
   const path = join(baseDir, `${name}.jsonl`);
   try {
     await access(path);
   } catch (error) {
-    if (error.code === "ENOENT") return [];
+    if (hasErrorCode(error) && error.code === "ENOENT") return [];
     throw error;
   }
 
+  /** @type {unknown[]} */
   const records = [];
   const stream = createReadStream(path, { encoding: "utf8" });
   const reader = createInterface({ input: stream, crlfDelay: Infinity });
@@ -22,13 +36,19 @@ export async function readJsonl(baseDir, name) {
   return records;
 }
 
+/**
+ * @param {string} baseDir
+ * @param {string} name
+ * @param {{ chunkSize?: number }} [options]
+ * @returns {Promise<unknown | null>}
+ */
 export async function readLatestJsonlRecord(baseDir, name, { chunkSize = 64 * 1024 } = {}) {
   const path = join(baseDir, `${name}.jsonl`);
   let handle = null;
   try {
     handle = await open(path, "r");
   } catch (error) {
-    if (error.code === "ENOENT") return null;
+    if (hasErrorCode(error) && error.code === "ENOENT") return null;
     throw error;
   }
 
@@ -55,6 +75,12 @@ export async function readLatestJsonlRecord(baseDir, name, { chunkSize = 64 * 10
   }
 }
 
+/**
+ * @template {{ observedAt: string | number | Date }} T
+ * @param {T[]} items
+ * @param {(item: T) => string} keyFn
+ * @param {(item: T) => string | number | Date} [dateFn]
+ */
 export function latestBy(items, keyFn, dateFn = (item) => item.observedAt) {
   const latest = new Map();
   for (const item of items) {

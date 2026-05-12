@@ -9,6 +9,9 @@ const REQUIRED_SOURCE_HELPERS = Object.freeze([
   "src/lib/shell-quote.mjs",
 ]);
 
+/**
+ * @param {string} path
+ */
 function gitCheckIgnore(path) {
   return spawnSync("git", ["check-ignore", path], {
     cwd: process.cwd(),
@@ -16,6 +19,9 @@ function gitCheckIgnore(path) {
   });
 }
 
+/**
+ * @param {string} path
+ */
 function gitLsFiles(path) {
   return spawnSync("git", ["ls-files", "--error-unmatch", path], {
     cwd: process.cwd(),
@@ -39,6 +45,20 @@ test("required imported src/lib helpers exist and are not ignored", () => {
       `${helperPath} must be tracked; fresh clones cannot rely on local-only helper files`,
     );
   }
+});
+
+test("repository exposes strict TypeScript checking for JavaScript ESM source", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+  assert.equal(packageJson.scripts?.typecheck, "tsc --project tsconfig.json --noEmit");
+  assert.match(packageJson.devDependencies?.typescript || "", /^\^?\d+\.\d+\.\d+/u);
+
+  const tsconfig = JSON.parse(await readFile("tsconfig.json", "utf8"));
+  assert.equal(tsconfig.compilerOptions?.strict, true);
+  assert.equal(tsconfig.compilerOptions?.checkJs, true);
+  assert.equal(tsconfig.compilerOptions?.allowJs, true);
+  assert.equal(tsconfig.compilerOptions?.noEmit, true);
+  const includedPaths = /** @type {string[]} */ (tsconfig.include || []);
+  assert.ok(includedPaths.some((pattern) => pattern.startsWith("src/")), "type checker must cover real source files");
 });
 
 const LIVE_RAW_KEY_FORBIDDEN_FILES = Object.freeze([

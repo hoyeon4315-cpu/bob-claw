@@ -2,13 +2,26 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
+/**
+ * @param {unknown} error
+ * @returns {error is NodeJS.ErrnoException}
+ */
+function hasErrorCode(error) {
+  return Boolean(error && typeof error === "object" && "code" in error);
+}
+
+/**
+ * @param {string} path
+ * @param {string} contents
+ * @param {{ normalize?: (value: string | null) => string | null }} [options]
+ */
 export async function writeTextIfChanged(path, contents, options = {}) {
   const normalize = options.normalize || ((value) => value);
   let previous = null;
   try {
     previous = await readFile(path, "utf8");
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    if (!hasErrorCode(error) || error.code !== "ENOENT") throw error;
   }
 
   if (normalize(previous) === normalize(contents)) {
