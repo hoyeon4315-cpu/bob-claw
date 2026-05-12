@@ -1,0 +1,72 @@
+name: release-notes-preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/release-notes-preview.yml"
+      - "CHANGELOG.md"
+      - "docs/operations/release-notes-automation.md"
+      - "package-lock.json"
+      - "package.json"
+      - "scripts/generate-release-notes.mjs"
+      - "test/release-notes-generator.test.mjs"
+  workflow_dispatch:
+    inputs:
+      from_ref:
+        description: "Optional start ref for preview generation"
+        required: false
+        type: string
+      to_ref:
+        description: "Optional end ref for preview generation"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      - name: Generate release notes preview
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          INPUT_FROM_REF: ${{ inputs.from_ref || '' }}
+          INPUT_TO_REF: ${{ inputs.to_ref || '' }}
+        run: |
+          mkdir -p artifacts/release-notes
+          args=(--write-notes artifacts/release-notes/release-notes-preview.md)
+          if [ -n "${PR_BASE_SHA}" ] && [ -n "${PR_HEAD_SHA}" ]; then
+            args+=(--from "${PR_BASE_SHA}" --to "${PR_HEAD_SHA}" --title "PR Release Notes Preview")
+          else
+            if [ -n "${INPUT_FROM_REF}" ]; then
+              args+=(--from "${INPUT_FROM_REF}")
+            fi
+            if [ -n "${INPUT_TO_REF}" ]; then
+              args+=(--to "${INPUT_TO_REF}")
+            fi
+          fi
+          npm run release-notes:preview -- "${args[@]}"
+
+      - name: Publish workflow summary
+        run: cat artifacts/release-notes/release-notes-preview.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-preview
+          path: artifacts/release-notes/release-notes-preview.md
+          if-no-files-found: error
