@@ -42,6 +42,7 @@ jobs:
       - run: npm run perf:check:dead-code
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:duplicate-code
+      - run: npm run check:unused-dependencies
       - run: npm run perf:check:architecture
       - run: npm run perf:test
       - run: npm run perf:dashboard:build
