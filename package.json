@@ -317,6 +317,7 @@
     "format:check": "prettier --check .",
     "check:onramp": "node src/cli/check-gateway-onramp.mjs",
     "check:dead-code": "node scripts/check-dead-code.mjs",
+    "check:tech-debt": "node scripts/check-tech-debt.mjs",
     "check:duplicate-code": "node scripts/check-duplicate-code.mjs",
     "check:large-files": "node scripts/check-large-files.mjs",
     "check:architecture": "depcruise src scripts test dashboard/public",
