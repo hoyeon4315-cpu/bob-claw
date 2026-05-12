@@ -56,6 +56,10 @@ jobs:
           if [ -f artifacts/build-performance/summary.md ]; then
             cat artifacts/build-performance/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f artifacts/build-performance/test-performance-summary.md ]; then
+            printf '\n' >> "$GITHUB_STEP_SUMMARY"
+            cat artifacts/build-performance/test-performance-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: upload build performance artifact
         if: always()
         uses: actions/upload-artifact@v4
