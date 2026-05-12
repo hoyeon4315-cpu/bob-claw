@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { REPO_ROOT, repoPath } from "./helpers/repo-root.mjs";
 
 test("observation-first destination economics flow updates reports from fresh overrides", async () => {
   const { readFile, mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
@@ -157,7 +158,7 @@ test("observation-first destination economics flow updates reports from fresh ov
     await execFileAsync(
       "node",
       [
-        "/Users/love/BOB Claw/src/cli/add-destination-economics-observation.mjs",
+        repoPath("src/cli/add-destination-economics-observation.mjs"),
         "--template-id=base:stablecoin_lending_carry",
         `--field=${field}`,
         `--value=${value}`,
@@ -167,14 +168,14 @@ test("observation-first destination economics flow updates reports from fresh ov
         "--write",
       ],
       {
-        cwd: "/Users/love/BOB Claw",
+        cwd: REPO_ROOT,
         env,
       },
     );
   }
 
-  await execFileAsync("node", ["/Users/love/BOB Claw/src/cli/sync-destination-economics-observations.mjs", "--write"], {
-    cwd: "/Users/love/BOB Claw",
+  await execFileAsync("node", [repoPath("src/cli/sync-destination-economics-observations.mjs"), "--write"], {
+    cwd: REPO_ROOT,
     env,
   });
 
@@ -187,9 +188,9 @@ test("observation-first destination economics flow updates reports from fresh ov
 
   const estimatedOutput = await execFileAsync(
     "node",
-    ["/Users/love/BOB Claw/src/cli/report-destination-estimated-economics.mjs", "--json"],
+    [repoPath("src/cli/report-destination-estimated-economics.mjs"), "--json"],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env,
     },
   );
@@ -200,9 +201,9 @@ test("observation-first destination economics flow updates reports from fresh ov
 
   const queueOutput = await execFileAsync(
     "node",
-    ["/Users/love/BOB Claw/src/cli/report-destination-economics-queue.mjs", "--json"],
+    [repoPath("src/cli/report-destination-economics-queue.mjs"), "--json"],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env,
     },
   );
@@ -211,9 +212,9 @@ test("observation-first destination economics flow updates reports from fresh ov
 
   const packetOutput = await execFileAsync(
     "node",
-    ["/Users/love/BOB Claw/src/cli/report-destination-economics-packet.mjs", "--json"],
+    [repoPath("src/cli/report-destination-economics-packet.mjs"), "--json"],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env,
     },
   );
@@ -222,9 +223,9 @@ test("observation-first destination economics flow updates reports from fresh ov
 
   const gateOutput = await execFileAsync(
     "node",
-    ["/Users/love/BOB Claw/src/cli/report-destination-promotion-gate.mjs", "--json"],
+    [repoPath("src/cli/report-destination-promotion-gate.mjs"), "--json"],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env,
     },
   );
@@ -234,9 +235,9 @@ test("observation-first destination economics flow updates reports from fresh ov
 
   const evidencePolicyOutput = await execFileAsync(
     "node",
-    ["/Users/love/BOB Claw/src/cli/report-destination-evidence-policy.mjs", "--json"],
+    [repoPath("src/cli/report-destination-evidence-policy.mjs"), "--json"],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env,
     },
   );

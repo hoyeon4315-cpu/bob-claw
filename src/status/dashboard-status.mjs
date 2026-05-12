@@ -1158,11 +1158,6 @@ function amountLabel(value) {
   }
 }
 
-function shortChainLabel(chain) {
-  if (!chain) return null;
-  return chain === "bob" ? "BOB" : chain === "bitcoin" ? "BTC" : chainMetaLabel(chain);
-}
-
 function chainMetaLabel(chain) {
   return {
     avalanche: "Avalanche",

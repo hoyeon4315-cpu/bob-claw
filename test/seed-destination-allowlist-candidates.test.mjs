@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { REPO_ROOT, repoPath } from "./helpers/repo-root.mjs";
 
 test("seed destination allowlist candidates marks eligible board items as candidate_for_review", async () => {
   const { readFile, mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
@@ -55,9 +56,9 @@ test("seed destination allowlist candidates marks eligible board items as candid
 
   await execFileAsync(
     "node",
-    ["/Users/love/BOB Claw/src/cli/seed-destination-allowlist-candidates.mjs", "--write"],
+    [repoPath("src/cli/seed-destination-allowlist-candidates.mjs"), "--write"],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env: {
         ...process.env,
         BOB_CLAW_DATA_DIR: dataDir,
