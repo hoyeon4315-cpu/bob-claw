@@ -28,26 +28,30 @@ export function parseArgs(argv) {
   );
   return {
     publicDir: resolve(options["public-dir"] || DASHBOARD_PUBLIC_DIR),
+    sourceMaps: argv.includes("--sourcemap") || argv.includes("--source-maps"),
     quiet: argv.includes("--quiet"),
   };
 }
 
-function normalizeCompiledSource(code, sourceName) {
+function normalizeCompiledSource(code, sourceName, sourceMapName = null) {
   const body = String(code || "").trim();
-  return [
+  const lines = [
     `// Generated from ${sourceName} by src/cli/build-dashboard-public.mjs.`,
     "",
     "(() => {",
     body,
     "})();",
     "",
-  ].join("\n");
+  ];
+  if (sourceMapName) lines.push(`//# sourceMappingURL=${sourceMapName}`, "");
+  return lines.join("\n");
 }
 
 export async function buildDashboardPublic({
   publicDir = DASHBOARD_PUBLIC_DIR,
   entries = DASHBOARD_PUBLIC_BUILD_ENTRIES,
   transformFn = null,
+  sourceMaps = false,
 } = {}) {
   const { transform } = transformFn ? { transform: transformFn } : await import("esbuild");
   const writes = [];
@@ -62,17 +66,30 @@ export async function buildDashboardPublic({
       jsxFactory: "React.createElement",
       jsxFragment: "React.Fragment",
       legalComments: "none",
+      sourcemap: sourceMaps ? "external" : false,
+      sourcefile: entry.source,
       target: "es2020",
     });
+    const sourceMapName = sourceMaps && compiled.map ? `${entry.output}.map` : null;
     const write = await writeTextIfChanged(
       outputPath,
-      normalizeCompiledSource(compiled.code, entry.source),
+      normalizeCompiledSource(compiled.code, entry.source, sourceMapName),
     );
-    writes.push(Object.freeze({
-      sourcePath,
-      outputPath,
-      changed: Boolean(write?.changed),
-    }));
+    let sourceMapWrite = null;
+    let sourceMapPath = null;
+    if (sourceMapName) {
+      sourceMapPath = join(publicDir, sourceMapName);
+      sourceMapWrite = await writeTextIfChanged(sourceMapPath, `${compiled.map.trim()}\n`);
+    }
+    writes.push(
+      Object.freeze({
+        sourcePath,
+        outputPath,
+        sourceMapPath,
+        changed: Boolean(write?.changed),
+        sourceMapChanged: Boolean(sourceMapWrite?.changed),
+      }),
+    );
   }
 
   return Object.freeze({
@@ -83,10 +100,14 @@ export async function buildDashboardPublic({
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const result = await buildDashboardPublic({ publicDir: args.publicDir });
+  const result = await buildDashboardPublic({
+    publicDir: args.publicDir,
+    sourceMaps: args.sourceMaps,
+  });
   if (!args.quiet) {
     const changed = result.writes.filter((item) => item.changed).length;
-    console.log(`dashboardBuild=ok outputs=${result.writes.length} changed=${changed}`);
+    const sourceMaps = result.writes.filter((item) => item.sourceMapPath).length;
+    console.log(`dashboardBuild=ok outputs=${result.writes.length} changed=${changed} sourceMaps=${sourceMaps}`);
   }
 }
 
