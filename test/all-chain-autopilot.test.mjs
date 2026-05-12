@@ -155,7 +155,13 @@ function fakeCommand({ args }) {
       stderr: "",
       json: {
         status: "completed",
-        summary: { candidateCount: 11, previewReadyCount: 2, executedCount: args.includes("--execute") ? 1 : 0, deliveredCount: 1, blockedCount: 9 },
+        summary: {
+          candidateCount: 11,
+          previewReadyCount: 2,
+          executedCount: args.includes("--execute") ? 1 : 0,
+          deliveredCount: 1,
+          blockedCount: 9,
+        },
         results: [{ status: "delivered", candidate: { chain: "optimism" }, execution: { lastTxHash: "0x1" } }],
       },
     };
@@ -505,7 +511,13 @@ function fakeCommand({ args }) {
       exitCode: 0,
       stdout: "",
       stderr: "",
-      json: { schemaVersion: 1, observedAt: new Date().toISOString(), pendingCount: 0, processedCount: 0, processed: [] },
+      json: {
+        schemaVersion: 1,
+        observedAt: new Date().toISOString(),
+        pendingCount: 0,
+        processedCount: 0,
+        processed: [],
+      },
     };
   }
   throw new Error(`unexpected command ${name}`);
@@ -822,7 +834,10 @@ test("all-chain autopilot does not execute refill jobs from stale inventory fall
   assert.equal(report.summary.refillJobCount, 1);
   assert.equal(report.summary.autoRefillJobCount, 0);
   assert.equal(report.summary.inventoryFreshness.treasuryBlocker, "treasury_inventory_not_live");
-  assert.equal(seen.some((args) => args[0] === "src/cli/run-refill-job-stub.mjs" && args.includes("--execute")), false);
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-refill-job-stub.mjs" && args.includes("--execute")),
+    false,
+  );
 });
 
 test("all-chain autopilot gives long-running canary sweep its own timeout", async () => {
@@ -848,13 +863,31 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   assert.equal(timeouts["src/cli/run-merkl-canary-autopilot.mjs"], 123);
   const commandNames = seen.map((args) => args[0]);
   assert.equal(
-    commandNames.indexOf("src/cli/run-merkl-portfolio-orchestrator.mjs") < commandNames.indexOf("src/cli/run-merkl-canary-autopilot.mjs"),
+    commandNames.indexOf("src/cli/run-merkl-portfolio-orchestrator.mjs") <
+      commandNames.indexOf("src/cli/run-merkl-canary-autopilot.mjs"),
     true,
   );
-  assert.equal(seen.some((args) => args.includes("src/cli/run-live-canary-sweep.mjs") && args.includes("--timeout-ms=456")), true);
-  assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-canary-autopilot.mjs") && args.includes("--timeout-ms=123")), true);
-  assert.equal(seen.some((args) => args.includes("src/cli/run-merkl-portfolio-orchestrator.mjs") && args.includes("--timeout-ms=123")), true);
-  assert.equal(seen.some((args) => args.includes("src/cli/run-strategy-catalog-dispatcher.mjs") && args.includes("--command-timeout-ms=789")), true);
+  assert.equal(
+    seen.some((args) => args.includes("src/cli/run-live-canary-sweep.mjs") && args.includes("--timeout-ms=456")),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args.includes("src/cli/run-merkl-canary-autopilot.mjs") && args.includes("--timeout-ms=123")),
+    true,
+  );
+  assert.equal(
+    seen.some(
+      (args) => args.includes("src/cli/run-merkl-portfolio-orchestrator.mjs") && args.includes("--timeout-ms=123"),
+    ),
+    true,
+  );
+  assert.equal(
+    seen.some(
+      (args) =>
+        args.includes("src/cli/run-strategy-catalog-dispatcher.mjs") && args.includes("--command-timeout-ms=789"),
+    ),
+    true,
+  );
 });
 
 test("all-chain autopilot bounds optional strategy surface refresh timeout", async () => {
@@ -939,7 +972,9 @@ test("all-chain autopilot writes latest completed snapshot after a finished run"
     runCommandImpl: fakeCommand,
   });
 
-  const latestCompleted = JSON.parse(await readFile(join(dataDir, "all-chain-autopilot-latest-completed.json"), "utf8"));
+  const latestCompleted = JSON.parse(
+    await readFile(join(dataDir, "all-chain-autopilot-latest-completed.json"), "utf8"),
+  );
   assert.equal(latestCompleted.status, report.status);
   assert.equal(latestCompleted.phase, report.phase);
   assert.equal(latestCompleted.summary.refillExecutedCount, report.summary.refillExecutedCount);
@@ -970,11 +1005,19 @@ test("all-chain autopilot can stop cleanly after refill finalization", async (t)
   assert.equal(report.blockedReason, null);
   assert.equal(report.summary.stopAfterRefill, true);
   assert.equal(report.summary.refillExecutedCount, 2);
-  assert.equal(seen.some((args) => args[0] === "src/cli/run-live-canary-sweep.mjs"), false);
-  assert.equal(seen.some((args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs"), false);
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-live-canary-sweep.mjs"),
+    false,
+  );
+  assert.equal(
+    seen.some((args) => args[0] === "src/cli/run-strategy-catalog-dispatcher.mjs"),
+    false,
+  );
 
   const latest = JSON.parse(await readFile(join(dataDir, "all-chain-autopilot-latest.json"), "utf8"));
-  const latestCompleted = JSON.parse(await readFile(join(dataDir, "all-chain-autopilot-latest-completed.json"), "utf8"));
+  const latestCompleted = JSON.parse(
+    await readFile(join(dataDir, "all-chain-autopilot-latest-completed.json"), "utf8"),
+  );
   assert.equal(latest.status, "completed_with_blockers");
   assert.equal(latest.phase, "refill_complete");
   assert.equal(latestCompleted.status, "completed_with_blockers");
@@ -1272,8 +1315,14 @@ test("all-chain autopilot retries refill jobs with executable alternate methods 
   assert.equal(report.summary.refillExecutedCount, 1);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "gas_refuel_bridge_gas_zip");
   assert.equal(report.refillExecutions[0].executionStatus, "delivered");
-  assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
-  assert.equal(seen.some((args) => args.includes("--execute") && args.includes("--timeout-ms=300000")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args.includes("--execute") && args.includes("--timeout-ms=300000")),
+    true,
+  );
 });
 
 test("all-chain autopilot treats unsupported bridge refill previews as alternate-route blockers", async () => {
@@ -1337,7 +1386,11 @@ test("all-chain autopilot treats unsupported bridge refill previews as alternate
       };
     }
     if (name.endsWith("run-refill-job-stub.mjs")) {
-      if (!args.some((item) => item === "--method=cross_chain_bridge_lifi" || item === "--method=gas_refuel_bridge_gas_zip")) {
+      if (
+        !args.some(
+          (item) => item === "--method=cross_chain_bridge_lifi" || item === "--method=gas_refuel_bridge_gas_zip",
+        )
+      ) {
         return {
           ok: false,
           exitCode: 1,
@@ -1381,8 +1434,14 @@ test("all-chain autopilot treats unsupported bridge refill previews as alternate
   assert.equal(report.blockedReason, null);
   assert.equal(report.summary.refillExecutedCount, 1);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "gas_refuel_bridge_gas_zip");
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), true);
-  assert.equal(seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args.includes("--method=gas_refuel_bridge_gas_zip") && args.includes("--execute")),
+    true,
+  );
 });
 
 test("all-chain autopilot promotes Soneium Gateway no_route previews to LI.FI when available", async () => {
@@ -1472,7 +1531,10 @@ test("all-chain autopilot promotes Soneium Gateway no_route previews to LI.FI wh
 
   assert.equal(report.summary.refillExecutedCount, 1);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_lifi");
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")),
+    true,
+  );
 });
 
 test("all-chain autopilot does not promote Gateway source-gas blockers to LI.FI", async () => {
@@ -1559,8 +1621,7 @@ test("all-chain autopilot does not promote Gateway source-gas blockers to LI.FI"
                 message: "All RPC endpoints failed gas estimate for chain: base",
                 attempts: [
                   {
-                    message:
-                      "insufficient funds for gas * price + value: have 7563079830170 want 21575038434712",
+                    message: "insufficient funds for gas * price + value: have 7563079830170 want 21575038434712",
                   },
                 ],
               },
@@ -1581,7 +1642,10 @@ test("all-chain autopilot does not promote Gateway source-gas blockers to LI.FI"
   assert.equal(report.summary.refillExecutedCount, 0);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_or_swap");
   assert.equal(report.refillExecutions[0].previewBlockedReason, "insufficient_funds");
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")), false);
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi")),
+    false,
+  );
 });
 
 test("all-chain autopilot retries alternate refill routes after execution_reverted previews", async () => {
@@ -1672,7 +1736,10 @@ test("all-chain autopilot retries alternate refill routes after execution_revert
   assert.equal(report.summary.refillExecutedCount, 1);
   assert.equal(report.refillExecutions[0].previewBlockedReason, null);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_lifi");
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")),
+    true,
+  );
 });
 
 test("all-chain autopilot reports routing_exhausted after retryable providers reject", async () => {
@@ -1887,7 +1954,10 @@ test("all-chain autopilot continues unrelated refill jobs after a scoped route f
   assert.equal(failedRefill?.blockerTaxonomy, "route_specific_failure_lock");
   assert.equal(executedRefill?.executed, true);
   assert.equal(report.summary.refillExecutedCount, 1);
-  assert.equal(seen.some((args) => args.includes("--job-id=unrelated-executes") && args.includes("--execute")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--job-id=unrelated-executes") && args.includes("--execute")),
+    true,
+  );
 });
 
 test("all-chain autopilot does not overstate global blockers or passive waiting for scoped refill locks", async () => {
@@ -1958,7 +2028,10 @@ test("all-chain autopilot does not overstate global blockers or passive waiting 
   assert.equal(byJob.get("consecutive-lock")?.blockerTaxonomy, "method_specific_failure_lock");
   assert.equal(byJob.get("consecutive-lock")?.waitingHelps, false);
   assert.match(byJob.get("consecutive-lock")?.safeResetCommand || "", /--strategy-id=strategy-consecutive-lock\b/u);
-  assert.match(byJob.get("consecutive-lock")?.safeResetCommand || "", /--reason=operator_reviewed_scoped_refill_blocker_base_USDC_same_chain_token_to_token_swap\b/u);
+  assert.match(
+    byJob.get("consecutive-lock")?.safeResetCommand || "",
+    /--reason=operator_reviewed_scoped_refill_blocker_base_USDC_same_chain_token_to_token_swap\b/u,
+  );
   assert.equal(byJob.get("dev-lock")?.blockerTaxonomy, "operator_action_required");
   assert.notEqual(byJob.get("dev-lock")?.blockerScope?.scopeType, "global_system");
   assert.equal(byJob.get("signer-timeout")?.blockerTaxonomy, "operator_action_required");
@@ -2119,7 +2192,10 @@ test("all-chain autopilot classifies single-provider no-route exhaustion as plan
     report.refillExecutions[0].routeDeferralReason,
     "bridge_route_unavailable_gateway_no_route_no_alternate_provider",
   );
-  assert.equal(report.refillExecutions[0].routeDeferralAction, "defer_until_gateway_route_available_or_add_alternate_provider");
+  assert.equal(
+    report.refillExecutions[0].routeDeferralAction,
+    "defer_until_gateway_route_available_or_add_alternate_provider",
+  );
 });
 
 test("all-chain autopilot retries alternate refill methods after native gas bootstrap deadlock", async () => {
@@ -2209,7 +2285,10 @@ test("all-chain autopilot retries alternate refill methods after native gas boot
 
   assert.equal(report.summary.refillExecutedCount, 1);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_lifi");
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")),
+    true,
+  );
 });
 
 test("all-chain autopilot retries alternate refill execution methods after retryable live failures", async () => {
@@ -2323,8 +2402,14 @@ test("all-chain autopilot retries alternate refill execution methods after retry
 
   assert.equal(report.summary.refillExecutedCount, 1);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_across");
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")), true);
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_across") && args.includes("--execute")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_across") && args.includes("--execute")),
+    true,
+  );
 });
 
 test("all-chain autopilot preserves route blockers when live retry alternatives exhaust", async () => {
@@ -2572,8 +2657,14 @@ test("all-chain autopilot retries alternate refill methods after signer-incomple
   assert.equal(report.summary.refillExecutedCount, 1);
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "cross_chain_bridge_lifi");
   assert.equal(report.refillExecutions[0].executionStatus, "delivered");
-  assert.equal(seen.some((args) => args.includes("--method=same_chain_token_to_native_swap") && args.includes("--execute")), true);
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")), true);
+  assert.equal(
+    seen.some((args) => args.includes("--method=same_chain_token_to_native_swap") && args.includes("--execute")),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")),
+    true,
+  );
 });
 
 test("all-chain autopilot does not retry alternate refill methods after source-debiting signer progress", async () => {
@@ -2702,8 +2793,14 @@ test("all-chain autopilot does not retry alternate refill methods after source-d
   assert.equal(report.refillExecutions[0].selectedExecutionMethod, "same_chain_token_to_native_swap");
   assert.equal(report.refillExecutions[0].executionStatus, "failed");
   assert.equal(report.refillExecutions[0].executionBlockedReason, "signer_execution_failed");
-  assert.equal(seen.some((args) => args.includes("--method=same_chain_token_to_native_swap") && args.includes("--execute")), true);
-  assert.equal(seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")), false);
+  assert.equal(
+    seen.some((args) => args.includes("--method=same_chain_token_to_native_swap") && args.includes("--execute")),
+    true,
+  );
+  assert.equal(
+    seen.some((args) => args.includes("--method=cross_chain_bridge_lifi") && args.includes("--execute")),
+    false,
+  );
 });
 
 test("all-chain autopilot separates refill attempts from delivered executions", async () => {
@@ -2877,7 +2974,10 @@ test("all-chain autopilot reserves shared source inventory across refill jobs", 
   assert.equal(report.refillExecutions[1].jobId, "shared-source-2");
   assert.equal(report.refillExecutions[1].attempted, false);
   assert.equal(report.refillExecutions[1].previewBlockedReason, "source_inventory_reserved");
-  assert.equal(seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length, 1);
+  assert.equal(
+    seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length,
+    1,
+  );
 });
 
 test("all-chain autopilot does not compare native target units against token source units", async () => {
@@ -3127,7 +3227,10 @@ test("all-chain autopilot reserves fallback source inventory selected for live r
   assert.equal(report.refillExecutions[1].jobId, "fallback-source-2");
   assert.equal(report.refillExecutions[1].attempted, false);
   assert.equal(report.refillExecutions[1].previewBlockedReason, "source_inventory_reserved");
-  assert.equal(seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length, 1);
+  assert.equal(
+    seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length,
+    1,
+  );
 });
 
 test("all-chain autopilot surfaces unresolved live execution status instead of preview ready", async () => {
@@ -3413,7 +3516,10 @@ test("all-chain autopilot reserves source inventory after indeterminate refill t
   assert.equal(report.refillExecutions[1].jobId, "timeout-source-2");
   assert.equal(report.refillExecutions[1].attempted, false);
   assert.equal(report.refillExecutions[1].previewBlockedReason, "source_inventory_reserved");
-  assert.equal(seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length, 1);
+  assert.equal(
+    seen.filter((args) => args[0].endsWith("run-refill-job-stub.mjs") && args.includes("--execute")).length,
+    1,
+  );
 });
 
 test("all-chain autopilot treats Merkl canary blocked json as recoverable during execute", async () => {

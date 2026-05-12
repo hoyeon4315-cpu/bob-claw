@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { REPO_ROOT, repoPath } from "./helpers/repo-root.mjs";
 
 test("add and sync destination economics observations writes latest values into overrides", async () => {
   const { readFile, mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
@@ -38,7 +39,7 @@ test("add and sync destination economics observations writes latest values into 
   await execFileAsync(
     "node",
     [
-      "/Users/love/BOB Claw/src/cli/add-destination-economics-observation.mjs",
+      repoPath("src/cli/add-destination-economics-observation.mjs"),
       "--template-id=base:stablecoin_lending_carry",
       "--field=grossReturnBps",
       "--value=120",
@@ -48,7 +49,7 @@ test("add and sync destination economics observations writes latest values into 
       "--write",
     ],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env: {
         ...process.env,
         BOB_CLAW_DATA_DIR: dataDir,
@@ -56,8 +57,8 @@ test("add and sync destination economics observations writes latest values into 
     },
   );
 
-  await execFileAsync("node", ["/Users/love/BOB Claw/src/cli/sync-destination-economics-observations.mjs", "--write"], {
-    cwd: "/Users/love/BOB Claw",
+  await execFileAsync("node", [repoPath("src/cli/sync-destination-economics-observations.mjs"), "--write"], {
+    cwd: REPO_ROOT,
     env: {
       ...process.env,
       BOB_CLAW_DATA_DIR: dataDir,
@@ -117,7 +118,7 @@ test("sync destination economics observations refreshes template metadata from t
   await execFileAsync(
     "node",
     [
-      "/Users/love/BOB Claw/src/cli/add-destination-economics-observation.mjs",
+      repoPath("src/cli/add-destination-economics-observation.mjs"),
       "--template-id=bera:wrapped_btc_lending",
       "--field=grossReturnBps",
       "--value=453",
@@ -126,11 +127,11 @@ test("sync destination economics observations refreshes template metadata from t
       "--observed-at=2026-04-20T12:30:00.000Z",
       "--write",
     ],
-    { cwd: "/Users/love/BOB Claw", env },
+    { cwd: REPO_ROOT, env },
   );
 
-  await execFileAsync("node", ["/Users/love/BOB Claw/src/cli/sync-destination-economics-observations.mjs", "--write"], {
-    cwd: "/Users/love/BOB Claw",
+  await execFileAsync("node", [repoPath("src/cli/sync-destination-economics-observations.mjs"), "--write"], {
+    cwd: REPO_ROOT,
     env,
   });
 

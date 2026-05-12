@@ -1,19 +1,22 @@
 import { join } from "node:path";
 import { config, getEnv } from "../config/env.mjs";
-import {
-  dashboardJsonCandidatePaths,
-  dashboardLiveSnapshotDir,
-} from "../dashboard/live-snapshot-paths.mjs";
+import { dashboardJsonCandidatePaths, dashboardLiveSnapshotDir } from "../dashboard/live-snapshot-paths.mjs";
 import { loadCanaryState, readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { buildAdmissionRemediationPlan } from "../prelive/admission-remediation.mjs";
-import { buildConnectedRefreshPackage, summarizeConnectedRefreshPackage } from "../prelive/connected-refresh-package.mjs";
+import {
+  buildConnectedRefreshPackage,
+  summarizeConnectedRefreshPackage,
+} from "../prelive/connected-refresh-package.mjs";
 import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
 import { buildCurrentRoutePrelivePassSummary } from "../prelive/current-route-prelive-pass.mjs";
 import { buildExecutionRunbook, summarizeExecutionRunbook } from "../prelive/execution-runbook.mjs";
 import { buildPreliveEvidenceCampaign, summarizePreliveEvidenceCampaign } from "../prelive/evidence-campaign.mjs";
 import { buildExactRouteForkPackage, summarizeExactRouteForkPackage } from "../prelive/exact-route-fork-package.mjs";
-import { buildOperationalJudgmentReview, summarizeOperationalJudgmentReview } from "../prelive/operational-judgment-review.mjs";
+import {
+  buildOperationalJudgmentReview,
+  summarizeOperationalJudgmentReview,
+} from "../prelive/operational-judgment-review.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveValidationReport, summarizePreliveValidationReport } from "../prelive/prelive-validation.mjs";
 import { buildPreliveReviewPackage, summarizePreliveReviewPackage } from "../prelive/review-package.mjs";
@@ -23,16 +26,24 @@ import { buildAllocatorCore, summarizeAllocatorCore } from "../strategy/allocato
 import { buildPaybackDashboardSlice } from "../executor/payback/dashboard.mjs";
 import { evaluateStage } from "../executor/policy/stage-evaluator.mjs";
 import { syncStageTransitionAudit } from "../executor/policy/stage-transition-audit.mjs";
-import { buildPhase3StrategyValidation, summarizePhase3StrategyValidation } from "../strategy/phase3-strategy-validation.mjs";
-import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../strategy/protocol-market-watchers.mjs";
-import { buildProtocolTrustTiers, resolveTrustTierDecision, summarizeProtocolTrustTiers } from "../strategy/protocol-trust-tiers.mjs";
-import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../strategy/search-complexity-budgets.mjs";
-import { buildProductPlanningCoverage, buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
-import { listStrategyCaps } from "../config/strategy-caps.mjs";
 import {
-  ABSOLUTE_FLOOR_SATS,
-  MIN_PAYBACK_PCT_OF_CAPITAL,
-} from "../config/payback.mjs";
+  buildPhase3StrategyValidation,
+  summarizePhase3StrategyValidation,
+} from "../strategy/phase3-strategy-validation.mjs";
+import { buildProtocolMarketWatchers, summarizeProtocolMarketWatchers } from "../strategy/protocol-market-watchers.mjs";
+import {
+  buildProtocolTrustTiers,
+  resolveTrustTierDecision,
+  summarizeProtocolTrustTiers,
+} from "../strategy/protocol-trust-tiers.mjs";
+import { buildSearchComplexityBudgets, resolveSearchComplexityBudget } from "../strategy/search-complexity-budgets.mjs";
+import {
+  buildProductPlanningCoverage,
+  buildStrategySnapshot,
+  summarizeStrategySnapshot,
+} from "../strategy/strategy-snapshot.mjs";
+import { listStrategyCaps } from "../config/strategy-caps.mjs";
+import { ABSOLUTE_FLOOR_SATS, MIN_PAYBACK_PCT_OF_CAPITAL } from "../config/payback.mjs";
 import { buildChainHypothesisReport } from "../strategy/chain-hypothesis-evaluator.mjs";
 import { buildStrategyReceiptDistribution } from "../strategy/strategy-receipt-distribution.mjs";
 import { buildObjectivePlans } from "../strategy/objective-plans.mjs";
@@ -96,7 +107,9 @@ function buildExecutionTruthSlice(dashboardStatus = {}, signerAuditRecords = [])
     ...(lanePolicy.runtimeBlockers || []),
     ...(lanePolicy.stageBlockers || []),
     execution.noTxReason,
-    assetTracking.riskReady === false ? `asset_tracking:${assetTracking.coverageState || assetTracking.verdict || "not_risk_ready"}` : null,
+    assetTracking.riskReady === false
+      ? `asset_tracking:${assetTracking.coverageState || assetTracking.verdict || "not_risk_ready"}`
+      : null,
     ...topBlockerReasons,
   ]);
 
@@ -105,7 +118,7 @@ function buildExecutionTruthSlice(dashboardStatus = {}, signerAuditRecords = [])
     const stage = record?.lifecycle?.stage || (record?.broadcast?.txHash ? "broadcasted" : null);
     if (stage !== "broadcasted") return false;
     const ts = new Date(record.timestamp || record.observedAt || 0).getTime();
-    return Number.isFinite(ts) && Number.isFinite(generatedAtMs) && (generatedAtMs - ts) <= 24 * 60 * 60 * 1000;
+    return Number.isFinite(ts) && Number.isFinite(generatedAtMs) && generatedAtMs - ts <= 24 * 60 * 60 * 1000;
   }).length;
 
   const txBroadcastCount = Number(execution.txBroadcastCount || 0) + recentBroadcastCount;
@@ -190,9 +203,7 @@ function summarizeMerklOpportunityStatus(report = null, alerts = []) {
         }
       : null,
     nextAction:
-      (summary.liveCanaryCandidateCount ?? 0) > 0
-        ? "queue_merkl_candidate_tiny_live_canary"
-        : "continue_merkl_watch",
+      (summary.liveCanaryCandidateCount ?? 0) > 0 ? "queue_merkl_candidate_tiny_live_canary" : "continue_merkl_watch",
   };
 }
 
@@ -214,7 +225,8 @@ function summarizeMerklCanaryQueueStatus(queue = null) {
     chainRouteGapCount: summary.chainRouteGapCount ?? 0,
     inventoryReadyCount: summary.inventoryReadyCount ?? summary.executableNowCount ?? 0,
     autoEntryReadyCount: summary.autoEntryReadyCount ?? summary.autoExecutableNowCount ?? 0,
-    queueAutoEntryReadyCount: summary.queueAutoEntryReadyCount ?? summary.autoEntryReadyCount ?? summary.autoExecutableNowCount ?? 0,
+    queueAutoEntryReadyCount:
+      summary.queueAutoEntryReadyCount ?? summary.autoEntryReadyCount ?? summary.autoExecutableNowCount ?? 0,
     policyReadyCount: summary.policyReadyCount ?? 0,
     planBuilderReadyCount: summary.planBuilderReadyCount ?? 0,
     signerIntentReadyCount: summary.signerIntentReadyCount ?? 0,
@@ -430,7 +442,15 @@ export async function buildCurrentDashboardContext({
     readJsonl(dataDir, "btc-nav-history"),
     readJsonl(dataDir, "per-slot-attribution"),
   ]);
-  const [merklOpportunityReport, merklOpportunityAlerts, merklCanaryQueue, merklPortfolioAllocatorLatest, campaignAwareOpportunities, anchorPositionHealth, merklUserRewardsLatest] = await Promise.all([
+  const [
+    merklOpportunityReport,
+    merklOpportunityAlerts,
+    merklCanaryQueue,
+    merklPortfolioAllocatorLatest,
+    campaignAwareOpportunities,
+    anchorPositionHealth,
+    merklUserRewardsLatest,
+  ] = await Promise.all([
     readJsonIfExists(join(dataDir, "merkl-opportunities-report.json")),
     readJsonl(dataDir, "merkl-opportunity-alerts"),
     readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
@@ -459,52 +479,55 @@ export async function buildCurrentDashboardContext({
     now,
     strategyCapsById: Object.fromEntries(listStrategyCaps().map((config) => [config.strategyId, config])),
   });
-  const dashboardStatus = buildDashboardStatus({
-    routesRecords: state.routesRecords || [],
-    quotes: state.quotes || [],
-    failures: quoteFailures,
-    gasSnapshots: state.gasSnapshots || [],
-    gasFailures,
-    priceSnapshots: state.priceSnapshots || [],
-    updateSnapshots,
-    updateAlerts,
-    scoreSnapshot: state.scoreSnapshot || null,
-    dexQuotes: state.dexQuotes || [],
-    dexFailures,
-    bitcoinFeeSnapshots: state.bitcoinFeeSnapshots || [],
-    gatewayGasEstimates: state.gasEstimateSnapshots || [],
-    gatewayGasEstimateFailures: gasEstimateFailures,
-    estimatorWalletReadiness: state.readinessRecords || [],
-    estimatorWalletReadinessFailures: state.readinessFailures || [],
-    shadowObservations: state.shadowObservations || [],
-    shadowCycle,
-    advanceCanary,
-    preliveSimulationRuns,
-    preliveForkPlan,
-    preliveForkSubmissions,
-    preliveForkReceipts,
-    receiptReconciliations,
-    executionEvents,
-    shadowRefreshExecutions,
-    shadowRefreshBatches,
-    connectedRefreshRuns,
-    currentRoutePrelivePasses,
-    preliveEvidenceCampaigns,
-    quoteLagLatest,
-    dexSpreadLatest,
-    thresholdSensitivity,
-    triangleArtifacts,
-     executorRuntime,
-     promotionReport,
-     reportingPnlBaseline,
-     signerAuditRecords,
-     merklPositionRecords: merklPositionEvents,
-     protocolPositionMarks,
-     campaignOpportunities: campaignAwareOpportunities || null,
-     anchorPositions: anchorPositionHealth || null,
-     radarBoard,
-     radarCapReview,
-   }, { now });
+  const dashboardStatus = buildDashboardStatus(
+    {
+      routesRecords: state.routesRecords || [],
+      quotes: state.quotes || [],
+      failures: quoteFailures,
+      gasSnapshots: state.gasSnapshots || [],
+      gasFailures,
+      priceSnapshots: state.priceSnapshots || [],
+      updateSnapshots,
+      updateAlerts,
+      scoreSnapshot: state.scoreSnapshot || null,
+      dexQuotes: state.dexQuotes || [],
+      dexFailures,
+      bitcoinFeeSnapshots: state.bitcoinFeeSnapshots || [],
+      gatewayGasEstimates: state.gasEstimateSnapshots || [],
+      gatewayGasEstimateFailures: gasEstimateFailures,
+      estimatorWalletReadiness: state.readinessRecords || [],
+      estimatorWalletReadinessFailures: state.readinessFailures || [],
+      shadowObservations: state.shadowObservations || [],
+      shadowCycle,
+      advanceCanary,
+      preliveSimulationRuns,
+      preliveForkPlan,
+      preliveForkSubmissions,
+      preliveForkReceipts,
+      receiptReconciliations,
+      executionEvents,
+      shadowRefreshExecutions,
+      shadowRefreshBatches,
+      connectedRefreshRuns,
+      currentRoutePrelivePasses,
+      preliveEvidenceCampaigns,
+      quoteLagLatest,
+      dexSpreadLatest,
+      thresholdSensitivity,
+      triangleArtifacts,
+      executorRuntime,
+      promotionReport,
+      reportingPnlBaseline,
+      signerAuditRecords,
+      merklPositionRecords: merklPositionEvents,
+      protocolPositionMarks,
+      campaignOpportunities: campaignAwareOpportunities || null,
+      anchorPositions: anchorPositionHealth || null,
+      radarBoard,
+      radarCapReview,
+    },
+    { now },
+  );
 
   // P1/P2 parity floor injection — deterministic, pure slices
   const chainParity = buildChainParitySlice();
@@ -521,10 +544,13 @@ export async function buildCurrentDashboardContext({
     if (strategyTickStatus) break;
   }
   if (!strategyTickStatus) {
-    strategyTickStatus = await readJsonIfExists(join(dataDir, "..", "..", "dashboard", "public", "strategy-tick-status.json"), {
-      tolerateMalformed: true,
-      retryCount: 2,
-    });
+    strategyTickStatus = await readJsonIfExists(
+      join(dataDir, "..", "..", "dashboard", "public", "strategy-tick-status.json"),
+      {
+        tolerateMalformed: true,
+        retryCount: 2,
+      },
+    );
   }
   const strategyParity = buildStrategyParitySlice({
     deterministicCandidates: deterministicStrategyCandidates,
@@ -535,8 +561,7 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.strategy.chainParity = chainParity;
   dashboardStatus.strategy.strategyParity = strategyParity;
   dashboardStatus.strategy.promotionSummary = dashboardStatus.promotion;
-  dashboardStatus.strategy.microCanarySummary =
-    strategyTickStatus?.microCanary || { total: 0, byStrategy: {} };
+  dashboardStatus.strategy.microCanarySummary = strategyTickStatus?.microCanary || { total: 0, byStrategy: {} };
   dashboardStatus.strategy.receiptDistribution = buildStrategyReceiptDistribution({
     records: signerAuditRecords,
     now: dashboardStatus.generatedAt,
@@ -708,7 +733,8 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.payback.operatorSummary = {
     effectiveMinPaybackSats: minimumProgress?.minPaybackSats ?? null,
     pendingSats: dashboardStatus.payback?.accumulatorPendingSats ?? dashboardStatus.payback?.carry?.pendingSats ?? null,
-    satsToMinimum: minimumProgress?.satsToMinimumPayback ?? dashboardStatus.payback?.carry?.remainingSatsToMinimum ?? null,
+    satsToMinimum:
+      minimumProgress?.satsToMinimumPayback ?? dashboardStatus.payback?.carry?.remainingSatsToMinimum ?? null,
     minPaybackPctOfCapital: MIN_PAYBACK_PCT_OF_CAPITAL,
     absoluteFloorSats: ABSOLUTE_FLOOR_SATS,
   };
@@ -726,8 +752,7 @@ export async function buildCurrentDashboardContext({
         },
         evGateStats: {
           calibrated:
-            (evCostModel?.summary?.matchedReceiptCount ?? 0) > 0 &&
-            (evCostModel?.summary?.keyedEntryCount ?? 0) > 0,
+            (evCostModel?.summary?.matchedReceiptCount ?? 0) > 0 && (evCostModel?.summary?.keyedEntryCount ?? 0) > 0,
           matchedReceiptCount: evCostModel?.summary?.matchedReceiptCount ?? 0,
           keyedEntryCount: evCostModel?.summary?.keyedEntryCount ?? 0,
           lookbackDays: evCostModel?.lookbackDays ?? null,
@@ -762,10 +787,8 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.dataCounts.merklOpportunityAlertCount = merklOpportunityAlerts.length;
   dashboardStatus.dataCounts.merklCanaryQueuePresent = merklCanaryQueue ? 1 : 0;
   dashboardStatus.dataCounts.merklUserRewardsPresent = merklUserRewardsLatest ? 1 : 0;
-  dashboardStatus.dataCounts.merklUserRewardCount =
-    dashboardStatus.strategy.merklUserRewards?.rewardCount ?? 0;
-  dashboardStatus.dataCounts.merklActivePositionCount =
-    dashboardStatus.strategy.merklActivePositions?.activeCount ?? 0;
+  dashboardStatus.dataCounts.merklUserRewardCount = dashboardStatus.strategy.merklUserRewards?.rewardCount ?? 0;
+  dashboardStatus.dataCounts.merklActivePositionCount = dashboardStatus.strategy.merklActivePositions?.activeCount ?? 0;
   dashboardStatus.dataCounts.protocolPositionMarkCount = protocolPositionMarks.length;
   dashboardStatus.dataCounts.devAgentAutomationTaskCount =
     dashboardStatus.strategy.devAgentAutomationBridge?.taskCount ?? 0;
@@ -776,8 +799,7 @@ export async function buildCurrentDashboardContext({
   dashboardStatus.dataCounts.btcNavHistoryRecords = btcNavHistoryRecords.length;
   dashboardStatus.dataCounts.perSlotAttributionRecords = perSlotAttributionRecords.length;
   dashboardStatus.dataCounts.flowPresent = dashboardStatus.flow ? 1 : 0;
-  dashboardStatus.dataCounts.idleConsolidationPlanned7d =
-    dashboardStatus.idleConsolidation?.plannedCount7d ?? 0;
+  dashboardStatus.dataCounts.idleConsolidationPlanned7d = dashboardStatus.idleConsolidation?.plannedCount7d ?? 0;
   dashboardStatus.dataCounts.gasGovernorReplayPresent = dashboardStatus.gasGovernor ? 1 : 0;
   const freshObjectivePlans = buildObjectivePlans({
     routePlan: state.routePlan,
@@ -868,7 +890,8 @@ export async function buildCurrentDashboardContext({
   strategySnapshot.summary.watcherBlockedCount = protocolMarketWatchers.summary?.blockedCount ?? 0;
   strategySnapshot.summary.watcherTopBlockedId = protocolMarketWatchers.summary?.topBlockedId || null;
   strategySnapshot.planningLayers.protocolTrustTiers = summarizeProtocolTrustTiers(protocolTrustTiers);
-  strategySnapshot.planningLayers.phase3StrategyValidation = summarizePhase3StrategyValidation(phase3StrategyValidation);
+  strategySnapshot.planningLayers.phase3StrategyValidation =
+    summarizePhase3StrategyValidation(phase3StrategyValidation);
   strategySnapshot.planningLayers.allocatorCore = summarizeAllocatorCore(allocatorCore);
   strategySnapshot.planningLayers.protocolMarketWatchers = summarizeProtocolMarketWatchers(protocolMarketWatchers);
   dashboardStatus.strategy.strategySnapshot = summarizeStrategySnapshot(strategySnapshot);
@@ -1228,16 +1251,16 @@ export async function buildCurrentDashboardContext({
       wrappedBtcLendingLoopSlice,
       wrappedBtcLoopDryRun,
       wrappedBtcLoopOosEvidence,
-       v1InfraDrills,
-       merklOpportunityReport,
-       merklOpportunityAlerts,
-       merklCanaryQueue,
-       merklPositionEvents,
-       signerAuditRecords,
-       treasuryInventoryRecords,
-       allChainAutopilotLatest,
-       radarBoard,
-       wrappedBtcLoopLiveProof: enrichedWrappedBtcLoopLiveProof,
-     },
-   };
+      v1InfraDrills,
+      merklOpportunityReport,
+      merklOpportunityAlerts,
+      merklCanaryQueue,
+      merklPositionEvents,
+      signerAuditRecords,
+      treasuryInventoryRecords,
+      allChainAutopilotLatest,
+      radarBoard,
+      wrappedBtcLoopLiveProof: enrichedWrappedBtcLoopLiveProof,
+    },
+  };
 }
