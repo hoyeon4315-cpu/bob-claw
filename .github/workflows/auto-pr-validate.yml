@@ -4,11 +4,20 @@ on:
   pull_request:
     types: [opened, synchronize]
     paths:
-      - 'src/config/**'
-      - 'src/strategy/**'
-      - 'src/risk/**'
-      - 'src/executor/**'
-      - 'scripts/**'
+      - ".github/workflows/auto-pr-validate.yml"
+      - "dashboard/public/*.jsx"
+      - "docs/readiness/dead-code-baseline.json"
+      - "knip.config.js"
+      - "package-lock.json"
+      - "package.json"
+      - "research/**"
+      - "src/cli/**"
+      - "src/config/**"
+      - "src/executor/**"
+      - "src/risk/**"
+      - "src/strategy/**"
+      - "test/check-dead-code.test.mjs"
+      - "scripts/**"
 
 jobs:
   validate:
@@ -17,8 +26,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
       - run: npm ci
+      - run: npm run check:dead-code
       - run: npm run test
       - name: dryrun opportunity candidate
         run: npm run dryrun:opportunity-candidate -- --id=placeholder || true
