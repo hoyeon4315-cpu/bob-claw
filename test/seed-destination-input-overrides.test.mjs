@@ -53,17 +53,13 @@ test("seed destination input overrides script seeds top missing templates withou
     ]),
   );
 
-  await execFileAsync(
-    "node",
-    [repoPath("src/cli/seed-destination-input-overrides.mjs"), "--top=5", "--write"],
-    {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        BOB_CLAW_DATA_DIR: dataDir,
-      },
+  await execFileAsync("node", [repoPath("src/cli/seed-destination-input-overrides.mjs"), "--top=5", "--write"], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      BOB_CLAW_DATA_DIR: dataDir,
     },
-  );
+  });
 
   const seeded = JSON.parse(await readFile(overridesPath, "utf8"));
   assert.equal(seeded.entries.length, 2);

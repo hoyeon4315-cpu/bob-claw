@@ -338,7 +338,8 @@
     "lint:readiness": "eslint src/config/env.mjs src/estimator/load-canary-state.mjs src/runtime/executor-runtime-readiness.mjs src/status/current-dashboard-context.mjs src/status/all-chain-autopilot-slice.mjs src/status/dashboard-status.mjs src/cli/check-executor-runtime.mjs src/cli/check-full-automation-readiness.mjs test/load-canary-state.test.mjs test/executor-runtime-readiness.test.mjs test/all-chain-autopilot-cli.test.mjs test/all-chain-autopilot-idle-dispatch.test.mjs test/all-chain-autopilot.test.mjs test/dashboard-status.test.mjs test/dashboard-status-write.test.mjs --max-warnings=0",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "format": "prettier --write --ignore-unknown .prettierrc.json .prettierignore package.json eslint.config.mjs scripts/run-node-tests.mjs src/config/env.mjs src/estimator/load-canary-state.mjs src/runtime/executor-runtime-readiness.mjs src/status/current-dashboard-context.mjs src/status/all-chain-autopilot-slice.mjs src/status/dashboard-status.mjs src/cli/check-executor-runtime.mjs src/cli/check-full-automation-readiness.mjs test/load-canary-state.test.mjs test/executor-runtime-readiness.test.mjs test/all-chain-autopilot-cli.test.mjs test/all-chain-autopilot-idle-dispatch.test.mjs test/all-chain-autopilot.test.mjs test/dashboard-status.test.mjs test/dashboard-status-write.test.mjs",
-    "format:check": "prettier --check --ignore-unknown .prettierrc.json .prettierignore package.json eslint.config.mjs scripts/run-node-tests.mjs src/config/env.mjs src/estimator/load-canary-state.mjs src/runtime/executor-runtime-readiness.mjs src/status/current-dashboard-context.mjs src/status/all-chain-autopilot-slice.mjs src/status/dashboard-status.mjs src/cli/check-executor-runtime.mjs src/cli/check-full-automation-readiness.mjs test/load-canary-state.test.mjs test/executor-runtime-readiness.test.mjs test/all-chain-autopilot-cli.test.mjs test/all-chain-autopilot-idle-dispatch.test.mjs test/all-chain-autopilot.test.mjs test/dashboard-status.test.mjs test/dashboard-status-write.test.mjs"
+    "format:check": "prettier --check --ignore-unknown .prettierrc.json .prettierignore package.json eslint.config.mjs scripts/run-node-tests.mjs src/config/env.mjs src/estimator/load-canary-state.mjs src/runtime/executor-runtime-readiness.mjs src/status/current-dashboard-context.mjs src/status/all-chain-autopilot-slice.mjs src/status/dashboard-status.mjs src/cli/check-executor-runtime.mjs src/cli/check-full-automation-readiness.mjs test/load-canary-state.test.mjs test/executor-runtime-readiness.test.mjs test/all-chain-autopilot-cli.test.mjs test/all-chain-autopilot-idle-dispatch.test.mjs test/all-chain-autopilot.test.mjs test/dashboard-status.test.mjs test/dashboard-status-write.test.mjs",
+    "prepare": "husky"
   },
   "engines": {
     "node": ">=20"
@@ -356,6 +357,11 @@
     "globals": "^17.6.0",
     "@types/node": "^25.7.0",
     "typescript": "^6.0.3",
-    "prettier": "^3.8.3"
+    "prettier": "^3.8.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4"
+  },
+  "lint-staged": {
+    "**/*": "node scripts/pre-commit-staged-checks.mjs"
   }
 }

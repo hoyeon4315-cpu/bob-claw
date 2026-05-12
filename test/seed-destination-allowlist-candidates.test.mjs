@@ -54,17 +54,13 @@ test("seed destination allowlist candidates marks eligible board items as candid
     )}\n`,
   );
 
-  await execFileAsync(
-    "node",
-    [repoPath("src/cli/seed-destination-allowlist-candidates.mjs"), "--write"],
-    {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        BOB_CLAW_DATA_DIR: dataDir,
-      },
+  await execFileAsync("node", [repoPath("src/cli/seed-destination-allowlist-candidates.mjs"), "--write"], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      BOB_CLAW_DATA_DIR: dataDir,
     },
-  );
+  });
 
   const updated = JSON.parse(await readFile(join(dataDir, "destination-input-overrides.json"), "utf8"));
   assert.equal(updated.entries.length, 1);
