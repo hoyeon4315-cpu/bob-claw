@@ -15,9 +15,7 @@ export const REQUIRED_RELEASE_SCRIPTS = Object.freeze([
   "deploy:dashboard:cloudflare",
 ]);
 
-export const RELEASE_WORKFLOW_FILES = Object.freeze([
-  ".github/workflows/release-automation.yml",
-]);
+export const RELEASE_WORKFLOW_FILES = Object.freeze([".github/workflows/release-automation.yml"]);
 
 const REQUIRED_SECRETS = Object.freeze(["CLOUDFLARE_API_TOKEN"]);
 const OPTIONAL_ENV = Object.freeze(["CLOUDFLARE_ACCOUNT_ID", "BOB_CLAW_CF_PAGES_PROJECT"]);
@@ -34,11 +32,7 @@ function buildRequiredScripts(packageJson) {
   }));
 }
 
-export function buildReleaseDryRunPlan({
-  packageJson,
-  workflowFiles = [],
-  now = new Date().toISOString(),
-} = {}) {
+export function buildReleaseDryRunPlan({ packageJson, workflowFiles = [], now = new Date().toISOString() } = {}) {
   const requiredScripts = buildRequiredScripts(packageJson);
   const blockers = [];
   const matchedWorkflows = workflowFiles.filter((file) => RELEASE_WORKFLOW_FILES.includes(file));

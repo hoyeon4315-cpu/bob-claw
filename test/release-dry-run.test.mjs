@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  buildReleaseDryRunPlan,
-  REQUIRED_RELEASE_SCRIPTS,
-} from "../scripts/release-dry-run.mjs";
+import { buildReleaseDryRunPlan, REQUIRED_RELEASE_SCRIPTS } from "../scripts/release-dry-run.mjs";
 
 test("release dry-run plan requires the dashboard release pipeline scripts", () => {
   const packageJson = {
@@ -54,7 +51,5 @@ test("release dry-run plan blocks missing release prerequisites", () => {
   assert.equal(plan.ok, false);
   assert.ok(plan.blockers.some((blocker) => blocker.code === "missing_workflow"));
   assert.ok(plan.blockers.some((blocker) => blocker.code === "missing_script"));
-  assert.ok(
-    plan.blockers.some((blocker) => blocker.detail.includes("verify:dashboard-publish")),
-  );
+  assert.ok(plan.blockers.some((blocker) => blocker.detail.includes("verify:dashboard-publish")));
 });
