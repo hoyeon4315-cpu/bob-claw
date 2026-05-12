@@ -11,6 +11,7 @@ on:
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
       - ".jscpd.json"
+      - ".dependency-cruiser.cjs"
       - "knip.config.js"
       - "src/config/**"
       - "src/strategy/**"
@@ -35,6 +36,7 @@ jobs:
       - run: npm ci
       - run: npm run check:dead-code
       - run: npm run check:duplicate-code
+      - run: npm run check:architecture
       - run: npm run test
       - name: dryrun opportunity candidate
         run: npm run dryrun:opportunity-candidate -- --id=placeholder || true

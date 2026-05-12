@@ -346,6 +346,7 @@
     "check:large-files": "node scripts/check-large-files.mjs",
     "check:dead-code": "node scripts/check-dead-code.mjs",
     "check:duplicate-code": "node scripts/check-duplicate-code.mjs",
+    "check:architecture": "depcruise src scripts test dashboard/public",
     "report:duplicate-code": "node scripts/check-duplicate-code.mjs --report-only"
   },
   "engines": {
@@ -367,6 +368,7 @@
     "prettier": "^3.8.3",
     "knip": "^6.12.2",
     "jscpd": "^4.1.1",
+    "dependency-cruiser": "^17.4.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.4"
   },
