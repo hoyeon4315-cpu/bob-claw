@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { REPO_ROOT, repoPath } from "./helpers/repo-root.mjs";
 
 test("seed destination source metadata updates matching families in overrides", async () => {
   const { readFile, mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
@@ -61,7 +62,7 @@ test("seed destination source metadata updates matching families in overrides", 
   await execFileAsync(
     "node",
     [
-      "/Users/love/BOB Claw/src/cli/seed-destination-source-metadata.mjs",
+      repoPath("src/cli/seed-destination-source-metadata.mjs"),
       "--family-ids=wrapped_btc_lending",
       "--source-name=BOB Gateway Overview",
       "--source-type=official_docs",
@@ -69,7 +70,7 @@ test("seed destination source metadata updates matching families in overrides", 
       "--write",
     ],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env: {
         ...process.env,
         BOB_CLAW_DATA_DIR: dataDir,
