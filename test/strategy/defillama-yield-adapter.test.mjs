@@ -53,6 +53,25 @@ test("normalizeDefiLlamaYieldPool exposes free /pools risk and APY fields", () =
   assert.deepEqual(pool.rewardTokens, ["0xreward"]);
 });
 
+test("normalizeDefiLlamaYieldPool keeps missing numeric fields unknown instead of zero", () => {
+  const pool = normalizeDefiLlamaYieldPool({
+    chain: "Base",
+    project: "aave-v3",
+    symbol: "USDC",
+    tvlUsd: null,
+    apy: null,
+    apyBase: null,
+    apyReward: null,
+    sigma: null,
+  });
+
+  assert.equal(pool.tvlUsd, null);
+  assert.equal(pool.apyBps, null);
+  assert.equal(pool.apyBaseBps, null);
+  assert.equal(pool.apyRewardBps, null);
+  assert.equal(pool.sigma, null);
+});
+
 test("adapter blocked when no pools measured", () => {
   const report = evaluateDefiLlamaYieldAdapter({
     config: buildDefaultDefiLlamaYieldConfig(),

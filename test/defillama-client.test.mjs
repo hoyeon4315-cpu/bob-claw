@@ -33,6 +33,19 @@ test("fetch returns structured yield data", async () => {
   assert.equal(yields[0].tvlUsd, 1000000);
 });
 
+test("fetch keeps missing numeric yield data unknown instead of zero", async () => {
+  resetCache();
+  const mockFetcher = async () => mockResponse([
+    { project: "aave", chain: "Ethereum", pool: "pool1", apyBase: null, apyReward: null, apy: null, tvlUsd: null },
+  ]);
+  const yields = await fetchPoolYields({ protocol: "aave", chain: "Ethereum", fetcher: mockFetcher });
+  assert.equal(yields.length, 1);
+  assert.equal(yields[0].apyBase, null);
+  assert.equal(yields[0].apyReward, null);
+  assert.equal(yields[0].apy, null);
+  assert.equal(yields[0].tvlUsd, null);
+});
+
 test("fetch with no match returns empty array", async () => {
   resetCache();
   const mockFetcher = async () => mockResponse([

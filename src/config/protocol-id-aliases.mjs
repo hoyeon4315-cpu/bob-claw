@@ -17,6 +17,7 @@ function normalize(value) {
 
 export function canonicalProtocolId(value) {
   const normalized = normalize(value);
+  if (!normalized) return "";
   for (const [canonical, aliases] of Object.entries(PROTOCOL_ALIASES)) {
     if (aliases.some((alias) => normalize(alias) === normalized)) return canonical;
   }
@@ -29,15 +30,10 @@ export function protocolAliasesFor(value) {
 }
 
 export function protocolsMatch(left, right) {
-  const leftAliases = protocolAliasesFor(left);
-  const rightAliases = protocolAliasesFor(right);
-  return leftAliases.some((leftAlias) => (
-    rightAliases.some((rightAlias) => (
-      leftAlias === rightAlias ||
-      leftAlias.includes(rightAlias) ||
-      rightAlias.includes(leftAlias)
-    ))
-  ));
+  const leftCanonical = canonicalProtocolId(left);
+  const rightCanonical = canonicalProtocolId(right);
+  if (!leftCanonical || !rightCanonical) return false;
+  return leftCanonical === rightCanonical;
 }
 
 export const PROTOCOL_ID_ALIASES = PROTOCOL_ALIASES;

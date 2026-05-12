@@ -184,6 +184,30 @@ describe("getDefiLlamaPool protocol aliases", () => {
       "pendle-bsc-usdc",
     );
   });
+
+  test("rejects missing protocol and prefers the strongest TVL candidate", () => {
+    assert.equal(
+      getDefiLlamaPool({
+        chain: { name: "Base" },
+        protocol: { id: "" },
+        tokens: [{ symbol: "USDC" }],
+      }, [
+        { chain: "Base", project: "aave-v3", symbol: "USDC", tvlUsd: 5_000_000 },
+      ]),
+      undefined,
+    );
+
+    const selected = getDefiLlamaPool({
+      chain: { name: "Base" },
+      protocol: { id: "aave" },
+      tokens: [{ symbol: "USDC" }],
+    }, [
+      { chain: "Base", project: "aave-v3", symbol: "USDC", tvlUsd: 1_000 },
+      { chain: "Base", project: "aave-v3", symbol: "USDC", tvlUsd: 10_000_000 },
+    ]);
+
+    assert.equal(selected?.tvlUsd, 10_000_000);
+  });
 });
 
 describe("buildCampaignAwareCandidates status logic", () => {

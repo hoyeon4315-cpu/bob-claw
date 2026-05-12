@@ -14,6 +14,7 @@ import {
   pricesFromSnapshot,
   shouldPersistPriceSnapshot,
 } from "../src/market/prices.mjs";
+import { evaluateOracleDivergence } from "../src/risk/auto-kill-triggers.mjs";
 
 test("observed snapshots backfill missing btc and ethereum prices", () => {
   const prices = overlayObservedPricesUsd(emptyPricesUsd(), {
@@ -265,6 +266,27 @@ test("multi-source prices preserve oracle samples for divergence checks", async 
   assert.equal(prices.nativeByChain.base, 11);
   assert.equal(prices.sourceCount, 2);
   assert.ok(prices.oracleSamples.length >= 2);
+});
+
+test("price oracle samples carry pair labels so cross-asset prices are never compared", () => {
+  const samples = priceSamplesFromSnapshot({
+    btc: 100_000,
+    tokenByKey: { btc: 100_000, cbbtc: 99_990, ethereum: 3_000, usd_stable: 1 },
+    nativeByChain: { ethereum: 3_000, base: 3_000, bsc: 700 },
+  }, {
+    source: "coingecko",
+    observedAt: "2026-04-25T00:00:00.000Z",
+  });
+
+  assert.ok(samples.some((sample) => sample.key === "btc" && sample.pair === "BTC/USD"));
+  assert.ok(samples.some((sample) => sample.key === "cbbtc" && sample.pair === "CBBTC/USD"));
+  assert.ok(samples.some((sample) => sample.key === "ethereum" && sample.pair === "ETH/USD"));
+
+  const result = evaluateOracleDivergence({
+    samples,
+    config: { enabled: true, minSourceCount: 2, maxDivergencePct: 0.05 },
+  });
+  assert.equal(result, null);
 });
 
 test("multi-source prices can include DIA quotation samples as an optional third source", async () => {

@@ -64,6 +64,12 @@ function finite(v) {
   return Number.isFinite(v) ? v : null;
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function round(v, digits = 4) {
   if (!Number.isFinite(v)) return null;
   const f = 10 ** digits;
@@ -106,7 +112,7 @@ export function validateDefiLlamaYieldConfig(config = {}) {
 }
 
 function bpsFromPct(value) {
-  const numeric = Number(value);
+  const numeric = numberOrNull(value);
   return Number.isFinite(numeric) ? round(numeric * 100, 4) : null;
 }
 
@@ -118,17 +124,17 @@ export function normalizeDefiLlamaYieldPool(pool = {}, defaults = {}) {
     protocol: pool.project || pool.protocol || defaults.protocol || null,
     poolId: pool.pool || pool.poolId || defaults.poolId || null,
     symbol: pool.symbol || defaults.symbol || null,
-    tvlUsd: finite(Number(pool.tvlUsd)) ?? finite(defaults.tvlUsd),
+    tvlUsd: numberOrNull(pool.tvlUsd) ?? finite(defaults.tvlUsd),
     apyBps: bpsFromPct(pool.apy) ?? finite(defaults.apyBps),
     apyBaseBps: bpsFromPct(pool.apyBase),
     apyRewardBps: bpsFromPct(pool.apyReward),
-    apyPct1D: finite(Number(pool.apyPct1D)),
-    apyPct7D: finite(Number(pool.apyPct7D)),
-    apyPct30D: finite(Number(pool.apyPct30D)),
-    apyMean30d: finite(Number(pool.apyMean30d)),
-    mu: finite(Number(pool.mu)),
-    sigma: finite(Number(pool.sigma)),
-    count: Number.isFinite(Number(pool.count)) ? Number(pool.count) : null,
+    apyPct1D: numberOrNull(pool.apyPct1D),
+    apyPct7D: numberOrNull(pool.apyPct7D),
+    apyPct30D: numberOrNull(pool.apyPct30D),
+    apyMean30d: numberOrNull(pool.apyMean30d),
+    mu: numberOrNull(pool.mu),
+    sigma: numberOrNull(pool.sigma),
+    count: numberOrNull(pool.count),
     ilRisk: pool.ilRisk || null,
     exposure: pool.exposure || null,
     rewardTokens: Array.isArray(pool.rewardTokens) ? Object.freeze([...pool.rewardTokens]) : null,

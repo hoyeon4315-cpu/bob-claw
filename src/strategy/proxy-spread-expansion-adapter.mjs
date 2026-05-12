@@ -60,6 +60,12 @@ function finite(v) {
   return Number.isFinite(v) ? v : null;
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function round(v, digits = 4) {
   if (!Number.isFinite(v)) return null;
   const f = 10 ** digits;
@@ -67,7 +73,7 @@ function round(v, digits = 4) {
 }
 
 function aprPctToBps(value) {
-  const numeric = Number(value);
+  const numeric = numberOrNull(value);
   return Number.isFinite(numeric) ? round(numeric * 100, 4) : null;
 }
 

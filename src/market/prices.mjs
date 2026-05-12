@@ -241,6 +241,39 @@ function firstFinite(...values) {
   return null;
 }
 
+function pricePairForSample(namespace, key) {
+  if (namespace === "root" && key === "btc") return "BTC/USD";
+  if (namespace === "tokenByKey") {
+    const tokenPairs = {
+      btc: "BTC/USD",
+      wbtc: "WBTC/USD",
+      cbbtc: "CBBTC/USD",
+      ethereum: "ETH/USD",
+      usd_stable: "USD_STABLE/USD",
+      paxg: "PAXG/USD",
+      xaut: "XAUT/USD",
+      bsc: "BNB/USD",
+      avalanche: "AVAX/USD",
+      bera: "BERA/USD",
+      sei: "SEI/USD",
+      sonic: "SONIC/USD",
+    };
+    return tokenPairs[key] || `${String(key || "UNKNOWN").toUpperCase()}/USD`;
+  }
+  if (namespace === "nativeByChain") {
+    if (ETH_LIKE_CHAINS.includes(key)) return "ETH/USD";
+    const nativePairs = {
+      avalanche: "AVAX/USD",
+      bera: "BERA/USD",
+      bsc: "BNB/USD",
+      sei: "SEI/USD",
+      sonic: "SONIC/USD",
+    };
+    return nativePairs[key] || `${String(key || "UNKNOWN").toUpperCase()}/USD`;
+  }
+  return "UNKNOWN/USD";
+}
+
 export function mergeMissingPricesUsd(primary, fallback) {
   const empty = emptyPricesUsd();
   const primaryTokenByKey = primary?.tokenByKey || {};
@@ -451,6 +484,7 @@ function priceSamplesForMap(map = {}, { source, observedAt, namespace }) {
       observedAt,
       namespace,
       key,
+      pair: pricePairForSample(namespace, key),
       priceUsd,
     }));
 }
@@ -458,7 +492,7 @@ function priceSamplesForMap(map = {}, { source, observedAt, namespace }) {
 export function priceSamplesFromSnapshot(prices = {}, { source = "unknown", observedAt = new Date().toISOString() } = {}) {
   return [
     Number.isFinite(prices.btc)
-      ? { source, observedAt, namespace: "root", key: "btc", priceUsd: prices.btc }
+      ? { source, observedAt, namespace: "root", key: "btc", pair: "BTC/USD", priceUsd: prices.btc }
       : null,
     ...priceSamplesForMap(prices.tokenByKey || {}, { source, observedAt, namespace: "tokenByKey" }),
     ...priceSamplesForMap(prices.nativeByChain || {}, { source, observedAt, namespace: "nativeByChain" }),

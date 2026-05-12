@@ -114,10 +114,23 @@ export function evaluateOracleDivergence({ samples = [], config }) {
   }
 
   for (const [pair, pairSamples] of byPair) {
-    const prices = pairSamples
-      .map((sample) => Number(sample.priceUsd))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    if (prices.length < config.minSourceCount) continue;
+    const bySource = new Map();
+    for (const sample of pairSamples) {
+      const priceUsd = Number(sample.priceUsd);
+      if (!Number.isFinite(priceUsd) || priceUsd <= 0) continue;
+      const source = sample.source || "unknown";
+      const sourceSamples = bySource.get(source) || [];
+      sourceSamples.push(priceUsd);
+      bySource.set(source, sourceSamples);
+    }
+    if (bySource.size < config.minSourceCount) continue;
+    const prices = Array.from(bySource.values()).map((values) => {
+      const sorted = [...values].sort((left, right) => left - right);
+      const midpoint = Math.floor(sorted.length / 2);
+      return sorted.length % 2 === 1
+        ? sorted[midpoint]
+        : (sorted[midpoint - 1] + sorted[midpoint]) / 2;
+    });
     const min = Math.min(...prices);
     const max = Math.max(...prices);
     const divergence = (max - min) / min;
@@ -129,7 +142,7 @@ export function evaluateOracleDivergence({ samples = [], config }) {
         threshold: config.maxDivergencePct,
         minPriceUsd: min,
         maxPriceUsd: max,
-        sources: pairSamples.map((sample) => sample.source || "unknown"),
+        sources: Array.from(bySource.keys()),
       };
     }
   }

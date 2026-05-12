@@ -99,21 +99,33 @@ function poolSymbols(pool) {
 
 export function getDefiLlamaPool(merklItem, defiLlamaPools) {
   const chain = normalizeChain(merklItem.chain?.name || merklItem.chain);
-  const protocol = (merklItem.protocol?.id || merklItem.protocol || "").toLowerCase();
+  const rawProtocol = merklItem.protocol?.id ?? (typeof merklItem.protocol === "string" ? merklItem.protocol : "");
+  const protocol = String(rawProtocol || "").toLowerCase();
+  const merklSymbols = (merklItem.tokens || []).map(tokenSymbol).filter(Boolean);
   // Try to match by project + chain + symbol overlap
-  return defiLlamaPools.find((pool) => {
+  const matches = defiLlamaPools.filter((pool) => {
     const pChain = normalizeChain(pool.chain);
     const pProject = (pool.project || "").toLowerCase();
     if (pChain !== chain) return false;
     if (!protocolsMatch(protocol, pProject)) return false;
     // Symbol overlap if available
-    const merklSymbols = (merklItem.tokens || []).map(tokenSymbol).filter(Boolean);
     const symbols = poolSymbols(pool);
     if (merklSymbols.length && symbols.length) {
       return merklSymbols.some((s) => symbols.includes(s));
     }
     return true;
   });
+  matches.sort((left, right) => {
+    const leftSymbols = poolSymbols(left);
+    const rightSymbols = poolSymbols(right);
+    const leftCoverage = merklSymbols.filter((symbol) => leftSymbols.includes(symbol)).length;
+    const rightCoverage = merklSymbols.filter((symbol) => rightSymbols.includes(symbol)).length;
+    if (leftCoverage !== rightCoverage) return rightCoverage - leftCoverage;
+    const leftTvl = Number.isFinite(Number(left.tvlUsd)) ? Number(left.tvlUsd) : -1;
+    const rightTvl = Number.isFinite(Number(right.tvlUsd)) ? Number(right.tvlUsd) : -1;
+    return rightTvl - leftTvl;
+  });
+  return matches[0];
 }
 
 function computeExpectedRealizedApr(displayedApr, rewardTokenHaircut) {

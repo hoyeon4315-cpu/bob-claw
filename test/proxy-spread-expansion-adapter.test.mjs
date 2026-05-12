@@ -33,3 +33,13 @@ test("proxy spread market builder clears APR blockers from DefiLlama supply and 
   assert.equal(report.market.borrowAprBps, 175);
   assert.equal(report.economics.spreadBps, 350);
 });
+
+test("proxy spread source builder treats null DefiLlama APY as missing evidence", () => {
+  const market = buildProxySpreadMarketFromSources({
+    defiLlamaPool: { apyBase: null, tvlUsd: 1_000_000 },
+    borrowRate: { variableBorrowAprBps: 250 },
+  });
+
+  assert.equal(market.supplyAprBps, null);
+  assert.equal(market.sourceFields.supplyApr, null);
+});

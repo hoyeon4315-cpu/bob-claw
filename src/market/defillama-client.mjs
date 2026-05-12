@@ -44,6 +44,12 @@ export function resetCache() {
   cacheTimestamp = 0;
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export async function fetchPoolYields({ protocol, chain, fetcher, profile } = {}) {
   if (!featureEnabled(profile)) {
     return null;
@@ -59,9 +65,9 @@ export async function fetchPoolYields({ protocol, chain, fetcher, profile } = {}
   });
   return matches.map((pool) => ({
     pool: pool.pool,
-    apyBase: Number(pool.apyBase) || 0,
-    apyReward: Number(pool.apyReward) || 0,
-    apy: Number(pool.apy) || 0,
-    tvlUsd: Number(pool.tvlUsd) || 0,
+    apyBase: numberOrNull(pool.apyBase),
+    apyReward: numberOrNull(pool.apyReward),
+    apy: numberOrNull(pool.apy),
+    tvlUsd: numberOrNull(pool.tvlUsd),
   }));
 }

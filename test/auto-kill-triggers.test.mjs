@@ -172,6 +172,18 @@ test("oracle divergence stays silent below threshold", () => {
   assert.equal(result, null);
 });
 
+test("oracle divergence requires distinct sources for a pair", () => {
+  const config = buildAutoKillConfig({ oracleDivergence: { maxDivergencePct: 0.05, minSourceCount: 2 } });
+  const result = evaluateOracleDivergence({
+    samples: [
+      { source: "coingecko", pair: "BTC/USD", priceUsd: 100 },
+      { source: "coingecko", pair: "BTC/USD", priceUsd: 110 },
+    ],
+    config: config.oracleDivergence,
+  });
+  assert.equal(result, null);
+});
+
 test("oracle divergence with minSourceCount 3 only evaluates once DIA adds the third source", () => {
   const config = buildAutoKillConfig({ oracleDivergence: { maxDivergencePct: 0.05, minSourceCount: 3 } });
   assert.equal(evaluateOracleDivergence({
