@@ -8,6 +8,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "docs/readiness/dead-code-baseline.json"
+      - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
       - ".jscpd.json"
@@ -35,6 +36,7 @@ jobs:
           node-version: "20"
       - run: npm ci
       - run: npm run check:dead-code
+      - run: npm run check:tech-debt
       - run: npm run check:duplicate-code
       - run: npm run check:architecture
       - run: npm run test

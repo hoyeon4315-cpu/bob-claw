@@ -52,6 +52,13 @@ CLIs, dynamic research candidate modules, and dashboard source entry files.
 `docs/readiness/dead-code-baseline.json`: audited backlog items stay visible in
 command output, but any new unused-file candidate fails the check.
 
+Technical-debt tracking is baseline-based too: run `npm run check:tech-debt`
+to scan `src/`, `docs/`, and `test/` for `TODO`, `FIXME`, `XXX`, and `HACK`
+markers. The audited backlog lives in
+`docs/readiness/tech-debt-baseline.json`; generated/runtime outputs, dashboard
+public JSON, logs, data snapshots, build artifacts, coverage, and dependency
+or cache directories stay out of scope.
+
 ## Safe Staging Rules
 
 - Stage exact files: `git add -- path1 path2 ...`

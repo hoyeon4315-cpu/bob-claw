@@ -345,6 +345,7 @@
     "validate:complexity": "node scripts/validate-cyclomatic-complexity.mjs --base origin/main",
     "check:large-files": "node scripts/check-large-files.mjs",
     "check:dead-code": "node scripts/check-dead-code.mjs",
+    "check:tech-debt": "node scripts/check-tech-debt.mjs",
     "check:duplicate-code": "node scripts/check-duplicate-code.mjs",
     "check:architecture": "depcruise src scripts test dashboard/public",
     "report:duplicate-code": "node scripts/check-duplicate-code.mjs --report-only"
