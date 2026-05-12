@@ -5,8 +5,10 @@ on:
     types: [opened, synchronize]
     paths:
       - ".github/workflows/auto-pr-validate.yml"
+      - ".jscpd.json"
       - "dashboard/public/*.jsx"
       - "docs/readiness/dead-code-baseline.json"
+      - "docs/readiness/duplicate-code-baseline.json"
       - "knip.config.js"
       - "package-lock.json"
       - "package.json"
@@ -16,6 +18,7 @@ on:
       - "src/executor/**"
       - "src/risk/**"
       - "src/strategy/**"
+      - "test/check-duplicate-code.test.mjs"
       - "test/check-dead-code.test.mjs"
       - "scripts/**"
 
@@ -29,6 +32,7 @@ jobs:
           node-version: "20"
       - run: npm ci
       - run: npm run check:dead-code
+      - run: npm run check:duplicate-code
       - run: npm run test
       - name: dryrun opportunity candidate
         run: npm run dryrun:opportunity-candidate -- --id=placeholder || true

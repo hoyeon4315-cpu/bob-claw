@@ -1,10 +1,8 @@
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import {
-  lintCyclomaticComplexity,
-  listTrackedComplexityFiles,
-} from "./validate-cyclomatic-complexity.mjs";
+import { parsePositiveIntegerOption } from "./cyclomatic-complexity-cli.mjs";
+import { lintCyclomaticComplexity, listTrackedComplexityFiles } from "./validate-cyclomatic-complexity.mjs";
 
 const DEFAULT_LIMIT = 20;
 
@@ -21,21 +19,13 @@ function parseArgs(argv) {
     }
     if (arg === "--limit") {
       const rawValue = argv[index + 1] ?? "";
-      const parsed = Number.parseInt(rawValue, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        throw new Error(`invalid --limit value: ${rawValue}`);
-      }
-      limit = parsed;
+      limit = parsePositiveIntegerOption(rawValue, "--limit");
       index += 1;
       continue;
     }
     if (arg === "--threshold") {
       const rawValue = argv[index + 1] ?? "";
-      const parsed = Number.parseInt(rawValue, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        throw new Error(`invalid --threshold value: ${rawValue}`);
-      }
-      threshold = parsed;
+      threshold = parsePositiveIntegerOption(rawValue, "--threshold");
       index += 1;
     }
   }

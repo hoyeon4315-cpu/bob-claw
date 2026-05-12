@@ -24,6 +24,7 @@ state/
 .claude/settings.local.json
 .claude/agent-memory-local/
 .codex/
+.jscpd-report/
 graphify-out/
 src/graphify-out/
 *.bak-*

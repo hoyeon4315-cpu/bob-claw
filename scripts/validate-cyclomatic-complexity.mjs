@@ -3,6 +3,7 @@ import { extname, relative, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
+import { parsePositiveIntegerOption } from "./cyclomatic-complexity-cli.mjs";
 
 const ROOT = process.cwd();
 const ESLINT_CONFIG_PATH = fileURLToPath(new URL("../eslint.config.mjs", import.meta.url));
@@ -116,11 +117,7 @@ function parseArgs(argv) {
     }
     if (arg === "--threshold") {
       const rawValue = argv[index + 1] ?? "";
-      const parsed = Number.parseInt(rawValue, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        throw new Error(`invalid --threshold value: ${rawValue}`);
-      }
-      threshold = parsed;
+      threshold = parsePositiveIntegerOption(rawValue, "--threshold");
       index += 1;
       continue;
     }

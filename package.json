@@ -317,6 +317,7 @@
     "format:check": "prettier --check .",
     "check:onramp": "node src/cli/check-gateway-onramp.mjs",
     "check:dead-code": "node scripts/check-dead-code.mjs",
+    "check:duplicate-code": "node scripts/check-duplicate-code.mjs",
     "check:large-files": "node scripts/check-large-files.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "analyze:overfit": "node src/cli/analyze-spread-overfit.mjs --capital=1000 --min-profit=0.30",
@@ -341,6 +342,7 @@
     "dashboard:stage-explain": "node src/cli/dashboard-stage-explain.mjs",
     "audit:payback-readiness": "node src/cli/audit-payback-readiness.mjs --json",
     "audit:trailing-30d": "node src/cli/audit-trailing-30d.mjs --json",
+    "report:duplicate-code": "node scripts/check-duplicate-code.mjs --report-only",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -360,6 +362,7 @@
     "esbuild": "^0.28.0",
     "eslint": "^10.3.0",
     "husky": "^9.1.7",
+    "jscpd": "^4.1.1",
     "knip": "^6.12.2",
     "lint-staged": "^17.0.4",
     "prettier": "^3.8.3",
