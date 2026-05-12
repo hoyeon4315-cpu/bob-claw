@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize]
     paths:
       - ".github/workflows/auto-pr-validate.yml"
+      - ".dependency-cruiser.cjs"
       - ".jscpd.json"
       - "dashboard/public/*.jsx"
       - "docs/readiness/dead-code-baseline.json"
@@ -33,6 +34,7 @@ jobs:
       - run: npm ci
       - run: npm run check:dead-code
       - run: npm run check:duplicate-code
+      - run: npm run check:architecture
       - run: npm run test
       - name: dryrun opportunity candidate
         run: npm run dryrun:opportunity-candidate -- --id=placeholder || true

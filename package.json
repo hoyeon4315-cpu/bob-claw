@@ -319,6 +319,7 @@
     "check:dead-code": "node scripts/check-dead-code.mjs",
     "check:duplicate-code": "node scripts/check-duplicate-code.mjs",
     "check:large-files": "node scripts/check-large-files.mjs",
+    "check:architecture": "depcruise src scripts test dashboard/public",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "analyze:overfit": "node src/cli/analyze-spread-overfit.mjs --capital=1000 --min-profit=0.30",
     "analyze:auto": "node src/cli/auto-analyze-and-notify.mjs",
@@ -359,6 +360,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.7.0",
+    "dependency-cruiser": "^17.4.0",
     "esbuild": "^0.28.0",
     "eslint": "^10.3.0",
     "husky": "^9.1.7",
