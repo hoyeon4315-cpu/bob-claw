@@ -34,10 +34,7 @@ export function resolveAllChainAutopilotReport(latestReport = null, latestComple
   ) {
     return latestReport;
   }
-  if (
-    latestCompletedReport &&
-    (latestReport?.status === "running" || isTransientLatestError(latestReport))
-  ) {
+  if (latestCompletedReport && (latestReport?.status === "running" || isTransientLatestError(latestReport))) {
     return latestCompletedReport;
   }
   return latestReport || latestCompletedReport || null;
@@ -118,18 +115,25 @@ function refillScopeKey(item = {}) {
 }
 
 function refillScopeSummary(refill = []) {
-  const affectedScopes = [...new Map(refill.map((item) => [refillScopeKey(item), {
-    scopeType: item.scope?.scopeType || "job",
-    strategyId: item.scope?.strategyId || item.strategyId || null,
-    chain: item.scope?.chain || item.chain || null,
-    targetAsset: item.scope?.targetAsset || item.targetAsset || item.asset || null,
-    sourceAsset: item.scope?.sourceAsset || item.sourceAsset || null,
-    selectedMethod: item.scope?.selectedMethod || item.selectedMethod || null,
-    executorFamily: item.scope?.executorFamily || item.executorFamily || null,
-    routeFamily: item.scope?.routeFamily || item.routeFamily || null,
-    taxonomy: item.taxonomy || null,
-    reason: item.reason || null,
-  }])).values()];
+  const affectedScopes = [
+    ...new Map(
+      refill.map((item) => [
+        refillScopeKey(item),
+        {
+          scopeType: item.scope?.scopeType || "job",
+          strategyId: item.scope?.strategyId || item.strategyId || null,
+          chain: item.scope?.chain || item.chain || null,
+          targetAsset: item.scope?.targetAsset || item.targetAsset || item.asset || null,
+          sourceAsset: item.scope?.sourceAsset || item.sourceAsset || null,
+          selectedMethod: item.scope?.selectedMethod || item.selectedMethod || null,
+          executorFamily: item.scope?.executorFamily || item.executorFamily || null,
+          routeFamily: item.scope?.routeFamily || item.routeFamily || null,
+          taxonomy: item.taxonomy || null,
+          reason: item.reason || null,
+        },
+      ]),
+    ).values(),
+  ];
   return {
     affectedScopes,
     waitingHelps: refill.some((item) => item.waitingHelps),
@@ -152,8 +156,7 @@ function countUnresolvedRefillExecutions(refillExecutions = [], { refillSource =
     .map((item) => ({
       reason: refillReason(item),
     }))
-    .filter(refillNeedsLiveRemediation)
-    .length;
+    .filter(refillNeedsLiveRemediation).length;
 }
 
 export function resolveUnresolvedRefillCount({
@@ -162,8 +165,7 @@ export function resolveUnresolvedRefillCount({
   capitalManagerRefillJobsLatest = null,
 } = {}) {
   const baseUnresolved =
-    finiteCount(slice?.refill?.unresolvedCount) ||
-    countUnresolvedRefillExecutions(report?.refillExecutions || []);
+    finiteCount(slice?.refill?.unresolvedCount) || countUnresolvedRefillExecutions(report?.refillExecutions || []);
   const capitalManagerLatest = unwrapCapitalManagerRefillJobsLatest(capitalManagerRefillJobsLatest);
   if (!report || !capitalManagerLatest) return baseUnresolved;
   const latestObservedAt = observedMs(capitalManagerLatest);
@@ -176,10 +178,7 @@ export function resolveUnresolvedRefillCount({
   const jobCount = finiteCount(summary.jobCount);
   const manualReviewJobCount = finiteCount(summary.manualReviewJobCount);
   const autoQueuedJobCount = finiteCount(summary.autoQueuedJobCount);
-  const capitalManagerFullyAutoQueued =
-    jobCount > 0 &&
-    manualReviewJobCount === 0 &&
-    autoQueuedJobCount >= jobCount;
+  const capitalManagerFullyAutoQueued = jobCount > 0 && manualReviewJobCount === 0 && autoQueuedJobCount >= jobCount;
   if (!capitalManagerFullyAutoQueued) return baseUnresolved;
   return Math.max(0, baseUnresolved - staleCapitalManagerUnresolved);
 }
@@ -211,8 +210,9 @@ function executionAttemptSummary({
   const merklCanaryReadyCount = finiteCount(merklCanary.readyCount);
   const merklCanarySelectedCount = finiteCount(merklCanary.selectedCount);
   const strategySelectedCount = finiteCount(strategyDispatch.selectedCount);
-  const strategyLiveEligibleCount =
-    Number.isFinite(strategyDispatch.liveEligibleCount) ? Number(strategyDispatch.liveEligibleCount) : null;
+  const strategyLiveEligibleCount = Number.isFinite(strategyDispatch.liveEligibleCount)
+    ? Number(strategyDispatch.liveEligibleCount)
+    : null;
   const txBroadcastCount = refillExecutedCount + canaryBroadcastStepCount;
   const attemptedLive =
     executeMode &&
@@ -249,7 +249,8 @@ function executionAttemptSummary({
     mode,
     runId: report?.autopilotRunId || null,
     attemptedLive,
-    completed: report?.phase === "completed" || report?.status === "completed" || report?.status === "completed_with_blockers",
+    completed:
+      report?.phase === "completed" || report?.status === "completed" || report?.status === "completed_with_blockers",
     txBroadcastCount,
     refillAttemptedCount,
     refillExecutedCount,

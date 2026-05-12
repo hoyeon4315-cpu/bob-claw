@@ -1,11 +1,29 @@
 import { join } from "node:path";
-import { WBTC_OFT_TOKEN, classifyGatewayAssetUniverse, isBtcFamilyRoute, isEthFamilyRoute, routeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import {
+  WBTC_OFT_TOKEN,
+  classifyGatewayAssetUniverse,
+  isBtcFamilyRoute,
+  isEthFamilyRoute,
+  routeAsset,
+  tokenAsset,
+  unitsToDecimal,
+} from "../assets/tokens.mjs";
 import { buildOverfitAudit } from "../audit/overfit.mjs";
 import { compareAnnouncedGatewayChains } from "../chains/gateway-announced.mjs";
-import { canQuoteWithDex, filterTrustedExecutableDexQuotes, normalizeDexSupportReason, STABLE_QUOTE_TOKENS } from "../dex/odos.mjs";
+import {
+  canQuoteWithDex,
+  filterTrustedExecutableDexQuotes,
+  normalizeDexSupportReason,
+  STABLE_QUOTE_TOKENS,
+} from "../dex/odos.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { latestBy } from "../lib/jsonl-read.mjs";
-import { emptyPricesUsd, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
+import {
+  emptyPricesUsd,
+  latestPriceSnapshot,
+  overlayObservedPricesUsd,
+  pricesFromSnapshot,
+} from "../market/prices.mjs";
 import { buildPreliveReadinessSummary } from "../prelive/readiness.mjs";
 import { buildPreliveEvidenceCampaignSummary } from "../prelive/evidence-campaign.mjs";
 import { buildConnectedRefreshExecutionSummary } from "../prelive/connected-refresh-runner.mjs";
@@ -14,10 +32,7 @@ import { buildShadowRefreshBatchSummary } from "../session/shadow-refresh-batch.
 import { buildShadowRefreshQueue } from "../session/shadow-refresh-queue.mjs";
 import { buildShadowRefreshExecutionSummary } from "../session/shadow-refresh-runner.mjs";
 import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
-import {
-  filterRecordsByReportingPnlBaseline,
-  summarizeReportingPnlBaseline,
-} from "./reporting-pnl-baseline.mjs";
+import { filterRecordsByReportingPnlBaseline, summarizeReportingPnlBaseline } from "./reporting-pnl-baseline.mjs";
 import { buildYieldShadowBook, summarizeYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
@@ -31,7 +46,10 @@ import { buildEthereumRouteAnalysis } from "../strategy/ethereum-route-analysis.
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildEthProfitabilitySummary } from "../strategy/profitability-summary.mjs";
 import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
-import { buildProxySpreadCoveragePlan, summarizeProxySpreadCoveragePlan } from "../strategy/proxy-spread-coverage-plan.mjs";
+import {
+  buildProxySpreadCoveragePlan,
+  summarizeProxySpreadCoveragePlan,
+} from "../strategy/proxy-spread-coverage-plan.mjs";
 import { buildStrategySnapshot, summarizeStrategySnapshot } from "../strategy/strategy-snapshot.mjs";
 import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { buildCampaignAwareSlice } from "./campaign-aware-dashboard-slice.mjs";
@@ -93,14 +111,15 @@ export function buildAutoPromotionDashboardSummary(report) {
       eligible.push(Object.freeze({ strategyId: item.strategyId }));
       continue;
     }
-    const firstBlocker = Array.isArray(item.blockers) && item.blockers.length > 0
-      ? String(item.blockers[0])
-      : "unknown";
-    blocked.push(Object.freeze({
-      strategyId: item.strategyId,
-      firstBlocker,
-      evidenceProvided: item.evidenceProvided === true,
-    }));
+    const firstBlocker =
+      Array.isArray(item.blockers) && item.blockers.length > 0 ? String(item.blockers[0]) : "unknown";
+    blocked.push(
+      Object.freeze({
+        strategyId: item.strategyId,
+        firstBlocker,
+        evidenceProvided: item.evidenceProvided === true,
+      }),
+    );
   }
 
   return Object.freeze({
@@ -110,7 +129,8 @@ export function buildAutoPromotionDashboardSummary(report) {
     advisoryOnly: report.advisoryOnly !== false,
     eligibleCount: report.summary?.eligibleCount ?? eligible.length,
     blockedCount: report.summary?.blockedCount ?? blocked.length,
-    evidenceProvidedCount: report.summary?.evidenceProvidedCount ?? reports.filter((item) => item?.evidenceProvided === true).length,
+    evidenceProvidedCount:
+      report.summary?.evidenceProvidedCount ?? reports.filter((item) => item?.evidenceProvided === true).length,
     eligible: Object.freeze(eligible),
     blocked: Object.freeze(blocked),
   });
@@ -182,7 +202,8 @@ export function buildTruthPanels({
       blockerCounts.set(key, (blockerCounts.get(key) || 0) + 1);
       if (key === "asset_coverage_missing_for_new_exposure") assetCoverageMissingCount += 1;
     }
-    const evEvidence = record.policy?.results?.find?.((item) => item.policy === "ev_gate")?.evidence ||
+    const evEvidence =
+      record.policy?.results?.find?.((item) => item.policy === "ev_gate")?.evidence ||
       record.error?.policy?.results?.find?.((item) => item.policy === "ev_gate")?.evidence ||
       null;
     if (evEvidence?.bypassReason === "transport_plumbing_zero_pnl_surface") transportBypassCount += 1;
@@ -209,11 +230,9 @@ export function buildTruthPanels({
     const parsed = new Date(timestamp).getTime();
     return !Number.isFinite(parsed) || parsed < staleCutoffMs;
   }).length;
-  const missingSourceObservedAtCount = [
-    walletHoldings,
-    ...closedCycles,
-    ...protocolPositionMarks,
-  ].filter((item) => item && !item.sourceObservedAt && !item.oldestMaterialSourceObservedAt && !item.observedAt).length;
+  const missingSourceObservedAtCount = [walletHoldings, ...closedCycles, ...protocolPositionMarks].filter(
+    (item) => item && !item.sourceObservedAt && !item.oldestMaterialSourceObservedAt && !item.observedAt,
+  ).length;
 
   return {
     policyRejectHistogram24h: {
@@ -336,7 +355,9 @@ function buildFlowRoutes(routes) {
   return [...byPair.values()]
     .map((item) => ({
       ...item,
-      assets: [...item.assets.values()].sort((left, right) => right.count - left.count || left.ticker.localeCompare(right.ticker)),
+      assets: [...item.assets.values()].sort(
+        (left, right) => right.count - left.count || left.ticker.localeCompare(right.ticker),
+      ),
       routeKeys: item.routeKeys.sort().slice(0, 8),
     }))
     .sort(
@@ -413,9 +434,15 @@ function buildAssetCoverage(routes, quotes, failures) {
     });
   }
 
-  const supportedAssets = [...supported.values()].sort((left, right) => right.routeCount - left.routeCount || left.ticker.localeCompare(right.ticker));
-  const sampledAssets = [...sampled.values()].sort((left, right) => right.quoteCount - left.quoteCount || left.ticker.localeCompare(right.ticker));
-  const failedAssets = [...failed.values()].sort((left, right) => right.failureCount - left.failureCount || left.ticker.localeCompare(right.ticker));
+  const supportedAssets = [...supported.values()].sort(
+    (left, right) => right.routeCount - left.routeCount || left.ticker.localeCompare(right.ticker),
+  );
+  const sampledAssets = [...sampled.values()].sort(
+    (left, right) => right.quoteCount - left.quoteCount || left.ticker.localeCompare(right.ticker),
+  );
+  const failedAssets = [...failed.values()].sort(
+    (left, right) => right.failureCount - left.failureCount || left.ticker.localeCompare(right.ticker),
+  );
   const unsampledAssets = supportedAssets.filter((asset) => !sampled.has(asset.ticker));
 
   return {
@@ -431,7 +458,8 @@ function buildAssetCoverage(routes, quotes, failures) {
 
 function buildBtcWatchlistSummary(routes = []) {
   const assetUniverse = classifyGatewayAssetUniverse(routes);
-  const uniqueTickers = (items = []) => [...new Set(items.map((item) => item.ticker).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const uniqueTickers = (items = []) =>
+    [...new Set(items.map((item) => item.ticker).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   return {
     observedCount: assetUniverse.observedBtcLikeAssets.length,
@@ -469,7 +497,15 @@ function buildBtcWatchlistSummary(routes = []) {
   };
 }
 
-function gatewaySummary({ latestRoutesRecord, latestUpdateSnapshot, latestUpdateAlert, updateAlerts, quotes, failures, now }) {
+function gatewaySummary({
+  latestRoutesRecord,
+  latestUpdateSnapshot,
+  latestUpdateAlert,
+  updateAlerts,
+  quotes,
+  failures,
+  now,
+}) {
   const snapshot = latestUpdateSnapshot?.snapshot || null;
   const routes = latestRoutesRecord?.routes || [];
   const chains = snapshot?.chains || routeChains(routes);
@@ -551,7 +587,9 @@ function gasSummary({ gasSnapshots, gasFailures, gatewayChains, now }) {
       nativeUsd: snapshot.nativeUsd,
     }))
     .sort((left, right) => left.chain.localeCompare(right.chain));
-  const staleGatewayGasChains = chains.filter((item) => item.ageMinutes === null || item.ageMinutes > 30).map((item) => item.chain);
+  const staleGatewayGasChains = chains
+    .filter((item) => item.ageMinutes === null || item.ageMinutes > 30)
+    .map((item) => item.chain);
 
   return {
     latestChainCount: chains.length,
@@ -663,7 +701,16 @@ function latestDexWbtcPriceByChain(dexQuotes = []) {
   return latest;
 }
 
-function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnapshots = [], dexQuotes = [], dexFailures = [], quotes = [], gatewayChains = [], now }) {
+function marketSummary({
+  priceSnapshots = [],
+  gasSnapshots = [],
+  bitcoinFeeSnapshots = [],
+  dexQuotes = [],
+  dexFailures = [],
+  quotes = [],
+  gatewayChains = [],
+  now,
+}) {
   const latestObservedPrices = latestPriceSnapshot(priceSnapshots);
   const basePrices = latestObservedPrices ? pricesFromSnapshot(latestObservedPrices) : emptyPricesUsd();
   const prices = overlayObservedPricesUsd(basePrices, {
@@ -675,7 +722,11 @@ function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnaps
     latest(bitcoinFeeSnapshots)?.observedAt ||
     latest(gasSnapshots)?.observedAt ||
     null;
-  const wbtcUsd = Number.isFinite(prices.tokenByKey?.wbtc) ? prices.tokenByKey.wbtc : Number.isFinite(prices.btc) ? prices.btc : null;
+  const wbtcUsd = Number.isFinite(prices.tokenByKey?.wbtc)
+    ? prices.tokenByKey.wbtc
+    : Number.isFinite(prices.btc)
+      ? prices.btc
+      : null;
   const btcUsd = Number.isFinite(prices.btc) ? prices.btc : wbtcUsd;
   const dexWbtcByChain = latestDexWbtcPriceByChain(dexQuotes);
   const dexWbtcFailureByChain = latestDexWbtcFailureByChain(dexFailures);
@@ -688,7 +739,7 @@ function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnaps
     const support = chain === "bitcoin" ? null : canQuoteWithDex(chain, WBTC_OFT_TOKEN, STABLE_QUOTE_TOKENS[chain]);
     const chainObservedAt = chain === "bitcoin" ? observedAt : dexPrice?.observedAt || null;
     const ageMinutes = minutesBetween(chainObservedAt, now);
-    const usd = chain === "bitcoin" ? btcUsd : dexPrice?.usd ?? null;
+    const usd = chain === "bitcoin" ? btcUsd : (dexPrice?.usd ?? null);
     return {
       chain,
       ticker: chain === "bitcoin" ? "BTC" : "wBTC",
@@ -697,7 +748,10 @@ function marketSummary({ priceSnapshots = [], gasSnapshots = [], bitcoinFeeSnaps
       ageMinutes,
       deltaPct: chain === "bitcoin" ? null : pctChange(btcUsd, usd),
       stale: Number.isFinite(ageMinutes) ? ageMinutes > CHAIN_PRICE_STALE_MINUTES : false,
-      source: chain === "bitcoin" ? latestObservedPrices?.source || latest(bitcoinFeeSnapshots)?.source || "observed_overlay" : dexPrice?.source || null,
+      source:
+        chain === "bitcoin"
+          ? latestObservedPrices?.source || latest(bitcoinFeeSnapshots)?.source || "observed_overlay"
+          : dexPrice?.source || null,
       quoteable: chain !== "bitcoin" && Boolean(support?.ok),
       coverageReason: dexCoverageReason(chain, { dexPrice, latestFailureReason, sampledWrappedBtcLeg }),
       coverageObservedAt: sampledWrappedBtcLeg?.observedAt || null,
@@ -769,11 +823,18 @@ function auditSummary(audit) {
 
 function opportunitySummary(scoreSnapshot, now) {
   const scores = scoreSnapshot?.scores || [];
-  const candidateCount = scoreSnapshot?.summary?.shadowCandidates ?? scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length;
+  const candidateCount =
+    scoreSnapshot?.summary?.shadowCandidates ??
+    scores.filter((score) => score.tradeReadiness === "shadow_candidate_review_only").length;
   const rejectedNoEdge = scores.filter((score) => score.tradeReadiness === "reject_no_net_edge").length;
-  const insufficientData = scoreSnapshot?.summary?.insufficientData ?? scores.filter((score) => score.tradeReadiness === "insufficient_data").length;
+  const insufficientData =
+    scoreSnapshot?.summary?.insufficientData ??
+    scores.filter((score) => score.tradeReadiness === "insufficient_data").length;
   const positiveInsufficient = [...scores]
-    .filter((score) => score.tradeReadiness === "insufficient_data" && Number.isFinite(score.netEdgeUsd) && score.netEdgeUsd > 0)
+    .filter(
+      (score) =>
+        score.tradeReadiness === "insufficient_data" && Number.isFinite(score.netEdgeUsd) && score.netEdgeUsd > 0,
+    )
     .sort((left, right) => right.netEdgeUsd - left.netEdgeUsd);
   const dataGaps = new Map();
   for (const score of scores) {
@@ -796,7 +857,9 @@ function opportunitySummary(scoreSnapshot, now) {
     candidateCount,
     dexBacked: scoreSnapshot?.summary?.dexBacked ?? scores.filter((score) => score.dex).length,
     rejectedNoEdge,
-    highFailureRate: scoreSnapshot?.summary?.highFailureRate ?? scores.filter((score) => (score.routeStats?.failureRate ?? 0) > 0.1).length,
+    highFailureRate:
+      scoreSnapshot?.summary?.highFailureRate ??
+      scores.filter((score) => (score.routeStats?.failureRate ?? 0) > 0.1).length,
     insufficientData,
     positiveInsufficientCount: positiveInsufficient.length,
     topPositiveInsufficientRoute: positiveInsufficient[0]
@@ -827,7 +890,13 @@ function opportunitySummary(scoreSnapshot, now) {
   };
 }
 
-function decisionInputsSummary({ scoreSnapshot = null, shadowCycle = null, quoteLagLatest = null, dexSpreadLatest = null, now }) {
+function decisionInputsSummary({
+  scoreSnapshot = null,
+  shadowCycle = null,
+  quoteLagLatest = null,
+  dexSpreadLatest = null,
+  now,
+}) {
   const score = freshnessStatus(scoreSnapshot?.generatedAt || null, now);
   const cycle = freshnessStatus(shadowCycle?.generatedAt || shadowCycle?.observedAt || null, now);
   const quoteLag = freshnessStatus(quoteLagLatest?.generatedAt || quoteLagLatest?.observedAt || null, now);
@@ -897,8 +966,7 @@ function researchSignalsSummary(thresholdSensitivity = null, now) {
       researchOnlySignal:
         (triangleResearch?.passCount || 0) > 0 ||
         ((executableResearch?.passCount || 0) > 0 && (executableResearch?.passWithoutMajorGap || 0) === 0),
-      note:
-        "Research signals may justify more measurement, but they do not change canary or live policy until freshness and execution gaps are cleared.",
+      note: "Research signals may justify more measurement, but they do not change canary or live policy until freshness and execution gaps are cleared.",
     },
     conclusions: thresholdSensitivity.conclusion || [],
   };
@@ -906,14 +974,16 @@ function researchSignalsSummary(thresholdSensitivity = null, now) {
 
 function bestStablecoinRoute(scoreSnapshot) {
   const scores = scoreSnapshot?.scores || [];
-  return [...scores]
-    .filter((score) => score?.srcAsset?.family === "stablecoin" || score?.dstAsset?.family === "stablecoin")
-    .sort(
-      (left, right) =>
-        (right.executableNetEdgeUsd ?? right.netEdgeUsd ?? Number.NEGATIVE_INFINITY) -
-          (left.executableNetEdgeUsd ?? left.netEdgeUsd ?? Number.NEGATIVE_INFINITY) ||
-        String(left.routeKey).localeCompare(String(right.routeKey)),
-    )[0] || null;
+  return (
+    [...scores]
+      .filter((score) => score?.srcAsset?.family === "stablecoin" || score?.dstAsset?.family === "stablecoin")
+      .sort(
+        (left, right) =>
+          (right.executableNetEdgeUsd ?? right.netEdgeUsd ?? Number.NEGATIVE_INFINITY) -
+            (left.executableNetEdgeUsd ?? left.netEdgeUsd ?? Number.NEGATIVE_INFINITY) ||
+          String(left.routeKey).localeCompare(String(right.routeKey)),
+      )[0] || null
+  );
 }
 
 function strategySummary({
@@ -1118,28 +1188,32 @@ function estimatorWalletSummary({ estimatorWalletReadiness = [], estimatorWallet
 }
 
 function humanShadowCycleAuditIssue(issue) {
-  return {
-    configured_address_stale_vs_resolved_cycle_address: "기본 지갑 설정이 최신 운영 주소와 다름",
-    explicit_address_differs_from_latest_inventory: "지정한 주소와 최신 운영 지갑이 다름",
-    latest_inventory_and_wallet_readiness_addresses_differ: "지갑 준비 기록과 재고 주소가 다름",
-    resolved_address_differs_from_latest_inventory: "현재 사이클 주소와 최신 재고 주소가 다름",
-    resolved_address_differs_from_latest_wallet_readiness: "현재 사이클 주소와 준비 점검 주소가 다름",
-    inventory_snapshot_missing: "지갑 재고 스냅샷이 없음",
-    inventory_snapshot_address_mismatch: "지갑 재고 스냅샷 주소가 다름",
-    inventory_summary_value_mismatch: "지갑 평가값과 보유 자산 합계가 다름",
-  }[issue] || issue;
+  return (
+    {
+      configured_address_stale_vs_resolved_cycle_address: "기본 지갑 설정이 최신 운영 주소와 다름",
+      explicit_address_differs_from_latest_inventory: "지정한 주소와 최신 운영 지갑이 다름",
+      latest_inventory_and_wallet_readiness_addresses_differ: "지갑 준비 기록과 재고 주소가 다름",
+      resolved_address_differs_from_latest_inventory: "현재 사이클 주소와 최신 재고 주소가 다름",
+      resolved_address_differs_from_latest_wallet_readiness: "현재 사이클 주소와 준비 점검 주소가 다름",
+      inventory_snapshot_missing: "지갑 재고 스냅샷이 없음",
+      inventory_snapshot_address_mismatch: "지갑 재고 스냅샷 주소가 다름",
+      inventory_summary_value_mismatch: "지갑 평가값과 보유 자산 합계가 다름",
+    }[issue] || issue
+  );
 }
 
 function humanTreasuryNeedActivation(code) {
-  return {
-    demand_active_now: "현재 수요 기준 보강 가능",
-    awaiting_wallet_readiness_check: "지갑 준비 점검이 더 필요함",
-    awaiting_wallet_readiness_retry: "지갑 준비 재점검이 필요함",
-    awaiting_tx_payload: "실행 payload 확인이 더 필요함",
-    awaiting_score_gap_clear: "점수 데이터 공백 해소가 필요함",
-    awaiting_route_viability: "경로 적합성 확인이 더 필요함",
-    no_candidate_route: "해당 체인 수요 후보가 아직 없음",
-  }[code] || code;
+  return (
+    {
+      demand_active_now: "현재 수요 기준 보강 가능",
+      awaiting_wallet_readiness_check: "지갑 준비 점검이 더 필요함",
+      awaiting_wallet_readiness_retry: "지갑 준비 재점검이 필요함",
+      awaiting_tx_payload: "실행 payload 확인이 더 필요함",
+      awaiting_score_gap_clear: "점수 데이터 공백 해소가 필요함",
+      awaiting_route_viability: "경로 적합성 확인이 더 필요함",
+      no_candidate_route: "해당 체인 수요 후보가 아직 없음",
+    }[code] || code
+  );
 }
 
 function money(value) {
@@ -1158,26 +1232,23 @@ function amountLabel(value) {
   }
 }
 
-function shortChainLabel(chain) {
-  if (!chain) return null;
-  return chain === "bob" ? "BOB" : chain === "bitcoin" ? "BTC" : chainMetaLabel(chain);
-}
-
 function chainMetaLabel(chain) {
-  return {
-    avalanche: "Avalanche",
-    base: "Base",
-    bera: "Berachain",
-    bitcoin: "Bitcoin",
-    bob: "BOB",
-    bsc: "BNB",
-    ethereum: "Ethereum",
-    optimism: "Optimism",
-    sei: "Sei",
-    soneium: "Soneium",
-    sonic: "Sonic",
-    unichain: "Unichain",
-  }[chain] || chain;
+  return (
+    {
+      avalanche: "Avalanche",
+      base: "Base",
+      bera: "Berachain",
+      bitcoin: "Bitcoin",
+      bob: "BOB",
+      bsc: "BNB",
+      ethereum: "Ethereum",
+      optimism: "Optimism",
+      sei: "Sei",
+      soneium: "Soneium",
+      sonic: "Sonic",
+      unichain: "Unichain",
+    }[chain] || chain
+  );
 }
 
 function humanTradeReadiness(code, netEdgeUsd) {
@@ -1219,38 +1290,52 @@ function humanTradeReadiness(code, netEdgeUsd) {
 }
 
 function humanShadowRosterRole(role) {
-  return {
-    active_canary: "현재 canary",
-    prep_candidate: "대안 prep 후보",
-    tx_ready_shadow: "payload 확보 shadow 후보",
-    research_candidate: "연구 후보",
-  }[role] || role;
+  return (
+    {
+      active_canary: "현재 canary",
+      prep_candidate: "대안 prep 후보",
+      tx_ready_shadow: "payload 확보 shadow 후보",
+      research_candidate: "연구 후보",
+    }[role] || role
+  );
 }
 
 function humanShadowAction(code) {
-  return {
-    capture_tx_payload: "route payload 확보",
-    check_wallet_readiness: "지갑 준비 점검",
-    refresh_exact_gas: "정확 가스 재측정",
-    refresh_dex_and_score: "DEX 레그 갱신 후 재점수화",
-    wait_for_fresh_inputs: "신선한 입력 대기",
-    review_candidate: "수동 검토",
-    rescore_candidate: "후보 재점수화",
-  }[code] || code;
+  return (
+    {
+      capture_tx_payload: "route payload 확보",
+      check_wallet_readiness: "지갑 준비 점검",
+      refresh_exact_gas: "정확 가스 재측정",
+      refresh_dex_and_score: "DEX 레그 갱신 후 재점수화",
+      wait_for_fresh_inputs: "신선한 입력 대기",
+      review_candidate: "수동 검토",
+      rescore_candidate: "후보 재점수화",
+    }[code] || code
+  );
 }
 
 function humanExecutionStatus(status) {
-  return {
-    confirmed: "체결 확인",
-    submitted: "제출됨",
-    failed: "실패",
-    pending_output: "출력 확인 중",
-    planned: "예정",
-    dry_run_planned: "드라이런",
-  }[status] || status || "대기";
+  return (
+    {
+      confirmed: "체결 확인",
+      submitted: "제출됨",
+      failed: "실패",
+      pending_output: "출력 확인 중",
+      planned: "예정",
+      dry_run_planned: "드라이런",
+    }[status] ||
+    status ||
+    "대기"
+  );
 }
 
-function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [], reportingPnlBaseline = null, now = null }) {
+function pnlSummary({
+  opportunity = null,
+  shadowCycle = null,
+  receiptRecords = [],
+  reportingPnlBaseline = null,
+  now = null,
+}) {
   const executionReview = shadowCycle?.objectivePlans?.executionReview || null;
   const scopedReceiptRecords = filterRecordsByReportingPnlBaseline(receiptRecords || [], reportingPnlBaseline);
   const receiptLedger = buildReceiptLedgerSummary(scopedReceiptRecords);
@@ -1267,10 +1352,7 @@ function pnlSummary({ opportunity = null, shadowCycle = null, receiptRecords = [
     },
     estimated: {
       valueUsd:
-        executionReview?.executableNetUsd ??
-        executionReview?.scoreNetUsd ??
-        executionReview?.measuredNetUsd ??
-        null,
+        executionReview?.executableNetUsd ?? executionReview?.scoreNetUsd ?? executionReview?.measuredNetUsd ?? null,
       label: "검토 경로 기준",
       routeLabel: executionReview?.routeLabel || null,
       detail: executionReview?.nextActionLabel || executionReview?.tradeReadiness || "다음 실행 검토 대기",
@@ -1306,13 +1388,16 @@ function tradeHistorySummary({
   reportingPnlBaseline = null,
 }) {
   const receiptByTxHash = new Map(
-    (receiptRecords || [])
-      .filter((item) => item?.txHash)
-      .map((item) => [String(item.txHash).toLowerCase(), item]),
+    (receiptRecords || []).filter((item) => item?.txHash).map((item) => [String(item.txHash).toLowerCase(), item]),
   );
   const forkItems = (preliveForkReceipts || []).map((item) => ({
     observedAt: item.observedAt || null,
-    status: item.reconciliationStatus === "reconciled" ? "confirmed" : item.reconciliationStatus === "failed" ? "failed" : "pending_output",
+    status:
+      item.reconciliationStatus === "reconciled"
+        ? "confirmed"
+        : item.reconciliationStatus === "failed"
+          ? "failed"
+          : "pending_output",
     kind: "fork",
     chain: item.chain || null,
     txHash: item.txHash || null,
@@ -1337,10 +1422,11 @@ function tradeHistorySummary({
   });
   const merged = [...forkItems, ...eventItems]
     .filter((item) => item.observedAt)
-    .filter((item) =>
-      filterRecordsByReportingPnlBaseline([item], reportingPnlBaseline, {
-        pickTimestamp: (entry) => entry?.observedAt || null,
-      }).length > 0
+    .filter(
+      (item) =>
+        filterRecordsByReportingPnlBaseline([item], reportingPnlBaseline, {
+          pickTimestamp: (entry) => entry?.observedAt || null,
+        }).length > 0,
     )
     .sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))
     .slice(0, 6)
@@ -1392,7 +1478,9 @@ function buildOperatorMemos({ decisionInputs = null, shadowCycle = null, prelive
 
   if (gateway?.ethFamilyWatch?.surfaceChanged) {
     const addedPairs = gateway.ethFamilyWatch.addedChainPairs || [];
-    const pairLabel = (addedPairs.length ? addedPairs : gateway.ethFamilyWatch.chainPairs || []).slice(0, 2).join(" · ");
+    const pairLabel = (addedPairs.length ? addedPairs : gateway.ethFamilyWatch.chainPairs || [])
+      .slice(0, 2)
+      .join(" · ");
     memos.push({
       id: "eth_family_surface",
       level: "now",
@@ -1400,7 +1488,8 @@ function buildOperatorMemos({ decisionInputs = null, shadowCycle = null, prelive
       whenLabel: "지금",
       summary: pairLabel ? `새 ETH 경로 ${pairLabel}` : "새 ETH family 경로 관측",
       detail: "새 경로가 보여도 바로 실행하지 말고 route 스캔과 ETH 전용 감사부터 다시 갱신합니다.",
-      command: "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard",
+      command:
+        "npm run analyze:ethereum-routes -- --write && npm run audit:eth-family-overfit && npm run status:dashboard",
       prompt: "새 ETH-family route surface를 다시 확인하고 analyze/audit 결과와 blocker만 짧게 정리해줘.",
     });
   }
@@ -1439,15 +1528,18 @@ function buildOperatorMemos({ decisionInputs = null, shadowCycle = null, prelive
         ? `${nextNeed.refillAmountDecimal.toLocaleString("ko-KR", { maximumFractionDigits: 6 })} ${nextNeed.ticker}`
         : null;
     const refillCostLabel = Number.isFinite(nextNeed?.refillEstimatedUsd) ? money(nextNeed.refillEstimatedUsd) : null;
-    const walletShortfallLabel = Number.isFinite(treasury.walletValueShortfallUsd) ? money(treasury.walletValueShortfallUsd) : null;
+    const walletShortfallLabel = Number.isFinite(treasury.walletValueShortfallUsd)
+      ? money(treasury.walletValueShortfallUsd)
+      : null;
     memos.push({
       id: "treasury_check",
       level: "later",
       title: "가스 준비 메모",
       whenLabel: walletShortfallLabel ? "수동 충전 전" : "다음 준비 때",
-      summary: nextNeed?.chain && nextNeed?.ticker
-        ? `${nextNeed.chain} ${nextNeed.ticker} 준비 상태 확인`
-        : "지갑 준비 상태 다시 확인",
+      summary:
+        nextNeed?.chain && nextNeed?.ticker
+          ? `${nextNeed.chain} ${nextNeed.ticker} 준비 상태 확인`
+          : "지갑 준비 상태 다시 확인",
       detail:
         [
           refillAmountLabel,
@@ -1488,7 +1580,10 @@ function shadowCycleSummary(shadowCycle, now, { readinessRecords = [], readiness
     now,
     limit: 8,
   });
-  const topRouteTradeReadiness = humanTradeReadiness(shadowCycle.topRoute?.tradeReadiness || null, shadowCycle.topRoute?.netEdgeUsd);
+  const topRouteTradeReadiness = humanTradeReadiness(
+    shadowCycle.topRoute?.tradeReadiness || null,
+    shadowCycle.topRoute?.netEdgeUsd,
+  );
 
   return {
     observedAt: shadowCycle.observedAt || null,
@@ -1744,13 +1839,12 @@ function shadowCycleSummary(shadowCycle, now, { readinessRecords = [], readiness
       inventoryConsistent: shadowCycle.audit?.inventory?.consistent ?? null,
       issueCount:
         (shadowCycle.audit?.address?.issues?.length || 0) + (shadowCycle.audit?.inventory?.issues?.length || 0),
-      issues: [
-        ...(shadowCycle.audit?.address?.issues || []),
-        ...(shadowCycle.audit?.inventory?.issues || []),
-      ].map((issue) => ({
-        code: issue,
-        label: humanShadowCycleAuditIssue(issue),
-      })),
+      issues: [...(shadowCycle.audit?.address?.issues || []), ...(shadowCycle.audit?.inventory?.issues || [])].map(
+        (issue) => ({
+          code: issue,
+          label: humanShadowCycleAuditIssue(issue),
+        }),
+      ),
     },
   };
 }
@@ -1817,7 +1911,8 @@ function decideOverall({ audit, gateway, gas, decisionInputs = null }) {
     decisionConfidence: warnings.length > 0 ? "low" : "normal",
     riskBudgetUsd: RISK_BUDGET_USD,
     lossLimitUsd: RISK_BUDGET_USD,
-    capitalRule: "Capital sizing is per-strategy. Each live strategy declares its own per-trade and daily caps; there is no project-wide ring-fence.",
+    capitalRule:
+      "Capital sizing is per-strategy. Each live strategy declares its own per-trade and daily caps; there is no project-wide ring-fence.",
   };
 }
 
@@ -2042,13 +2137,16 @@ export function buildDashboardStatus(input, options = {}) {
   const operatorMemos = buildOperatorMemos({ decisionInputs, shadowCycle, prelive, gateway });
   const executorRuntime = input.executorRuntime || null;
 
-  const campaignAware = buildCampaignAwareSlice({
-    smallCapitalPolicy: input.smallCapitalPolicy || null,
-    totalCapitalUsd: pnl?.realized?.totalValueUsd || 0,
-    campaignOpportunities: input.campaignOpportunities || null,
-    anchorPositions: input.anchorPositions || null,
-    paybackAccumulator: input.paybackAccumulator || null,
-  }, { now });
+  const campaignAware = buildCampaignAwareSlice(
+    {
+      smallCapitalPolicy: input.smallCapitalPolicy || null,
+      totalCapitalUsd: pnl?.realized?.totalValueUsd || 0,
+      campaignOpportunities: input.campaignOpportunities || null,
+      anchorPositions: input.anchorPositions || null,
+      paybackAccumulator: input.paybackAccumulator || null,
+    },
+    { now },
+  );
   const radar = buildRadarDashboardSlice({
     board: input.radarBoard || null,
     capReview: input.radarCapReview || null,

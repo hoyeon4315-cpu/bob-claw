@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { REPO_ROOT, repoPath } from "./helpers/repo-root.mjs";
 
 test("seed destination input overrides script seeds top missing templates without duplicates", async () => {
   const { readFile, mkdtemp, mkdir } = await import("node:fs/promises");
@@ -54,9 +55,9 @@ test("seed destination input overrides script seeds top missing templates withou
 
   await execFileAsync(
     "node",
-    ["/Users/love/BOB Claw/src/cli/seed-destination-input-overrides.mjs", "--top=5", "--write"],
+    [repoPath("src/cli/seed-destination-input-overrides.mjs"), "--top=5", "--write"],
     {
-      cwd: "/Users/love/BOB Claw",
+      cwd: REPO_ROOT,
       env: {
         ...process.env,
         BOB_CLAW_DATA_DIR: dataDir,

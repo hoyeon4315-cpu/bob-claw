@@ -4,11 +4,20 @@ on:
   pull_request:
     types: [opened, synchronize]
     paths:
+      - '.github/workflows/auto-pr-validate.yml'
+      - 'package.json'
+      - 'package-lock.json'
       - 'src/config/**'
       - 'src/strategy/**'
       - 'src/risk/**'
       - 'src/executor/**'
       - 'scripts/**'
+      - 'test/**'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   validate:

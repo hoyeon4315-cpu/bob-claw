@@ -231,7 +231,10 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.gateway.probeOk, 2);
   assert.equal(status.audit.advancedOverfitStatistics.status, "insufficient_evidence");
   assert.equal(status.audit.advancedOverfitStatistics.enforcement, "reporting_only");
-  assert.equal(status.audit.advancedOverfitStatistics.blockers.includes("deflated_sharpe:min_30_returns_required"), true);
+  assert.equal(
+    status.audit.advancedOverfitStatistics.blockers.includes("deflated_sharpe:min_30_returns_required"),
+    true,
+  );
   assert.equal(status.audit.validQuotes, 2);
   assert.equal(status.audit.activeFailures, 0);
   assert.equal(status.audit.gasSnapshots, 2);
@@ -256,12 +259,18 @@ test("dashboard status is dashboard-only and keeps live trading blocked", () => 
   assert.equal(status.market.wbtcUsd, 72_950);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").ticker, "wBTC");
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").usd, null);
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "no_supported_router_for_chain:60808");
+  assert.equal(
+    status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason,
+    "no_supported_router_for_chain:60808",
+  );
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").quoteable, false);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").usd, 73_020);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").deltaPct > 0, true);
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").stale, false);
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").coverageReason, "dex_quote_observed");
+  assert.equal(
+    status.market.chainWbtcPrices.find((item) => item.chain === "base").coverageReason,
+    "dex_quote_observed",
+  );
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "base").quoteable, true);
   assert.equal(status.market.observedChainCount, 1);
   assert.equal(status.market.missingChainCount, 1);
@@ -325,9 +334,7 @@ test("dashboard truth panels separate reject, profitability, exploration, and st
           sourceObservedAt: "2026-05-09T09:01:00.000Z",
         },
       ],
-      protocolPositionMarks: [
-        { ok: false, status: "failed", observedAt: "2026-05-09T08:30:00.000Z" },
-      ],
+      protocolPositionMarks: [{ ok: false, status: "failed", observedAt: "2026-05-09T08:30:00.000Z" }],
     },
     { now },
   );
@@ -336,7 +343,9 @@ test("dashboard truth panels separate reject, profitability, exploration, and st
   assert.equal(status.truthPanels.policyRejectHistogram24h.transportBypassCount, 1);
   assert.equal(status.truthPanels.profitabilityTruth.incompleteCount, 2);
   assert.ok(status.truthPanels.profitabilityTruth.topBlockers.includes("accounting_incomplete_blocks_repeat_canary"));
-  assert.ok(status.truthPanels.profitabilityTruth.topBlockers.includes("protocol_position_unmeasured_blocks_repeat_canary"));
+  assert.ok(
+    status.truthPanels.profitabilityTruth.topBlockers.includes("protocol_position_unmeasured_blocks_repeat_canary"),
+  );
   assert.equal(status.truthPanels.explorationVsRepeat.blockedSameKeyAliasCount, 2);
   assert.equal(status.truthPanels.staleEvidenceWarning.generatedAtOnlyIsCurrentEvidence, false);
 });
@@ -344,58 +353,70 @@ test("dashboard truth panels separate reject, profitability, exploration, and st
 test("dashboard status records chain price coverage reasons for missing dex observations", () => {
   const avalancheBob = route("avalanche", "bob");
   const bobSonic = route("bob", "sonic");
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        summary: { totalRoutes: 2 },
-        routes: [avalancheBob, bobSonic],
-      },
-    ],
-    quotes: [
-      quote(avalancheBob, "2026-04-10T11:58:10.000Z", "10000", "10000", "9990"),
-      quote(bobSonic, "2026-04-10T11:58:20.000Z", "10000", "10000", "9990"),
-    ],
-    failures: [],
-    dexQuotes: [],
-    dexFailures: [
-      {
-        observedAt: "2026-04-10T11:59:00.000Z",
-        provider: "odos",
-        source: "gateway_src_leg",
-        chain: "avalanche",
-        token: WBTC_OFT,
-        amount: "10000",
-        reason: "odos_quote_failed",
-      },
-    ],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [
-      {
-        observedAt: "2026-04-10T11:59:00.000Z",
-        snapshot: {
-          routeCount: 2,
-          chains: ["avalanche", "bob", "sonic"],
-          bobTouchingRouteKeys: [],
-          routeHash: "route-hash",
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 2 },
+          routes: [avalancheBob, bobSonic],
         },
-        updateDetected: false,
-        changeReasons: [],
-        probes: [{ ok: true }],
-        probeFailures: [],
-        schemaHash: "schema-hash",
-        probeHealthHash: "probe-health-hash",
-      },
-    ],
-    updateAlerts: [],
-  }, { now: "2026-04-10T12:00:00.000Z" });
+      ],
+      quotes: [
+        quote(avalancheBob, "2026-04-10T11:58:10.000Z", "10000", "10000", "9990"),
+        quote(bobSonic, "2026-04-10T11:58:20.000Z", "10000", "10000", "9990"),
+      ],
+      failures: [],
+      dexQuotes: [],
+      dexFailures: [
+        {
+          observedAt: "2026-04-10T11:59:00.000Z",
+          provider: "odos",
+          source: "gateway_src_leg",
+          chain: "avalanche",
+          token: WBTC_OFT,
+          amount: "10000",
+          reason: "odos_quote_failed",
+        },
+      ],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [
+        {
+          observedAt: "2026-04-10T11:59:00.000Z",
+          snapshot: {
+            routeCount: 2,
+            chains: ["avalanche", "bob", "sonic"],
+            bobTouchingRouteKeys: [],
+            routeHash: "route-hash",
+          },
+          updateDetected: false,
+          changeReasons: [],
+          probes: [{ ok: true }],
+          probeFailures: [],
+          schemaHash: "schema-hash",
+          probeHealthHash: "probe-health-hash",
+        },
+      ],
+      updateAlerts: [],
+    },
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "avalanche").coverageReason, "odos_quote_failed");
+  assert.equal(
+    status.market.chainWbtcPrices.find((item) => item.chain === "avalanche").coverageReason,
+    "odos_quote_failed",
+  );
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "avalanche").quoteable, true);
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "sonic").coverageReason, "eligible_quote_not_run");
+  assert.equal(
+    status.market.chainWbtcPrices.find((item) => item.chain === "sonic").coverageReason,
+    "eligible_quote_not_run",
+  );
   assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "sonic").quoteable, true);
-  assert.equal(status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason, "no_supported_router_for_chain:60808");
+  assert.equal(
+    status.market.chainWbtcPrices.find((item) => item.chain === "bob").coverageReason,
+    "no_supported_router_for_chain:60808",
+  );
 });
 
 test("dashboard status normalizes legacy Odos unsupported failures for Bera market coverage", () => {
@@ -488,38 +509,56 @@ test("dashboard status normalizes legacy Odos unsupported failures for Bera mark
   const beraPrice = status.market.chainWbtcPrices.find((item) => item.chain === "bera");
   assert.equal(beraPrice.coverageReason, "no_supported_router_for_chain:80094");
   assert.equal(beraPrice.coverageFailure, "no_supported_router_for_chain:80094");
-  assert.equal(status.dex.skippedReasons.find((item) => item.reason === "no_supported_router_for_chain:80094")?.count, 1);
+  assert.equal(
+    status.dex.skippedReasons.find((item) => item.reason === "no_supported_router_for_chain:80094")?.count,
+    1,
+  );
 });
 
 test("dashboard status includes Gateway visual routes with segment-specific asset traces", () => {
   const btcBob = { srcChain: "bitcoin", dstChain: "bob", srcToken: ZERO, dstToken: WBTC_OFT };
   const bobBase = route("bob", "base");
   const baseSonic = route("base", "sonic");
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        summary: { totalRoutes: 3, chainPairs: [{ pair: "bitcoin->bob", count: 1 }] },
-        routes: [btcBob, bobBase, baseSonic],
-      },
-    ],
-    quotes: [quote(bobBase, "2026-04-10T10:00:00.000Z"), quote(baseSonic, "2026-04-10T10:01:00.000Z")],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-  }, { now: "2026-04-10T12:00:00.000Z" });
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 3, chainPairs: [{ pair: "bitcoin->bob", count: 1 }] },
+          routes: [btcBob, bobBase, baseSonic],
+        },
+      ],
+      quotes: [quote(bobBase, "2026-04-10T10:00:00.000Z"), quote(baseSonic, "2026-04-10T10:01:00.000Z")],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+    },
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
-  assert.equal(status.gateway.flowRoutes.some((item) => item.pair === "bob->base"), true);
-  assert.equal(status.gateway.flowRoutes.some((item) => item.pair === "base->sonic"), true);
+  assert.equal(
+    status.gateway.flowRoutes.some((item) => item.pair === "bob->base"),
+    true,
+  );
+  assert.equal(
+    status.gateway.flowRoutes.some((item) => item.pair === "base->sonic"),
+    true,
+  );
   assert.deepEqual(status.gateway.recentFlowEvents[0].path, ["bob", "bob_gateway", "base"]);
   assert.deepEqual(status.gateway.recentFlowEvents[1].path, ["base", "bob_gateway", "sonic"]);
   assert.equal(status.gateway.recentFlowEvents[0].asset.ticker, "wBTC.OFT");
   assert.equal(status.gateway.recentFlowEvents[0].asset.icon, "wbtc");
-  assert.deepEqual(status.gateway.recentFlowEvents[0].segments.map((segment) => segment.asset.ticker), ["wBTC.OFT", "wBTC.OFT"]);
+  assert.deepEqual(
+    status.gateway.recentFlowEvents[0].segments.map((segment) => segment.asset.ticker),
+    ["wBTC.OFT", "wBTC.OFT"],
+  );
   assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bob->base").assets[0].ticker, "wBTC.OFT");
-  assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bitcoin->bob").assets[0].ticker, "BTC->wBTC.OFT");
+  assert.equal(
+    status.gateway.flowRoutes.find((item) => item.pair === "bitcoin->bob").assets[0].ticker,
+    "BTC->wBTC.OFT",
+  );
   assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bitcoin->bob").assets[0].src.ticker, "BTC");
   assert.equal(status.gateway.flowRoutes.find((item) => item.pair === "bitcoin->bob").assets[0].dst.ticker, "wBTC.OFT");
   assert.equal(status.gateway.assetCoverage.supportedAssetCount, 2);
@@ -527,43 +566,49 @@ test("dashboard status includes Gateway visual routes with segment-specific asse
   assert.equal(status.gateway.assetCoverage.unsampledAssets[0].ticker, "BTC->wBTC.OFT");
   assert.deepEqual(status.gateway.btcWatchlist.observedTickers, ["BTC", "wBTC.OFT"]);
   assert.equal(status.gateway.btcWatchlist.missingTickers.includes("xSolvBTC"), true);
-  assert.equal(status.gateway.btcWatchlist.watchlistMissing.find((item) => item.ticker === "xSolvBTC").source.label, "BOB launches 1-Click native BTC <-> wBTC.OFT transfers");
+  assert.equal(
+    status.gateway.btcWatchlist.watchlistMissing.find((item) => item.ticker === "xSolvBTC").source.label,
+    "BOB launches 1-Click native BTC <-> wBTC.OFT transfers",
+  );
   assert.equal(status.gateway.chainPairs[0].pair, "bitcoin->bob");
 });
 
 test("dashboard status surfaces update and gas blockers", () => {
   const now = "2026-04-10T12:00:00.000Z";
   const bobBitcoin = { srcChain: "bob", dstChain: "bitcoin", srcToken: WBTC_OFT, dstToken: ZERO };
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-10T09:00:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [bobBitcoin],
-      },
-    ],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [
-      {
-        observedAt: "2026-04-10T08:00:00.000Z",
-        chain: "bob",
-        gasPriceWei: "1",
-      },
-    ],
-    gasFailures: [],
-    updateSnapshots: [
-      {
-        observedAt: "2026-04-10T11:59:00.000Z",
-        snapshot: { routeCount: 1, chains: ["bitcoin", "bob"], routeHash: "route-hash" },
-        updateDetected: true,
-        changeReasons: ["probe_health"],
-        probes: [{ ok: false }],
-        probeFailures: [{ routeKey: "bob:btc->bitcoin:btc", errorStatus: 500, errorCode: "INTERNAL_ERROR" }],
-      },
-    ],
-    updateAlerts: [{ observedAt: "2026-04-10T11:59:00.000Z", changeReasons: ["probe_health"] }],
-  }, { now });
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T09:00:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [bobBitcoin],
+        },
+      ],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [
+        {
+          observedAt: "2026-04-10T08:00:00.000Z",
+          chain: "bob",
+          gasPriceWei: "1",
+        },
+      ],
+      gasFailures: [],
+      updateSnapshots: [
+        {
+          observedAt: "2026-04-10T11:59:00.000Z",
+          snapshot: { routeCount: 1, chains: ["bitcoin", "bob"], routeHash: "route-hash" },
+          updateDetected: true,
+          changeReasons: ["probe_health"],
+          probes: [{ ok: false }],
+          probeFailures: [{ routeKey: "bob:btc->bitcoin:btc", errorStatus: 500, errorCode: "INTERNAL_ERROR" }],
+        },
+      ],
+      updateAlerts: [{ observedAt: "2026-04-10T11:59:00.000Z", changeReasons: ["probe_health"] }],
+    },
+    { now },
+  );
 
   assert.equal(status.overall.liveTrading, "BLOCKED");
   assert.equal(status.gateway.updateDetected, true);
@@ -574,24 +619,27 @@ test("dashboard status surfaces update and gas blockers", () => {
 });
 
 test("dashboard status flags gateway chains missing gas snapshots", () => {
-  const status = buildDashboardStatus({
-    routesRecords: [],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [{ observedAt: "2026-04-10T11:55:00.000Z", chain: "bob", gasPriceWei: "1" }],
-    gasFailures: [],
-    updateSnapshots: [
-      {
-        observedAt: "2026-04-10T11:59:00.000Z",
-        snapshot: { routeCount: 2, chains: ["base", "bitcoin", "bob"], routeHash: "route-hash" },
-        updateDetected: false,
-        changeReasons: [],
-        probes: [],
-        probeFailures: [],
-      },
-    ],
-    updateAlerts: [],
-  }, { now: "2026-04-10T12:00:00.000Z" });
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [{ observedAt: "2026-04-10T11:55:00.000Z", chain: "bob", gasPriceWei: "1" }],
+      gasFailures: [],
+      updateSnapshots: [
+        {
+          observedAt: "2026-04-10T11:59:00.000Z",
+          snapshot: { routeCount: 2, chains: ["base", "bitcoin", "bob"], routeHash: "route-hash" },
+          updateDetected: false,
+          changeReasons: [],
+          probes: [],
+          probeFailures: [],
+        },
+      ],
+      updateAlerts: [],
+    },
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.deepEqual(status.gas.missingGatewayGasChains, ["base"]);
   assert.equal(status.overall.blockers.includes("missing_gateway_gas_snapshots"), true);
@@ -676,111 +724,114 @@ test("dashboard status lists stale gateway gas chains", () => {
 
 test("dashboard status includes read-only opportunity summary", () => {
   const bobBase = route("bob", "base");
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [bobBase],
-      },
-    ],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-    scoreSnapshot: {
-      generatedAt: "2026-04-10T12:00:00.000Z",
-      scoredQuotes: 2,
-      summary: { shadowCandidates: 0, insufficientData: 1 },
-      scores: [
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
         {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [bobBase],
+        },
+      ],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      scoreSnapshot: {
+        generatedAt: "2026-04-10T12:00:00.000Z",
+        scoredQuotes: 2,
+        summary: { shadowCandidates: 0, insufficientData: 1 },
+        scores: [
+          {
+            srcChain: "bob",
+            dstChain: "base",
+            srcAsset: { ticker: "wBTC.OFT" },
+            dstAsset: { ticker: "wBTC.OFT" },
+            tradeReadiness: "reject_no_net_edge",
+            netEdgeUsd: -0.5,
+            dataGaps: [],
+            dex: { provider: "odos" },
+          },
+          {
+            srcChain: "bitcoin",
+            dstChain: "bob",
+            srcAsset: { ticker: "BTC" },
+            dstAsset: { ticker: "wBTC.OFT" },
+            tradeReadiness: "insufficient_data",
+            netEdgeUsd: -0.1,
+            dataGaps: ["bitcoin_network_fee_not_modelled"],
+          },
+        ],
+      },
+      dexQuotes: [
+        trustedOdosQuote({
+          observedAt: "2026-04-10T11:59:00.000Z",
+          chain: "base",
+          inputValueUsd: 7,
+          outputValueUsd: 7.01,
+          gasEstimateValueUsd: 0.01,
+          priceImpactPct: 0,
+        }),
+      ],
+      dexFailures: [{ observedAt: "2026-04-10T11:58:00.000Z", provider: "odos", reason: "input_is_quote_stable" }],
+      bitcoinFeeSnapshots: [
+        {
+          observedAt: "2026-04-10T11:57:00.000Z",
+          source: "test",
+          selectedFeeRateSatVb: 4,
+          vbytes: 180,
+          estimatedFeeSats: 720,
+          estimatedFeeUsd: 0.52,
+          btcUsd: 50_000,
+          model: "estimated_single_input_single_output",
+        },
+      ],
+      estimatorWalletReadiness: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          address: "0x000000000000000000000000000000000000dEaD",
+          routeKey: "bob:btc->base:btc",
+          amount: "10000",
           srcChain: "bob",
           dstChain: "base",
-          srcAsset: { ticker: "wBTC.OFT" },
-          dstAsset: { ticker: "wBTC.OFT" },
-          tradeReadiness: "reject_no_net_edge",
-          netEdgeUsd: -0.5,
-          dataGaps: [],
-          dex: { provider: "odos" },
+          overallReady: false,
+          native: { ok: false },
+          token: { ok: true },
+          allowance: { ok: false },
+        },
+      ],
+      estimatorWalletReadinessFailures: [
+        {
+          observedAt: "2026-04-10T11:59:00.000Z",
+          address: "0x000000000000000000000000000000000000dEaD",
+          reason: "missing_tx_data",
+        },
+      ],
+      shadowObservations: [
+        {
+          observedAt: "2026-04-10T10:30:00.000Z",
+          routeKey: `${bobBase.srcChain}:${bobBase.srcToken}->${bobBase.dstChain}:${bobBase.dstToken}`,
+          amount: "10000",
+          observedEdgePct: 0.012,
+          requiredEdgePct: 0.01,
+          latencyMs: 1200,
+          executionGasUsd: 0.03,
         },
         {
-          srcChain: "bitcoin",
-          dstChain: "bob",
-          srcAsset: { ticker: "BTC" },
-          dstAsset: { ticker: "wBTC.OFT" },
-          tradeReadiness: "insufficient_data",
-          netEdgeUsd: -0.1,
-          dataGaps: ["bitcoin_network_fee_not_modelled"],
+          observedAt: "2026-04-10T10:30:08.000Z",
+          routeKey: `${bobBase.srcChain}:${bobBase.srcToken}->${bobBase.dstChain}:${bobBase.dstToken}`,
+          amount: "10000",
+          observedEdgePct: 0.011,
+          requiredEdgePct: 0.01,
+          latencyMs: 1180,
+          executionGasUsd: 0.031,
         },
       ],
     },
-    dexQuotes: [
-      trustedOdosQuote({
-        observedAt: "2026-04-10T11:59:00.000Z",
-        chain: "base",
-        inputValueUsd: 7,
-        outputValueUsd: 7.01,
-        gasEstimateValueUsd: 0.01,
-        priceImpactPct: 0,
-      }),
-    ],
-    dexFailures: [{ observedAt: "2026-04-10T11:58:00.000Z", provider: "odos", reason: "input_is_quote_stable" }],
-    bitcoinFeeSnapshots: [
-      {
-        observedAt: "2026-04-10T11:57:00.000Z",
-        source: "test",
-        selectedFeeRateSatVb: 4,
-        vbytes: 180,
-        estimatedFeeSats: 720,
-        estimatedFeeUsd: 0.52,
-        btcUsd: 50_000,
-        model: "estimated_single_input_single_output",
-      },
-    ],
-    estimatorWalletReadiness: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        address: "0x000000000000000000000000000000000000dEaD",
-        routeKey: "bob:btc->base:btc",
-        amount: "10000",
-        srcChain: "bob",
-        dstChain: "base",
-        overallReady: false,
-        native: { ok: false },
-        token: { ok: true },
-        allowance: { ok: false },
-      },
-    ],
-    estimatorWalletReadinessFailures: [
-      {
-        observedAt: "2026-04-10T11:59:00.000Z",
-        address: "0x000000000000000000000000000000000000dEaD",
-        reason: "missing_tx_data",
-      },
-    ],
-    shadowObservations: [
-      {
-        observedAt: "2026-04-10T10:30:00.000Z",
-        routeKey: `${bobBase.srcChain}:${bobBase.srcToken}->${bobBase.dstChain}:${bobBase.dstToken}`,
-        amount: "10000",
-        observedEdgePct: 0.012,
-        requiredEdgePct: 0.01,
-        latencyMs: 1200,
-        executionGasUsd: 0.03,
-      },
-      {
-        observedAt: "2026-04-10T10:30:08.000Z",
-        routeKey: `${bobBase.srcChain}:${bobBase.srcToken}->${bobBase.dstChain}:${bobBase.dstToken}`,
-        amount: "10000",
-        observedEdgePct: 0.011,
-        requiredEdgePct: 0.01,
-        latencyMs: 1180,
-        executionGasUsd: 0.031,
-      },
-    ],
-  }, { now: "2026-04-10T12:00:00.000Z" });
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.equal(status.opportunity.scoredQuotes, 2);
   assert.equal(status.opportunity.candidateCount, 0);
@@ -807,13 +858,22 @@ test("dashboard status includes read-only opportunity summary", () => {
   assert.equal(typeof status.strategy.btcProxySpreads.opportunityCount, "number");
   assert.equal(status.strategy.btcProxySpreads.nextCoverageTarget !== undefined, true);
   assert.equal(status.strategy.strategyTracks.trackCount >= 2, true);
-  assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "stable_loop"), true);
-  assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "proxy_spread"), true);
+  assert.equal(
+    status.strategy.strategyTracks.tracks.some((item) => item.kind === "stable_loop"),
+    true,
+  );
+  assert.equal(
+    status.strategy.strategyTracks.tracks.some((item) => item.kind === "proxy_spread"),
+    true,
+  );
   assert.equal(status.strategy.edgeResearch.routeCount, 2);
   assert.equal(status.strategy.edgeResearch.bestCandidate.classification, "no_edge");
   assert.equal(status.strategy.pivotPlan.topRecommendation.id, "gateway_base_btc_yield");
   assert.equal(status.strategy.pivotPlan.currentBudgetUsd, 1_000_000);
-  assert.equal(status.strategy.pivotPlan.pivots.some((item) => item.id === "btc_proxy_spreads"), true);
+  assert.equal(
+    status.strategy.pivotPlan.pivots.some((item) => item.id === "btc_proxy_spreads"),
+    true,
+  );
   assert.equal(status.dex.quoteCount, 1);
   assert.deepEqual(status.dex.quotedChains, ["base"]);
   assert.equal(status.dex.skippedReasons[0].reason, "input_is_quote_stable");
@@ -841,370 +901,387 @@ test("dashboard status includes read-only opportunity summary", () => {
 });
 
 test("dashboard status exposes positive insufficient-data opportunity separately from no-edge blockers", () => {
-  const status = buildDashboardStatus({
-    routesRecords: [],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-    scoreSnapshot: {
-      generatedAt: "2026-04-10T12:00:00.000Z",
-      scoredQuotes: 2,
-      summary: { shadowCandidates: 0, insufficientData: 1 },
-      scores: [
-        {
-          srcChain: "base",
-          dstChain: "bitcoin",
-          srcAsset: { ticker: "USDC" },
-          dstAsset: { ticker: "BTC" },
-          tradeReadiness: "insufficient_data",
-          netEdgeUsd: 1.75,
-          dataGaps: ["exact_src_execution_gas_allowance_insufficient"],
-        },
-        {
-          srcChain: "avalanche",
-          dstChain: "soneium",
-          srcAsset: { ticker: "wBTC.OFT" },
-          dstAsset: { ticker: "wBTC.OFT" },
-          tradeReadiness: "reject_no_net_edge",
-          netEdgeUsd: -0.6,
-          dataGaps: [],
-        },
-      ],
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      scoreSnapshot: {
+        generatedAt: "2026-04-10T12:00:00.000Z",
+        scoredQuotes: 2,
+        summary: { shadowCandidates: 0, insufficientData: 1 },
+        scores: [
+          {
+            srcChain: "base",
+            dstChain: "bitcoin",
+            srcAsset: { ticker: "USDC" },
+            dstAsset: { ticker: "BTC" },
+            tradeReadiness: "insufficient_data",
+            netEdgeUsd: 1.75,
+            dataGaps: ["exact_src_execution_gas_allowance_insufficient"],
+          },
+          {
+            srcChain: "avalanche",
+            dstChain: "soneium",
+            srcAsset: { ticker: "wBTC.OFT" },
+            dstAsset: { ticker: "wBTC.OFT" },
+            tradeReadiness: "reject_no_net_edge",
+            netEdgeUsd: -0.6,
+            dataGaps: [],
+          },
+        ],
+      },
+      dexQuotes: [],
+      dexFailures: [],
+      bitcoinFeeSnapshots: [],
+      estimatorWalletReadiness: [],
+      estimatorWalletReadinessFailures: [],
+      shadowObservations: [],
     },
-    dexQuotes: [],
-    dexFailures: [],
-    bitcoinFeeSnapshots: [],
-    estimatorWalletReadiness: [],
-    estimatorWalletReadinessFailures: [],
-    shadowObservations: [],
-  }, { now: "2026-04-10T12:00:00.000Z" });
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.equal(status.opportunity.positiveInsufficientCount, 1);
   assert.equal(status.opportunity.topPositiveInsufficientRoute?.srcChain, "base");
   assert.equal(status.opportunity.topPositiveInsufficientRoute?.dstChain, "bitcoin");
   assert.equal(status.opportunity.topPositiveInsufficientRoute?.srcTicker, "USDC");
   assert.equal(status.opportunity.topPositiveInsufficientRoute?.netEdgeUsd, 1.75);
-  assert.deepEqual(status.opportunity.topPositiveInsufficientRoute?.dataGaps, ["exact_src_execution_gas_allowance_insufficient"]);
+  assert.deepEqual(status.opportunity.topPositiveInsufficientRoute?.dataGaps, [
+    "exact_src_execution_gas_allowance_insufficient",
+  ]);
 });
 
 test("dashboard status includes shadow cycle summary when available", () => {
-  const status = buildDashboardStatus({
-    routesRecords: [],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-    shadowRefreshExecutions: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        rank: 1,
-        scope: "canary",
-        code: "check_wallet_readiness",
-        routeLabel: "base->bitcoin ETH->BTC",
-        amount: "1787455313617158",
-        executionStatus: "succeeded",
-        stepCount: 1,
-        steps: [{ script: "check:estimator-wallet", exitCode: 0 }],
-      },
-    ],
-    shadowCycle: {
-      observedAt: "2026-04-10T11:59:00.000Z",
-      mode: "SHADOW_ONLY",
-      headline: "Collect more shadow and realized data",
-      blockers: ["no_realized_enabled_routes"],
-      canary: {
-        decision: "RERUN_SCORING",
-        nextReadinessCheck: {
-          label: "base->bitcoin ETH->BTC",
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      shadowRefreshExecutions: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          rank: 1,
+          scope: "canary",
+          code: "check_wallet_readiness",
+          routeLabel: "base->bitcoin ETH->BTC",
           amount: "1787455313617158",
-          srcChain: "base",
-          srcTicker: "ETH",
-          dstChain: "bitcoin",
-          dstTicker: "BTC",
+          executionStatus: "succeeded",
+          stepCount: 1,
+          steps: [{ script: "check:estimator-wallet", exitCode: 0 }],
         },
-        nextReadinessRefresh: {
-          state: "cooldown",
-          reason: "fresh_recent_check",
-          latestObservedAt: "2026-04-10T11:58:30.000Z",
-          ageSeconds: 90,
-          maxAgeSeconds: 300,
+      ],
+      shadowCycle: {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        mode: "SHADOW_ONLY",
+        headline: "Collect more shadow and realized data",
+        blockers: ["no_realized_enabled_routes"],
+        canary: {
+          decision: "RERUN_SCORING",
+          nextReadinessCheck: {
+            label: "base->bitcoin ETH->BTC",
+            amount: "1787455313617158",
+            srcChain: "base",
+            srcTicker: "ETH",
+            dstChain: "bitcoin",
+            dstTicker: "BTC",
+          },
+          nextReadinessRefresh: {
+            state: "cooldown",
+            reason: "fresh_recent_check",
+            latestObservedAt: "2026-04-10T11:58:30.000Z",
+            ageSeconds: 90,
+            maxAgeSeconds: 300,
+          },
+          readinessCheckCount: 2,
         },
-        readinessCheckCount: 2,
-      },
-      topRoute: {
-        label: "bob->base wBTC.OFT->wBTC.OFT",
-        amount: "10000",
-        tradeReadiness: "reject_no_net_edge",
-        netEdgeUsd: -0.83,
-      },
-      shadowRoster: {
-        candidateCount: 3,
-        viableCount: 1,
-        txReadyCount: 2,
-        candidates: [
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          tradeReadiness: "reject_no_net_edge",
+          netEdgeUsd: -0.83,
+        },
+        shadowRoster: {
+          candidateCount: 3,
+          viableCount: 1,
+          txReadyCount: 2,
+          candidates: [
+            {
+              role: "active_canary",
+              label: "bob->base wBTC.OFT->wBTC.OFT",
+              amount: "10000",
+              srcChain: "bob",
+              dstChain: "base",
+              viableForPrep: true,
+              txReady: true,
+              tradeReadiness: "reject_no_net_edge",
+              prepFundingUsd: 0,
+              netEdgeUsd: -0.83,
+              prepBlockers: [],
+              scoreDisqualifiers: [],
+              readinessFailureReason: null,
+              shadowPriorityScore: 10,
+              shadowPriorityReason: "evidence_accumulating",
+              evidence: {
+                quoteSampleCount: 2,
+                quoteFailureCount: 1,
+                quoteAttemptCount: 3,
+                quoteSuccessRate: 2 / 3,
+                quoteLatencyP50Ms: 420,
+                quoteLatencyP95Ms: 680,
+                shadowObservationCount: 2,
+                latestQuoteObservedAt: "2026-04-10T11:57:00.000Z",
+                latestFailureObservedAt: "2026-04-10T11:58:00.000Z",
+                latestObservationObservedAt: "2026-04-10T11:59:00.000Z",
+                latestObservedEdgeUsd: -0.83,
+                latestKnownCostUsd: 0.21,
+                latestExecutionGasUsd: 0.03,
+                latestRouteFailureRate: 0.25,
+                latestTradeReadiness: "reject_no_net_edge",
+                rejectionReasons: [
+                  { reason: "reject_no_net_edge", count: 2 },
+                  { reason: "stale_dex_output_quote", count: 1 },
+                ],
+              },
+            },
+            {
+              role: "tx_ready_shadow",
+              label: "ethereum->base WBTC->wBTC.OFT",
+              amount: "10000",
+              srcChain: "ethereum",
+              dstChain: "base",
+              viableForPrep: false,
+              txReady: true,
+              tradeReadiness: "insufficient_data",
+              prepFundingUsd: 4.2,
+              netEdgeUsd: 64.77,
+              prepBlockers: ["native", "token", "allowance"],
+              scoreDisqualifiers: [],
+              readinessFailureReason: null,
+              shadowPriorityScore: 100,
+              shadowPriorityReason: "no_shadow_evidence",
+            },
+          ],
+        },
+        shadowActions: [
           {
             role: "active_canary",
             label: "bob->base wBTC.OFT->wBTC.OFT",
             amount: "10000",
-            srcChain: "bob",
-            dstChain: "base",
-            viableForPrep: true,
-            txReady: true,
-            tradeReadiness: "reject_no_net_edge",
-            prepFundingUsd: 0,
-            netEdgeUsd: -0.83,
-            prepBlockers: [],
-            scoreDisqualifiers: [],
-            readinessFailureReason: null,
-            shadowPriorityScore: 10,
-            shadowPriorityReason: "evidence_accumulating",
-            evidence: {
-            quoteSampleCount: 2,
-            quoteFailureCount: 1,
-            quoteAttemptCount: 3,
-            quoteSuccessRate: 2 / 3,
-            quoteLatencyP50Ms: 420,
-            quoteLatencyP95Ms: 680,
-            shadowObservationCount: 2,
-            latestQuoteObservedAt: "2026-04-10T11:57:00.000Z",
-            latestFailureObservedAt: "2026-04-10T11:58:00.000Z",
-            latestObservationObservedAt: "2026-04-10T11:59:00.000Z",
-            latestObservedEdgeUsd: -0.83,
-            latestKnownCostUsd: 0.21,
-            latestExecutionGasUsd: 0.03,
-            latestRouteFailureRate: 0.25,
-            latestTradeReadiness: "reject_no_net_edge",
-            rejectionReasons: [
-              { reason: "reject_no_net_edge", count: 2 },
-              { reason: "stale_dex_output_quote", count: 1 },
+            code: "wait_for_fresh_inputs",
+            reason: "reject_no_net_edge",
+            command: null,
+          },
+          {
+            role: "tx_ready_shadow",
+            label: "ethereum->base WBTC->wBTC.OFT",
+            amount: "10000",
+            code: "check_wallet_readiness",
+            reason: "native",
+            command:
+              "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+          },
+        ],
+        strategyPlans: {
+          stableLoop: {
+            kind: "stable_loop",
+            nextAction: "collect_stable_loop_coverage",
+            reason: "no_paired_stable_loop_ladder",
+            command: null,
+            routeKeys: [],
+          },
+          proxySpread: {
+            kind: "proxy_spread",
+            nextAction: "watch_proxy_surface",
+            reason: "no_proxy_target",
+            command: null,
+            chains: [],
+          },
+        },
+        objectivePlans: {
+          executionReview: {
+            status: "measured_hypothesis_under_review",
+            selectionCode: "prefer_viable_prep_route_over_measured_hypothesis",
+            selectionLabel: "Measured leader stays review-only until readiness and fresh-input blockers clear.",
+            routeKey: "ethereum:0x2260->base:0x0555",
+            label: "ethereum->base WBTC->wBTC.OFT",
+            amount: "10000",
+            tradeReadiness: "insufficient_data",
+            measuredNetUsd: 64.77,
+            scoreNetUsd: -1.01,
+            executableNetUsd: 64.99,
+            blockers: ["wallet_not_checked", "stale_src_gas_snapshot"],
+            blockerLabels: ["wallet readiness check pending", "source gas snapshot stale"],
+            reasonLabels: [
+              "current canary is the only viable prep route",
+              "measured leader is not viable for prep yet",
+            ],
+            nextActionCode: "check_wallet_readiness",
+            nextActionLabel: "wallet readiness check",
+            command:
+              "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+            stepCount: 4,
+            steps: [
+              {
+                code: "check_wallet_readiness",
+                label: "wallet readiness check",
+                command:
+                  "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+              },
+            ],
+            hypothesisGuard:
+              "Positive measured edge is still a hypothesis until wallet, gas, and exact execution inputs are all fresh.",
+          },
+          discovery: {
+            source: "secondary_measured_loop",
+            sourceLabel: "secondary measured loop",
+            status: "missing_decay_survival",
+            selectionCode: "secondary_measured_loop",
+            selectionLabel:
+              "Use the next measured loop to widen objective route discovery without promoting it to canary prematurely.",
+            routeKey: "base:0x0555->unichain:0x0555",
+            label: "base->unichain wBTC.OFT->wBTC.OFT",
+            amount: "25000",
+            classification: "missing_decay_survival",
+            measuredNetUsd: 0.72,
+            gapToPolicyUsd: 0,
+            requiredNetProfitUsd: 0.3,
+            bestNetEdgeUsd: 1.2,
+            profitableLevels: 2,
+            amountLevels: 2,
+            nextActionCode: "collect_decay_survival",
+            nextActionLabel: "collect decay survival samples",
+            reason: "missing_decay_survival",
+            command:
+              "npm run verify:gateway -- --route-key=base:0x0555->unichain:0x0555 --amounts=25000 && npm run quote:dex -- --route-key=base:0x0555->unichain:0x0555 --amount=25000 --include-stable-entry && npm run score:gateway -- --write --route-key=base:0x0555->unichain:0x0555 --amount=25000",
+            stepCount: 2,
+            steps: [
+              {
+                code: "collect_decay_survival",
+                label: "collect decay survival samples",
+                command:
+                  "npm run verify:gateway -- --route-key=base:0x0555->unichain:0x0555 --amounts=25000 && npm run quote:dex -- --route-key=base:0x0555->unichain:0x0555 --amount=25000 --include-stable-entry && npm run score:gateway -- --write --route-key=base:0x0555->unichain:0x0555 --amount=25000",
+              },
             ],
           },
         },
-        {
-          role: "tx_ready_shadow",
-            label: "ethereum->base WBTC->wBTC.OFT",
-            amount: "10000",
-            srcChain: "ethereum",
-            dstChain: "base",
-            viableForPrep: false,
-            txReady: true,
-            tradeReadiness: "insufficient_data",
-            prepFundingUsd: 4.2,
-            netEdgeUsd: 64.77,
-            prepBlockers: ["native", "token", "allowance"],
-            scoreDisqualifiers: [],
-            readinessFailureReason: null,
-            shadowPriorityScore: 100,
-            shadowPriorityReason: "no_shadow_evidence",
-          },
-        ],
-      },
-      shadowActions: [
-        {
-          role: "active_canary",
-          label: "bob->base wBTC.OFT->wBTC.OFT",
-          amount: "10000",
-          code: "wait_for_fresh_inputs",
-          reason: "reject_no_net_edge",
-          command: null,
-        },
-        {
-          role: "tx_ready_shadow",
-          label: "ethereum->base WBTC->wBTC.OFT",
-          amount: "10000",
-          code: "check_wallet_readiness",
-          reason: "native",
-          command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
-        },
-      ],
-      strategyPlans: {
-        stableLoop: {
-          kind: "stable_loop",
-          nextAction: "collect_stable_loop_coverage",
-          reason: "no_paired_stable_loop_ladder",
-          command: null,
-          routeKeys: [],
-        },
-        proxySpread: {
-          kind: "proxy_spread",
-          nextAction: "watch_proxy_surface",
-          reason: "no_proxy_target",
-          command: null,
-          chains: [],
-        },
-      },
-      objectivePlans: {
-        executionReview: {
-          status: "measured_hypothesis_under_review",
-          selectionCode: "prefer_viable_prep_route_over_measured_hypothesis",
-          selectionLabel: "Measured leader stays review-only until readiness and fresh-input blockers clear.",
-          routeKey: "ethereum:0x2260->base:0x0555",
-          label: "ethereum->base WBTC->wBTC.OFT",
-          amount: "10000",
-          tradeReadiness: "insufficient_data",
-          measuredNetUsd: 64.77,
-          scoreNetUsd: -1.01,
-          executableNetUsd: 64.99,
-          blockers: ["wallet_not_checked", "stale_src_gas_snapshot"],
-          blockerLabels: ["wallet readiness check pending", "source gas snapshot stale"],
-          reasonLabels: [
-            "current canary is the only viable prep route",
-            "measured leader is not viable for prep yet",
-          ],
-          nextActionCode: "check_wallet_readiness",
-          nextActionLabel: "wallet readiness check",
-          command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
-          stepCount: 4,
-          steps: [
-            {
-              code: "check_wallet_readiness",
-              label: "wallet readiness check",
-              command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
-            },
-          ],
-          hypothesisGuard: "Positive measured edge is still a hypothesis until wallet, gas, and exact execution inputs are all fresh.",
-        },
-        discovery: {
-          source: "secondary_measured_loop",
-          sourceLabel: "secondary measured loop",
-          status: "missing_decay_survival",
-          selectionCode: "secondary_measured_loop",
-          selectionLabel: "Use the next measured loop to widen objective route discovery without promoting it to canary prematurely.",
-          routeKey: "base:0x0555->unichain:0x0555",
-          label: "base->unichain wBTC.OFT->wBTC.OFT",
-          amount: "25000",
-          classification: "missing_decay_survival",
-          measuredNetUsd: 0.72,
-          gapToPolicyUsd: 0,
-          requiredNetProfitUsd: 0.3,
-          bestNetEdgeUsd: 1.2,
-          profitableLevels: 2,
-          amountLevels: 2,
-          nextActionCode: "collect_decay_survival",
-          nextActionLabel: "collect decay survival samples",
-          reason: "missing_decay_survival",
-          command: "npm run verify:gateway -- --route-key=base:0x0555->unichain:0x0555 --amounts=25000 && npm run quote:dex -- --route-key=base:0x0555->unichain:0x0555 --amount=25000 --include-stable-entry && npm run score:gateway -- --write --route-key=base:0x0555->unichain:0x0555 --amount=25000",
-          stepCount: 2,
-          steps: [
-            {
-              code: "collect_decay_survival",
-              label: "collect decay survival samples",
-              command: "npm run verify:gateway -- --route-key=base:0x0555->unichain:0x0555 --amounts=25000 && npm run quote:dex -- --route-key=base:0x0555->unichain:0x0555 --amount=25000 --include-stable-entry && npm run score:gateway -- --write --route-key=base:0x0555->unichain:0x0555 --amount=25000",
-            },
-          ],
-        },
-      },
-      refreshQueue: [
-        {
-          rank: 1,
-          priority: 100,
-          kind: "canary_readiness",
-          scope: "canary",
-          code: "check_wallet_readiness",
-          label: "refresh canary readiness",
-          reason: "fresh_recent_check",
-          command: "npm run check:estimator-wallet -- --route-key=base:eth->bitcoin:btc --amount=1787455313617158 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
-          routeKey: "base:eth->bitcoin:btc",
-          routeLabel: "base->bitcoin ETH->BTC",
-          amount: "1787455313617158",
-          routeKeys: [],
-          chains: [],
-          proxyGroup: null,
-        },
-        {
-          rank: 2,
-          priority: 89,
-          kind: "objective_plan",
-          scope: "execution_review",
-          code: "check_wallet_readiness",
-          label: "wallet readiness check",
-          reason: "wallet_not_checked",
-          command: "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
-          routeKey: "ethereum:0x2260->base:0x0555",
-          routeLabel: "ethereum->base WBTC->wBTC.OFT",
-          amount: "10000",
-          routeKeys: [],
-          chains: [],
-          proxyGroup: null,
-          status: "measured_hypothesis_under_review",
-          selectionCode: "prefer_viable_prep_route_over_measured_hypothesis",
-          source: null,
-        },
-        {
-          rank: 3,
-          priority: 35,
-          kind: "ops",
-          scope: "route_performance",
-          code: "report_route_performance",
-          label: "refresh route performance report",
-          reason: "no_realized_enabled_routes",
-          command: "npm run report:route-performance -- --write",
-          routeKey: null,
-          routeLabel: null,
-          amount: null,
-          routeKeys: [],
-          chains: [],
-          proxyGroup: null,
-        },
-      ],
-      treasury: {
-        decision: "BLOCKED",
-        estimatedWalletUsd: 25.01,
-        walletValueFloorUsd: 250,
-        walletValueShortfallUsd: 224.99,
-        noDemandBlockerCount: 2,
-        nextNeeds: [
+        refreshQueue: [
           {
-            state: "waiting_demand",
-            chain: "base",
-            ticker: "ETH",
-            refillAmountDecimal: 0.0032,
-            refillEstimatedUsd: 7.11,
-            activation: {
-              code: "awaiting_wallet_readiness_check",
-              routeLabel: "base->bitcoin ETH->BTC",
-              candidateCount: 2,
-            },
+            rank: 1,
+            priority: 100,
+            kind: "canary_readiness",
+            scope: "canary",
+            code: "check_wallet_readiness",
+            label: "refresh canary readiness",
+            reason: "fresh_recent_check",
+            command:
+              "npm run check:estimator-wallet -- --route-key=base:eth->bitcoin:btc --amount=1787455313617158 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+            routeKey: "base:eth->bitcoin:btc",
+            routeLabel: "base->bitcoin ETH->BTC",
+            amount: "1787455313617158",
+            routeKeys: [],
+            chains: [],
+            proxyGroup: null,
+          },
+          {
+            rank: 2,
+            priority: 89,
+            kind: "objective_plan",
+            scope: "execution_review",
+            code: "check_wallet_readiness",
+            label: "wallet readiness check",
+            reason: "wallet_not_checked",
+            command:
+              "npm run check:estimator-wallet -- --route-key=ethereum:0x2260->base:0x0555 --amount=10000 --address=0x96262be63aa687563789225c2fe898c27a3b0ae4",
+            routeKey: "ethereum:0x2260->base:0x0555",
+            routeLabel: "ethereum->base WBTC->wBTC.OFT",
+            amount: "10000",
+            routeKeys: [],
+            chains: [],
+            proxyGroup: null,
+            status: "measured_hypothesis_under_review",
+            selectionCode: "prefer_viable_prep_route_over_measured_hypothesis",
+            source: null,
+          },
+          {
+            rank: 3,
+            priority: 35,
+            kind: "ops",
+            scope: "route_performance",
+            code: "report_route_performance",
+            label: "refresh route performance report",
+            reason: "no_realized_enabled_routes",
+            command: "npm run report:route-performance -- --write",
+            routeKey: null,
+            routeLabel: null,
+            amount: null,
+            routeKeys: [],
+            chains: [],
+            proxyGroup: null,
           },
         ],
-      },
-      audit: {
-        address: {
-          consistent: false,
-          issues: ["configured_address_stale_vs_resolved_cycle_address"],
+        treasury: {
+          decision: "BLOCKED",
+          estimatedWalletUsd: 25.01,
+          walletValueFloorUsd: 250,
+          walletValueShortfallUsd: 224.99,
+          noDemandBlockerCount: 2,
+          nextNeeds: [
+            {
+              state: "waiting_demand",
+              chain: "base",
+              ticker: "ETH",
+              refillAmountDecimal: 0.0032,
+              refillEstimatedUsd: 7.11,
+              activation: {
+                code: "awaiting_wallet_readiness_check",
+                routeLabel: "base->bitcoin ETH->BTC",
+                candidateCount: 2,
+              },
+            },
+          ],
         },
-        inventory: {
-          consistent: true,
-          issues: [],
+        audit: {
+          address: {
+            consistent: false,
+            issues: ["configured_address_stale_vs_resolved_cycle_address"],
+          },
+          inventory: {
+            consistent: true,
+            issues: [],
+          },
+        },
+      },
+      advanceCanary: {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
+        actionCount: 4,
+        actions: ["check-estimator-wallet", "estimate-gateway-gas", "score-gateway", "status-dashboard"],
+        initial: {
+          decision: "RUN_EXACT_GAS",
+          headline: "Run exact gas estimate",
+          routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          reasons: ["stale_src_gas_snapshot"],
+        },
+        final: {
+          decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
+          headline: "Best prepared route still fails objective score review",
+          routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
+          amount: "10000",
+          reasons: ["reject_no_net_edge"],
         },
       },
     },
-    advanceCanary: {
-      observedAt: "2026-04-10T11:59:00.000Z",
-      address: "0x96262be63aa687563789225c2fe898c27a3b0ae4",
-      actionCount: 4,
-      actions: ["check-estimator-wallet", "estimate-gateway-gas", "score-gateway", "status-dashboard"],
-      initial: {
-        decision: "RUN_EXACT_GAS",
-        headline: "Run exact gas estimate",
-        routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
-        amount: "10000",
-        reasons: ["stale_src_gas_snapshot"],
-      },
-      final: {
-        decision: "BLOCKED_NO_VIABLE_PREP_ROUTE",
-        headline: "Best prepared route still fails objective score review",
-        routeLabel: "bob->base wBTC.OFT->wBTC.OFT",
-        amount: "10000",
-        reasons: ["reject_no_net_edge"],
-      },
-    },
-  }, { now: "2026-04-10T12:00:00.000Z" });
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.equal(status.shadowCycle.mode, "SHADOW_ONLY");
   assert.equal(status.shadowCycle.blockerCount, 1);
@@ -1234,7 +1311,10 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.shadowRoster.candidateCount, 3);
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].roleLabel, "현재 canary");
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].roleLabel, "payload 확보 shadow 후보");
-  assert.equal(status.shadowCycle.shadowRoster.candidates[1].tradeReadinessLabel, "가격 또는 가스 데이터가 아직 부족함");
+  assert.equal(
+    status.shadowCycle.shadowRoster.candidates[1].tradeReadinessLabel,
+    "가격 또는 가스 데이터가 아직 부족함",
+  );
   assert.equal(status.shadowCycle.shadowRoster.candidates[1].shadowPriorityReason, "no_shadow_evidence");
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteSampleCount, 2);
   assert.equal(status.shadowCycle.shadowRoster.candidates[0].evidence.quoteFailureCount, 1);
@@ -1250,7 +1330,10 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.shadowCycle.objectivePlans.discovery.nextActionCode, "collect_decay_survival");
   assert.equal(status.shadowCycle.refreshQueue[0].scope, "tx_ready_shadow");
   assert.equal(status.shadowCycle.refreshQueue[0].code, "check_wallet_readiness");
-  assert.equal(status.shadowCycle.refreshQueue.some((item) => item.code === "check_wallet_readiness"), true);
+  assert.equal(
+    status.shadowCycle.refreshQueue.some((item) => item.code === "check_wallet_readiness"),
+    true,
+  );
   assert.equal(
     status.shadowCycle.refreshQueue.some((item) => item.command === "npm run report:route-performance -- --write"),
     true,
@@ -1283,58 +1366,66 @@ test("dashboard status includes shadow cycle summary when available", () => {
   assert.equal(status.dataCounts.shadowRefreshExecutions, 1);
   assert.equal(status.canaryAdvance.initial.decision, "RUN_EXACT_GAS");
   assert.equal(status.canaryAdvance.final.decision, "BLOCKED_NO_VIABLE_PREP_ROUTE");
-  assert.deepEqual(status.canaryAdvance.actions, ["check-estimator-wallet", "estimate-gateway-gas", "score-gateway", "status-dashboard"]);
+  assert.deepEqual(status.canaryAdvance.actions, [
+    "check-estimator-wallet",
+    "estimate-gateway-gas",
+    "score-gateway",
+    "status-dashboard",
+  ]);
   assert.equal(status.dataCounts.advanceCanaryPresent, 1);
 });
 
 test("dashboard status adds operator memos for refresh, review, and treasury follow-up", () => {
   const bobBase = route("bob", "base");
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [bobBase],
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [bobBase],
+        },
+      ],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      scoreSnapshot: {
+        generatedAt: "2026-04-10T10:00:00.000Z",
+        scoredQuotes: 1,
+        summary: { shadowCandidates: 0, insufficientData: 1 },
+        scores: [],
       },
-    ],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-    scoreSnapshot: {
-      generatedAt: "2026-04-10T10:00:00.000Z",
-      scoredQuotes: 1,
-      summary: { shadowCandidates: 0, insufficientData: 1 },
-      scores: [],
-    },
-    shadowCycle: {
-      observedAt: "2026-04-10T10:05:00.000Z",
-      mode: "shadow",
-      objectivePlans: {
-        executionReview: {
-          label: "bob->base wBTC.OFT->wBTC.OFT",
-          amount: "10000",
-          blockers: ["token"],
-          blockerLabels: ["source token needed"],
-          command: "npm run run:execution-review -- --execute --write --continue-on-error",
+      shadowCycle: {
+        observedAt: "2026-04-10T10:05:00.000Z",
+        mode: "shadow",
+        objectivePlans: {
+          executionReview: {
+            label: "bob->base wBTC.OFT->wBTC.OFT",
+            amount: "10000",
+            blockers: ["token"],
+            blockerLabels: ["source token needed"],
+            command: "npm run run:execution-review -- --execute --write --continue-on-error",
+          },
+        },
+        treasury: {
+          decision: "BLOCKED",
+          walletValueShortfallUsd: 225,
+          nextNeeds: [
+            {
+              chain: "base",
+              ticker: "ETH",
+              refillAmountDecimal: 0.003,
+              refillEstimatedUsd: 6.25,
+            },
+          ],
         },
       },
-      treasury: {
-        decision: "BLOCKED",
-        walletValueShortfallUsd: 225,
-        nextNeeds: [
-          {
-            chain: "base",
-            ticker: "ETH",
-            refillAmountDecimal: 0.003,
-            refillEstimatedUsd: 6.25,
-          },
-        ],
-      },
     },
-  }, { now: "2026-04-10T12:00:00.000Z" });
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.equal(status.operatorMemos.length, 3);
   assert.equal(status.operatorMemos[0].id, "refresh_inputs");
@@ -1347,56 +1438,59 @@ test("dashboard status adds operator memos for refresh, review, and treasury fol
 
 test("dashboard status adds ETH-family evidence memo when a new ETH surface appears", () => {
   const bobBase = route("bob", "base");
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [bobBase],
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [bobBase],
+        },
+      ],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [
+        {
+          observedAt: "2026-04-10T11:59:00.000Z",
+          snapshot: {
+            routeCount: 1,
+            ethFamilyRouteCount: 1,
+            ethFamilyChainPairs: ["base->ethereum"],
+            chains: ["base", "bob", "ethereum"],
+            bobTouchingRouteKeys: ["bob:btc->base:btc"],
+            routeHash: "route-hash",
+          },
+          diff: {
+            addedEthFamilyRoutes: ["base:0x0->ethereum:0x0"],
+            removedEthFamilyRoutes: [],
+          },
+          ethFamily: {
+            routeCount: 1,
+            surfaceChanged: true,
+            chainPairs: ["base->ethereum"],
+            addedChainPairs: ["base->ethereum"],
+            removedChainPairs: [],
+          },
+          updateDetected: true,
+          changeReasons: ["eth_family_surface"],
+          probes: [{ ok: true }],
+          probeFailures: [],
+          schemaHash: "schema-hash",
+          probeHealthHash: "probe-health-hash",
+        },
+      ],
+      updateAlerts: [],
+      scoreSnapshot: {
+        generatedAt: "2026-04-10T10:00:00.000Z",
+        scoredQuotes: 0,
+        summary: { shadowCandidates: 0, insufficientData: 0 },
+        scores: [],
       },
-    ],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [
-      {
-        observedAt: "2026-04-10T11:59:00.000Z",
-        snapshot: {
-          routeCount: 1,
-          ethFamilyRouteCount: 1,
-          ethFamilyChainPairs: ["base->ethereum"],
-          chains: ["base", "bob", "ethereum"],
-          bobTouchingRouteKeys: ["bob:btc->base:btc"],
-          routeHash: "route-hash",
-        },
-        diff: {
-          addedEthFamilyRoutes: ["base:0x0->ethereum:0x0"],
-          removedEthFamilyRoutes: [],
-        },
-        ethFamily: {
-          routeCount: 1,
-          surfaceChanged: true,
-          chainPairs: ["base->ethereum"],
-          addedChainPairs: ["base->ethereum"],
-          removedChainPairs: [],
-        },
-        updateDetected: true,
-        changeReasons: ["eth_family_surface"],
-        probes: [{ ok: true }],
-        probeFailures: [],
-        schemaHash: "schema-hash",
-        probeHealthHash: "probe-health-hash",
-      },
-    ],
-    updateAlerts: [],
-    scoreSnapshot: {
-      generatedAt: "2026-04-10T10:00:00.000Z",
-      scoredQuotes: 0,
-      summary: { shadowCandidates: 0, insufficientData: 0 },
-      scores: [],
     },
-  }, { now: "2026-04-10T12:00:00.000Z" });
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   const memo = status.operatorMemos.find((item) => item.id === "eth_family_surface");
   assert.equal(Boolean(memo), true);
@@ -1406,184 +1500,193 @@ test("dashboard status adds ETH-family evidence memo when a new ETH surface appe
 
 test("dashboard status exposes ETH profitability and ETH strategy track when ETH-family quotes are measurable", () => {
   const ethRoute = { srcChain: "base", dstChain: "ethereum", srcToken: ZERO, dstToken: ZERO };
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-07T11:58:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [ethRoute],
-      },
-      {
-        observedAt: "2026-04-09T11:58:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [ethRoute],
-      },
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [ethRoute],
-      },
-    ],
-    quotes: [
-      {
-        schemaVersion: 2,
-        observedAt: "2026-04-10T11:59:00.000Z",
-        route: ethRoute,
-        routeKey: `base:${ZERO}->ethereum:${ZERO}`,
-        quoteType: "layerZero",
-        amount: "10000",
-        grossOutputRatio: 0.99,
-        feeRatio: 0.01,
-      },
-    ],
-    failures: [],
-    dexQuotes: [
-      trustedOdosQuote({
-        observedAt: "2026-04-10T11:58:10.000Z",
-        source: "gateway_src_entry_leg",
-        chain: "base",
-        gatewayRouteKey: `base:${ZERO}->ethereum:${ZERO}`,
-        gatewayAmount: "10000",
-        inputTicker: "USDC",
-        outputTicker: "ETH",
-        inputValueUsd: 7.4,
-        gasEstimateValueUsd: 0.03,
-        outputAmount: "2000000000000000",
-      }),
-      trustedOdosQuote({
-        observedAt: "2026-04-10T11:58:20.000Z",
-        source: "gateway_dst_leg",
-        chain: "ethereum",
-        gatewayRouteKey: `base:${ZERO}->ethereum:${ZERO}`,
-        gatewayAmount: "10000",
-        inputTicker: "ETH",
-        outputTicker: "USDC",
-        inputValueUsd: 7.83,
-      }),
-    ],
-    scoreSnapshot: {
-      generatedAt: "2026-04-10T12:00:00.000Z",
-      scores: [
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
         {
-          observedAt: "2026-04-10T11:59:30.000Z",
-          routeKey: `base:${ZERO}->ethereum:${ZERO}`,
-          srcChain: "base",
-          srcToken: ZERO,
-          dstChain: "ethereum",
-          dstToken: ZERO,
-          srcAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
-          dstAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
-          amount: "10000",
-          inputAmount: 0.002,
-          tradeReadiness: "ethereum_l1_policy_override_disabled",
-          netEdgeUsd: -0.1,
-          executableOutputUsd: 7.83,
-          executableNetEdgeUsd: -0.05,
-          knownCostUsd: 0.2,
+          observedAt: "2026-04-07T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [ethRoute],
+        },
+        {
+          observedAt: "2026-04-09T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [ethRoute],
+        },
+        {
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [ethRoute],
         },
       ],
+      quotes: [
+        {
+          schemaVersion: 2,
+          observedAt: "2026-04-10T11:59:00.000Z",
+          route: ethRoute,
+          routeKey: `base:${ZERO}->ethereum:${ZERO}`,
+          quoteType: "layerZero",
+          amount: "10000",
+          grossOutputRatio: 0.99,
+          feeRatio: 0.01,
+        },
+      ],
+      failures: [],
+      dexQuotes: [
+        trustedOdosQuote({
+          observedAt: "2026-04-10T11:58:10.000Z",
+          source: "gateway_src_entry_leg",
+          chain: "base",
+          gatewayRouteKey: `base:${ZERO}->ethereum:${ZERO}`,
+          gatewayAmount: "10000",
+          inputTicker: "USDC",
+          outputTicker: "ETH",
+          inputValueUsd: 7.4,
+          gasEstimateValueUsd: 0.03,
+          outputAmount: "2000000000000000",
+        }),
+        trustedOdosQuote({
+          observedAt: "2026-04-10T11:58:20.000Z",
+          source: "gateway_dst_leg",
+          chain: "ethereum",
+          gatewayRouteKey: `base:${ZERO}->ethereum:${ZERO}`,
+          gatewayAmount: "10000",
+          inputTicker: "ETH",
+          outputTicker: "USDC",
+          inputValueUsd: 7.83,
+        }),
+      ],
+      scoreSnapshot: {
+        generatedAt: "2026-04-10T12:00:00.000Z",
+        scores: [
+          {
+            observedAt: "2026-04-10T11:59:30.000Z",
+            routeKey: `base:${ZERO}->ethereum:${ZERO}`,
+            srcChain: "base",
+            srcToken: ZERO,
+            dstChain: "ethereum",
+            dstToken: ZERO,
+            srcAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
+            dstAsset: { ticker: "ETH", family: "native_or_wrapped", priceKey: "ethereum", decimals: 18 },
+            amount: "10000",
+            inputAmount: 0.002,
+            tradeReadiness: "ethereum_l1_policy_override_disabled",
+            netEdgeUsd: -0.1,
+            executableOutputUsd: 7.83,
+            executableNetEdgeUsd: -0.05,
+            knownCostUsd: 0.2,
+          },
+        ],
+      },
     },
-  }, { now: "2026-04-10T12:00:00.000Z" });
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.equal(status.strategy.ethProfitability.routeCount, 1);
   assert.equal(status.strategy.ethProfitability.gatewayRouteCount, 1);
   assert.equal(status.strategy.ethProfitability.recommendationCode, "eth_l1_positive_ev_unconfirmed");
   assert.equal(status.strategy.ethProfitability.followUpActionCode, "measure_eth_fee_domain");
-  assert.equal(status.strategy.strategyTracks.tracks.some((item) => item.kind === "eth_family_loop"), true);
+  assert.equal(
+    status.strategy.strategyTracks.tracks.some((item) => item.kind === "eth_family_loop"),
+    true,
+  );
 });
 
 test("dashboard status includes pnl and trade history summaries", () => {
   const bobBase = route("bob", "base");
-  const status = buildDashboardStatus({
-    routesRecords: [
-      {
-        observedAt: "2026-04-10T11:58:00.000Z",
-        summary: { totalRoutes: 1 },
-        routes: [bobBase],
-      },
-    ],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-    scoreSnapshot: {
-      generatedAt: "2026-04-10T11:59:00.000Z",
-      scoredQuotes: 1,
-      summary: { shadowCandidates: 0, insufficientData: 0 },
-      scores: [
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [
         {
-          srcChain: "bob",
-          dstChain: "base",
-          srcAsset: { ticker: "wBTC.OFT" },
-          dstAsset: { ticker: "wBTC.OFT" },
+          observedAt: "2026-04-10T11:58:00.000Z",
+          summary: { totalRoutes: 1 },
+          routes: [bobBase],
+        },
+      ],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      scoreSnapshot: {
+        generatedAt: "2026-04-10T11:59:00.000Z",
+        scoredQuotes: 1,
+        summary: { shadowCandidates: 0, insufficientData: 0 },
+        scores: [
+          {
+            srcChain: "bob",
+            dstChain: "base",
+            srcAsset: { ticker: "wBTC.OFT" },
+            dstAsset: { ticker: "wBTC.OFT" },
+            tradeReadiness: "shadow_candidate_review_only",
+            netEdgeUsd: 0.42,
+            dataGaps: [],
+          },
+        ],
+      },
+      shadowCycle: {
+        observedAt: "2026-04-10T11:58:30.000Z",
+        topRoute: {
+          label: "bob->base wBTC.OFT->wBTC.OFT",
           tradeReadiness: "shadow_candidate_review_only",
           netEdgeUsd: 0.42,
-          dataGaps: [],
+        },
+        objectivePlans: {
+          executionReview: {
+            label: "bob->base wBTC.OFT->wBTC.OFT",
+            executableNetUsd: 0.35,
+            nextActionLabel: "refresh_dex_and_score",
+          },
+        },
+      },
+      executionEvents: [
+        {
+          observedAt: "2026-04-10T11:59:30.000Z",
+          eventType: "execution_reconciled",
+          status: "confirmed",
+          chain: "base",
+          txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+          realized: { realizedNetPnlUsd: 0.18 },
+        },
+      ],
+      receiptReconciliations: [
+        {
+          observedAt: "2026-04-10T11:59:20.000Z",
+          kind: "across_bridge",
+          chain: "base",
+          txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+          reconciliationStatus: "reconciled",
+          routeContext: {
+            routeKey: "bob:0x0555->base:0x0555",
+            amount: "10000",
+            estimatedNetPnlUsd: 0.22,
+          },
+          realized: {
+            realizedNetPnlUsd: 0.18,
+            receiptGasUsd: 0.02,
+          },
+        },
+        {
+          observedAt: "2026-04-10T11:59:10.000Z",
+          kind: "native_dex_experiment",
+          chain: "base",
+          txHash: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          reconciliationStatus: "reconciled",
+          routeContext: {
+            routeKey: "base:native->base:usdc",
+            amount: "10000",
+            estimatedNetPnlUsd: -0.45,
+          },
+          realized: {
+            realizedNetPnlUsd: -0.5,
+            receiptGasUsd: 0.04,
+          },
         },
       ],
     },
-    shadowCycle: {
-      observedAt: "2026-04-10T11:58:30.000Z",
-      topRoute: {
-        label: "bob->base wBTC.OFT->wBTC.OFT",
-        tradeReadiness: "shadow_candidate_review_only",
-        netEdgeUsd: 0.42,
-      },
-      objectivePlans: {
-        executionReview: {
-          label: "bob->base wBTC.OFT->wBTC.OFT",
-          executableNetUsd: 0.35,
-          nextActionLabel: "refresh_dex_and_score",
-        },
-      },
-    },
-    executionEvents: [
-      {
-        observedAt: "2026-04-10T11:59:30.000Z",
-        eventType: "execution_reconciled",
-        status: "confirmed",
-        chain: "base",
-        txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-        realized: { realizedNetPnlUsd: 0.18 },
-      },
-    ],
-    receiptReconciliations: [
-      {
-        observedAt: "2026-04-10T11:59:20.000Z",
-        kind: "across_bridge",
-        chain: "base",
-        txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-        reconciliationStatus: "reconciled",
-        routeContext: {
-          routeKey: "bob:0x0555->base:0x0555",
-          amount: "10000",
-          estimatedNetPnlUsd: 0.22,
-        },
-        realized: {
-          realizedNetPnlUsd: 0.18,
-          receiptGasUsd: 0.02,
-        },
-      },
-      {
-        observedAt: "2026-04-10T11:59:10.000Z",
-        kind: "native_dex_experiment",
-        chain: "base",
-        txHash: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
-        reconciliationStatus: "reconciled",
-        routeContext: {
-          routeKey: "base:native->base:usdc",
-          amount: "10000",
-          estimatedNetPnlUsd: -0.45,
-        },
-        realized: {
-          realizedNetPnlUsd: -0.5,
-          receiptGasUsd: 0.04,
-        },
-      },
-    ],
-  }, { now: "2026-04-10T12:00:00.000Z" });
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.equal(status.pnl.paper.valueUsd, 0.42);
   assert.equal(status.pnl.estimated.valueUsd, 0.35);
@@ -1601,15 +1704,18 @@ test("dashboard status includes pnl and trade history summaries", () => {
 });
 
 test("dashboard status includes campaign-aware slice with safe defaults", () => {
-  const status = buildDashboardStatus({
-    routesRecords: [],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-  }, { now: "2026-04-10T12:00:00.000Z" });
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+    },
+    { now: "2026-04-10T12:00:00.000Z" },
+  );
 
   assert.equal(typeof status.campaignAware, "object");
   assert.equal(typeof status.campaignAware.anchorLane.status, "string");
@@ -1618,35 +1724,38 @@ test("dashboard status includes campaign-aware slice with safe defaults", () => 
 });
 
 test("dashboard status exposes onchain radar as a sanitized read-only slice", () => {
-  const status = buildDashboardStatus({
-    routesRecords: [],
-    quotes: [],
-    failures: [],
-    gasSnapshots: [],
-    gasFailures: [],
-    updateSnapshots: [],
-    updateAlerts: [],
-    radarBoard: {
-      generatedAt: "2026-04-30T15:00:00.000Z",
-      summary: {
-        observedCount: 4,
-        strategyEpisodeCount: 1,
-        portablePacketCount: 0,
-        executableCount: 0,
-        strategyRealizedCount: 0,
-        paybackDeliveredCount: 0,
-        totalNetRealizedPnlSats: "0",
+  const status = buildDashboardStatus(
+    {
+      routesRecords: [],
+      quotes: [],
+      failures: [],
+      gasSnapshots: [],
+      gasFailures: [],
+      updateSnapshots: [],
+      updateAlerts: [],
+      radarBoard: {
+        generatedAt: "2026-04-30T15:00:00.000Z",
+        summary: {
+          observedCount: 4,
+          strategyEpisodeCount: 1,
+          portablePacketCount: 0,
+          executableCount: 0,
+          strategyRealizedCount: 0,
+          paybackDeliveredCount: 0,
+          totalNetRealizedPnlSats: "0",
+        },
+        blockerCounts: {
+          radar_policy_thresholds_unresolved: 1,
+        },
+        observations: [{ obsId: "obs_public", rawEventPayloadHash: "sha256:hidden" }],
       },
-      blockerCounts: {
-        radar_policy_thresholds_unresolved: 1,
+      radarCapReview: {
+        lossLock: { tripped: false },
+        candidates: [{ eligible: true, suggestedNextTinyLivePerTxUsd: 50 }],
       },
-      observations: [{ obsId: "obs_public", rawEventPayloadHash: "sha256:hidden" }],
     },
-    radarCapReview: {
-      lossLock: { tripped: false },
-      candidates: [{ eligible: true, suggestedNextTinyLivePerTxUsd: 50 }],
-    },
-  }, { now: "2026-04-30T16:00:00.000Z" });
+    { now: "2026-04-30T16:00:00.000Z" },
+  );
 
   assert.equal(status.radar.available, true);
   assert.equal(status.radar.status, "strategy_hypothesis");
