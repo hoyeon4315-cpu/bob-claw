@@ -44,7 +44,7 @@ function usage() {
   ].join("\n");
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     from: null,
     to: "HEAD",
@@ -57,23 +57,34 @@ function parseArgs(argv) {
   };
 
   for (let index = 0; index < argv.length; index += 1) {
-    const value = argv[index];
+    const rawValue = argv[index];
+    const equalsIndex = rawValue.indexOf("=");
+    const value = equalsIndex > -1 ? rawValue.slice(0, equalsIndex) : rawValue;
+    const inlineValue = equalsIndex > -1 ? rawValue.slice(equalsIndex + 1) : null;
     if (value === "--stdout") {
+      if (inlineValue !== null) {
+        throw new Error(`Unknown argument: ${rawValue}`);
+      }
       options.stdout = true;
       continue;
     }
     if (value === "--help" || value === "-h") {
+      if (inlineValue !== null) {
+        throw new Error(`Unknown argument: ${rawValue}`);
+      }
       options.help = true;
       continue;
     }
     if (!value.startsWith("--")) {
-      throw new Error(`Unknown argument: ${value}`);
+      throw new Error(`Unknown argument: ${rawValue}`);
     }
-    const next = argv[index + 1];
+    const next = inlineValue ?? argv[index + 1];
     if (!next || next.startsWith("--")) {
-      throw new Error(`Missing value for ${value}`);
+      throw new Error(`Missing value for ${rawValue}`);
     }
-    index += 1;
+    if (inlineValue === null) {
+      index += 1;
+    }
     switch (value) {
       case "--from":
         options.from = next;

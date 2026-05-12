@@ -1,10 +1,36 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  parseArgs,
   parseConventionalSubject,
   prependChangelogEntry,
   renderReleaseNotes,
 } from "../scripts/generate-release-notes.mjs";
+
+test("parseArgs accepts equals-form options used by npm scripts and docs", () => {
+  const options = parseArgs([
+    "--from=HEAD~1",
+    "--to=HEAD",
+    "--version=v1.2.3",
+    "--title=Release Preview",
+    "--write-changelog=CHANGELOG.md",
+    "--write-notes=/tmp/release-notes.md",
+    "--stdout",
+  ]);
+
+  assert.equal(options.from, "HEAD~1");
+  assert.equal(options.to, "HEAD");
+  assert.equal(options.version, "v1.2.3");
+  assert.equal(options.title, "Release Preview");
+  assert.equal(options.writeChangelog, "CHANGELOG.md");
+  assert.equal(options.writeNotes, "/tmp/release-notes.md");
+  assert.equal(options.stdout, true);
+});
+
+test("parseArgs rejects inline values for boolean flags", () => {
+  assert.throws(() => parseArgs(["--stdout=true"]), /Unknown argument: --stdout=true/);
+  assert.throws(() => parseArgs(["--help=false"]), /Unknown argument: --help=false/);
+});
 
 test("parseConventionalSubject classifies conventional commits and breaking changes", () => {
   const parsedFeature = parseConventionalSubject("feat(release): add preview workflow");
