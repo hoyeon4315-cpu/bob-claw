@@ -42,3 +42,27 @@ I am not claiming literal certainty about future market profit. The target is AG
 ## Verdict
 
 After this patch, I have evidence-complete confidence in the implemented data/evidence strategy surfaces under current repo authority. I am not confident that the strategy is currently live-executable or profitable: current diagnostics still show operational blockers, payback carry, capital-manager timeout, routing exhaustion, and kill-switch blockers. The correct current state is conservative: analysis/shadow evidence is improved; live movement remains blocked by policy/runtime state.
+
+## Follow-up Loop — Full Regression Determinism
+
+### Additional Loophole Found
+
+6. **Full regression depended on live network/RPC paths.** `test/autopilot-portfolio.test.mjs` called `runAutopilotTick()` without fixture opportunities or injected positions. That let the test hit live DefiLlama fetch and protocol RPC reconciliation, so a network failure could make the evidence-complete loop fail without a code regression.
+   - Fix: tests now inject fixture opportunities and `previousPositions: []` for non-RPC cases.
+   - Regression: `node --test test/autopilot-portfolio.test.mjs` now passes `7` tests in-process without live fetch/RPC dependency.
+
+### Updated Diagnostics Snapshot
+
+- `npm run report:policy-coverage -- --json`: `runtimeAuthority` is `policy_engine_only`; `totalChecks` is `11`; `enforcedByPolicy` is `11`.
+- `node src/cli/check-full-automation-readiness.mjs --json`: `ready=false`; only top-level blocker is `strategy_dispatch_not_ready`; `runtime.ready=true`; `capitalManager.ready=true`; `liveEligibleCount=0`; `defillama-yield-portfolio` remains `analysis_only` with `live_executor_not_bound`.
+- `npm run report:payback-status -- --json`: scheduler status is `carry`; reason is `planned_payback_below_minimum`; `accumulatorPendingSats=580`; `minPaybackSats=5000`; `progressToMinimumRatio=0.0232`.
+- `dashboard/public/dashboard-status.json`: `liveTrading` is `BLOCKED`; blockers are `kill_switch_present` and `kill_switch_stale_arm_present`; `shadowTrading` is `ALLOWED`.
+
+### Updated Verification
+
+- Focused regression: `node --test test/autopilot-portfolio.test.mjs test/defillama-client.test.mjs test/protocol-id-aliases.test.mjs test/report-campaign-aware-opportunities.test.mjs test/prices.test.mjs test/auto-kill-triggers.test.mjs test/strategy/defillama-yield-adapter.test.mjs test/proxy-spread-expansion-adapter.test.mjs` passed `89` tests.
+- Full regression: `npm test` passed `3565` tests, `0` failed, `1` skipped.
+
+### Updated Verdict
+
+Evidence-complete confidence is now green for the implemented strategy evidence surfaces and regression suite. Live/profit confidence remains intentionally not green: current truth surfaces say no live dispatch (`liveEligibleCount=0`, `liveTrading=BLOCKED`) and payback remains below minimum. This is the correct safe state, not a failure to force through.

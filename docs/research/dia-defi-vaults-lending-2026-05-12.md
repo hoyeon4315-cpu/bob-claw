@@ -281,6 +281,7 @@ YYYY-MM-DD | actor                | decision                                    
 2026-05-12 | codex                | PR2 scope set to DIA as optional third price source          | keep existing oracle thresholds; failure omits sample | —
 2026-05-12 | codex                | post-implementation loophole audit added                     | operator requested 100% evidence-complete confidence loop | —
 2026-05-12 | codex                | close matcher/null/oracle-source loopholes before confidence claim | false positives and unknown-as-zero weaken evidence gates | —
+2026-05-12 | codex                | full regression nondeterminism fixed                         | autopilot portfolio tests used live fetch/RPC path | 8c56251c follow-up
 ```
 
 Tool: append one row per decision (PR start, PR split, PR defer, doc edit, AGENTS.md proposal, Hard-Limit stop).

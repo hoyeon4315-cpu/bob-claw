@@ -1,6 +1,31 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 
+const FIXTURE_OPPORTUNITIES = Object.freeze([
+  {
+    chain: "base",
+    protocol: "aave-v3",
+    symbol: "USDC",
+    pool: "base-aave-usdc",
+    apy: 12,
+    apyBase: 12,
+    apyReward: 0,
+    tvlUsd: 5_000_000,
+    isStable: true,
+  },
+  {
+    chain: "base",
+    protocol: "morpho",
+    symbol: "cbBTC",
+    pool: "base-morpho-cbbtc",
+    apy: 8,
+    apyBase: 8,
+    apyReward: 0,
+    tvlUsd: 4_000_000,
+    isStable: false,
+  },
+]);
+
 describe("autopilot portfolio rebalancer", () => {
   it("returns dormant when integration disabled", async () => {
     // Module reads OPPORTUNITY_INTEGRATION.enabled at runtime
@@ -13,6 +38,7 @@ describe("autopilot portfolio rebalancer", () => {
   it("returns insufficient_capital for small capital", async () => {
     const mod = await import("../src/strategy/autopilot-portfolio-rebalancer.mjs");
     const result = await mod.runAutopilotTick({
+      previousPositions: [],
       totalCapitalBtc: 0.0002, // ~$15 (below MIN_NEW_CAPITAL_USD=30)
       dryRun: true,
       now: "2026-04-27T12:00:00.000Z",
@@ -23,24 +49,24 @@ describe("autopilot portfolio rebalancer", () => {
 
   it("returns no_opportunities when fetch fails", async () => {
     const mod = await import("../src/strategy/autopilot-portfolio-rebalancer.mjs");
-    // Override fetch to fail
-    const origFetch = globalThis.fetch;
-    globalThis.fetch = async () => { throw new Error("network down"); };
     const result = await mod.runAutopilotTick({
+      previousPositions: [],
       totalCapitalBtc: 1.0,
       dryRun: true,
       now: "2026-04-27T12:00:00.000Z",
+      fetchOpportunitiesImpl: async () => [],
     });
-    globalThis.fetch = origFetch;
     assert.strictEqual(result.status, "no_opportunities");
   });
 
   it("generates intents for sufficient capital", async () => {
     const mod = await import("../src/strategy/autopilot-portfolio-rebalancer.mjs");
     const result = await mod.runAutopilotTick({
+      previousPositions: [],
       totalCapitalBtc: 1.0,
       dryRun: true,
       now: "2026-04-27T12:00:00.000Z",
+      fetchOpportunitiesImpl: async () => [...FIXTURE_OPPORTUNITIES],
     });
     assert.strictEqual(result.status, "completed");
     assert.ok(result.opportunityCount > 0);
@@ -51,9 +77,11 @@ describe("autopilot portfolio rebalancer", () => {
   it("marks all intents as dry-run by default", async () => {
     const mod = await import("../src/strategy/autopilot-portfolio-rebalancer.mjs");
     const result = await mod.runAutopilotTick({
+      previousPositions: [],
       totalCapitalBtc: 1.0,
       dryRun: true,
       now: "2026-04-27T12:00:00.000Z",
+      fetchOpportunitiesImpl: async () => [...FIXTURE_OPPORTUNITIES],
     });
     assert.strictEqual(result.dryRun, true);
     for (const intent of result.intents) {
