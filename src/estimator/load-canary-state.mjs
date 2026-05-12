@@ -7,7 +7,14 @@ import { determineCanaryNextStep } from "./canary-next-step.mjs";
 import { buildCanaryRoutePlan } from "./canary-route-plan.mjs";
 import { buildEstimatorFundingPlan } from "./funding-plan.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { emptyPricesUsd, getCoinGeckoPricesUsd, isFreshPriceSnapshot, latestPriceSnapshot, overlayObservedPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
+import {
+  emptyPricesUsd,
+  getCoinGeckoPricesUsd,
+  isFreshPriceSnapshot,
+  latestPriceSnapshot,
+  overlayObservedPricesUsd,
+  pricesFromSnapshot,
+} from "../market/prices.mjs";
 
 export async function readJsonIfExists(path, { tolerateMalformed = false, retryCount = 0, retryDelayMs = 25 } = {}) {
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
@@ -23,7 +30,12 @@ export async function readJsonIfExists(path, { tolerateMalformed = false, retryC
   return null;
 }
 
-export async function loadCanaryState({ address = null, dataDir = config.dataDir, getLivePrices = getCoinGeckoPricesUsd, now = null } = {}) {
+export async function loadCanaryState({
+  address = null,
+  dataDir = config.dataDir,
+  getLivePrices = getCoinGeckoPricesUsd,
+  now = null,
+} = {}) {
   const resolved = await resolveOperationalAddress({
     explicitAddress: address,
     configuredAddress: config.estimateFrom,

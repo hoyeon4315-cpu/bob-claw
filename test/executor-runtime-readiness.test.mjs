@@ -3,10 +3,7 @@ import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import {
-  collectExecutorRuntimeReadiness,
-  maskBitcoinAddress,
-} from "../src/runtime/executor-runtime-readiness.mjs";
+import { collectExecutorRuntimeReadiness, maskBitcoinAddress } from "../src/runtime/executor-runtime-readiness.mjs";
 
 test("runtime readiness points to env configuration before launchd or process checks", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "bob-claw-runtime-readiness-missing-"));
@@ -152,8 +149,5 @@ test("runtime readiness blocks when installed launchd plist is missing required 
   assert.equal(report.summary.ready, false);
   assert.equal(report.summary.launchdEnvReady, false);
   assert.equal(report.summary.nextActionCode, "install_launchd_agents");
-  assert.deepEqual(report.summary.launchdMissingEnv, [
-    "daemon:BURNER_EVM_KEY_PATH",
-    "daemon:BURNER_BTC_KEY_PATH",
-  ]);
+  assert.deepEqual(report.summary.launchdMissingEnv, ["daemon:BURNER_EVM_KEY_PATH", "daemon:BURNER_BTC_KEY_PATH"]);
 });

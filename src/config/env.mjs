@@ -3,7 +3,10 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 function stripWrappingQuotes(value) {
-  if (value.length >= 2 && ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'")))) {
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+  ) {
     return value.slice(1, -1);
   }
   return value;
@@ -24,19 +27,14 @@ export function loadDotEnvFile(filePath, env = process.env) {
   }
 }
 
-export function resolveDotEnvCandidatePaths({
-  cwd = process.cwd(),
-  moduleUrl = import.meta.url,
-} = {}) {
+export function resolveDotEnvCandidatePaths({ cwd = process.cwd(), moduleUrl = import.meta.url } = {}) {
   const cwdDotEnv = resolve(cwd, ".env");
   const repoDotEnv = resolve(fileURLToPath(new URL("../../.env", moduleUrl)));
   return [...new Set([cwdDotEnv, repoDotEnv])];
 }
 
 export function loadDotEnvCandidates(options = {}) {
-  const {
-    env = process.env,
-  } = options;
+  const { env = process.env } = options;
   for (const candidatePath of resolveDotEnvCandidatePaths(options)) {
     loadDotEnvFile(candidatePath, env);
   }

@@ -160,11 +160,7 @@ export async function inspectExecutorRuntimeEnv({
   };
 }
 
-export function summarizeExecutorRuntimeReadiness({
-  envStatus,
-  launchdStatuses,
-  runtime,
-} = {}) {
+export function summarizeExecutorRuntimeReadiness({ envStatus, launchdStatuses, runtime } = {}) {
   const missingEnv = [];
   const insecureFiles = [];
   if (!envStatus?.required?.paybackDestination?.present) {
@@ -246,9 +242,7 @@ export async function collectExecutorRuntimeReadiness({
     statImpl,
   });
   const launchdSpecs = launchdSpecBuilder({ rootDir: cwd });
-  const launchdStatuses = await Promise.all(
-    launchdSpecs.map((spec) => launchdStatusReader(spec)),
-  );
+  const launchdStatuses = await Promise.all(launchdSpecs.map((spec) => launchdStatusReader(spec)));
   const runtime = await runtimeLoader({
     now,
     heartbeatPath: envStatus.derived.heartbeatPath.path,

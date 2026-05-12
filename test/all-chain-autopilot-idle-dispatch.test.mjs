@@ -143,12 +143,25 @@ test("all-chain autopilot queues idle BTC-family dust through gateway consolidat
   assert.equal(report.idleConsolidationPlan.status, "plan_ready");
   assert.equal(report.idleConsolidationPlan.aggregateUsd, 50);
   assert.ok(report.idleConsolidationPlan.candidates.every((item) => item.srcSym === "wBTC.OFT"));
-  assert.equal(report.idleConsolidationPlan.candidates.some((item) => /yo|rlusd|cbbtc|eth|native/i.test(`${item.srcSym}:${item.srcChain}`)), false);
+  assert.equal(
+    report.idleConsolidationPlan.candidates.some((item) =>
+      /yo|rlusd|cbbtc|eth|native/i.test(`${item.srcSym}:${item.srcChain}`),
+    ),
+    false,
+  );
   assert.equal(builtPlans.length, report.idleConsolidationPlan.candidates.length);
   assert.equal(queuedPlans.length, report.idleConsolidationPlan.candidates.length);
   assert.equal(report.summary.idleConsolidation.queuedIntentCount, report.idleConsolidationPlan.candidates.length);
-  assert.equal(auditRecords.every((record) => record.lifecycle?.stage === "idle_consolidation_planned"), true);
-  assert.equal(queuedPlans.every((plan) => plan.intent?.metadata?.idleInventoryConsolidation?.stage === "idle_consolidation_planned"), true);
+  assert.equal(
+    auditRecords.every((record) => record.lifecycle?.stage === "idle_consolidation_planned"),
+    true,
+  );
+  assert.equal(
+    queuedPlans.every(
+      (plan) => plan.intent?.metadata?.idleInventoryConsolidation?.stage === "idle_consolidation_planned",
+    ),
+    true,
+  );
 
   const autoKillIndex = events.findIndex((event) => event === "cmd:src/cli/run-auto-kill-check.mjs");
   const firstIdleBuilderIndex = events.findIndex((event) => event.startsWith("idle_builder:"));
@@ -215,9 +228,15 @@ test("all-chain autopilot resolves wallet address from canonical snapshot metada
     appendSignerAuditRecordImpl: async () => "/tmp/signer-audit.jsonl",
   });
 
-  assert.equal(report.idleConsolidationDispatches.some((item) => item.blockedReason === "wallet_address_unavailable"), false);
+  assert.equal(
+    report.idleConsolidationDispatches.some((item) => item.blockedReason === "wallet_address_unavailable"),
+    false,
+  );
   assert.equal(builtPlans.length, report.idleConsolidationPlan.candidates.length);
-  assert.equal(builtPlans.every((plan) => plan.senderAddress === "0x2222222222222222222222222222222222222222"), true);
+  assert.equal(
+    builtPlans.every((plan) => plan.senderAddress === "0x2222222222222222222222222222222222222222"),
+    true,
+  );
 });
 
 test("all-chain autopilot blocks idle consolidation without trusted wallet owner address", async () => {
@@ -239,7 +258,10 @@ test("all-chain autopilot blocks idle consolidation without trusted wallet owner
     });
 
     assert.equal(report.idleConsolidationDispatches.length, report.idleConsolidationPlan.candidates.length);
-    assert.equal(report.idleConsolidationDispatches.every((item) => item.blockedReason === "wallet_address_unavailable"), true);
+    assert.equal(
+      report.idleConsolidationDispatches.every((item) => item.blockedReason === "wallet_address_unavailable"),
+      true,
+    );
     assert.equal(buildCount, 0);
   } finally {
     delete process.env.OPERATOR_EVM_ADDRESS;

@@ -1,0 +1,29 @@
+# Generated and runtime artifacts
+data/
+logs/
+dist/
+coverage/
+out/
+cache/
+node_modules/
+.playwright-cli/
+.cloudflare/
+.wrangler/
+.claude/
+.codex/
+graphify-out/
+src/graphify-out/
+dashboard/public.legacy/
+preview/bob-claw-ui/
+docs/superpowers/inventories/
+research/.contract.json
+dashboard-desktop.yaml
+dashboard-initial.yaml
+dashboard-square.yaml
+docs/current-status.md
+docs/session-handoff-*.md
+package-lock.json
+
+# Generated dashboard and local snapshots
+dashboard/public/*.js
+dashboard/public/*.json

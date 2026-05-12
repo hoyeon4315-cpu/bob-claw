@@ -91,11 +91,17 @@ function classifyRefillIssue(reason = null) {
   if (!text) return "unknown";
   if (text === "routing_exhausted") return "routing_exhausted";
   if (
-    /insufficient source balance|source_inventory_below_target_amount|source_inventory_reserved|source inventory|insufficient_funds|insufficient balance/iu.test(text)
+    /insufficient source balance|source_inventory_below_target_amount|source_inventory_reserved|source inventory|insufficient_funds|insufficient balance/iu.test(
+      text,
+    )
   ) {
     return "inventory_insufficient";
   }
-  if (/insufficient_native_balance_for_lifi_gas|insufficient_native_balance_for_gas|insufficient_native_gas_balance|native gas|gas bootstrap/iu.test(text)) {
+  if (
+    /insufficient_native_balance_for_lifi_gas|insufficient_native_balance_for_gas|insufficient_native_gas_balance|native gas|gas bootstrap/iu.test(
+      text,
+    )
+  ) {
     return "native_gas";
   }
   if (/signer_execution_failed|Signer did not complete/iu.test(text)) {
@@ -140,9 +146,7 @@ function strategyLiveAdmissionBlockers(strategyDispatch = {}) {
       selectedMode: strategy.selectedMode || null,
       status: strategy.status || null,
       reason: strategy.reason || null,
-      blockers: Array.isArray(strategy.liveAdmissionBlockers)
-        ? strategy.liveAdmissionBlockers.filter(Boolean)
-        : [],
+      blockers: Array.isArray(strategy.liveAdmissionBlockers) ? strategy.liveAdmissionBlockers.filter(Boolean) : [],
     }))
     .filter((strategy) => strategy.strategyId && strategy.blockers.length > 0)
     .slice(0, 8);
@@ -166,16 +170,14 @@ export function buildFullAutomationReadiness({
   const autoRefillJobCount = capitalManager?.jobs?.jobs?.filter((job) => !job.requiresManualReview).length ?? 0;
   const dispatchBatchStatus = strategyDispatch?.record?.batchStatus || null;
   const liveEligibleCount = strategyDispatch?.executionSurfaces?.summary?.liveEligibleCount ?? 0;
-  const merklCanaryReadyCount =
-    autopilot?.merklCanary?.readyCount ?? autopilot?.execution?.merklCanaryReadyCount ?? 0;
+  const merklCanaryReadyCount = autopilot?.merklCanary?.readyCount ?? autopilot?.execution?.merklCanaryReadyCount ?? 0;
   const merklCanarySelectedCount =
     autopilot?.merklCanary?.selectedCount ?? autopilot?.execution?.merklCanarySelectedCount ?? 0;
   const merklCanaryBlockedReason =
     autopilot?.merklCanary?.blockedReason || autopilot?.execution?.merklCanaryBlockedReason || null;
   const merklCanaryStatus = autopilot?.merklCanary?.status || null;
   const merklCanaryLiveLaneReady =
-    merklCanaryReadyCount > 0 &&
-    !["failed", "invalid", "error"].includes(String(merklCanaryStatus || ""));
+    merklCanaryReadyCount > 0 && !["failed", "invalid", "error"].includes(String(merklCanaryStatus || ""));
   const dispatchReady =
     (liveEligibleCount > 0 || merklCanaryLiveLaneReady) &&
     dispatchBatchStatus !== "failed" &&
@@ -188,7 +190,8 @@ export function buildFullAutomationReadiness({
   const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || []);
   const refillIssueCounts = countByCategory(refillBlockers);
   const liveAdmissionBlockers = strategyLiveAdmissionBlockers(strategyDispatch);
-  const unresolvedRefillRoutes = liveAutomationObserved &&
+  const unresolvedRefillRoutes =
+    liveAutomationObserved &&
     !activeLiveAutomationRun &&
     (refillBlockers.length > 0
       ? refillBlockers.some((item) => refillNeedsLiveRemediation(item))
@@ -275,7 +278,8 @@ export function buildFullAutomationReadiness({
       ready: paybackIsolationReady && paybackReserveReady,
       nextAction: payback?.payback?.scheduler?.nextAction || null,
     },
-    policyNote: "Operating capital ingress must stay isolated from payback; live dispatch still depends on policy/caps/kill-switch.",
+    policyNote:
+      "Operating capital ingress must stay isolated from payback; live dispatch still depends on policy/caps/kill-switch.",
   };
 }
 
@@ -300,7 +304,9 @@ async function main() {
     payback: { ok: payback.ok, error: payback.error },
   };
   const autopilotLatest = await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest.json"));
-  const autopilotLatestCompleted = await readJsonIfExists(join(config.dataDir, "all-chain-autopilot-latest-completed.json"));
+  const autopilotLatestCompleted = await readJsonIfExists(
+    join(config.dataDir, "all-chain-autopilot-latest-completed.json"),
+  );
   const autopilot = buildAllChainAutopilotDashboardSlice(
     resolveAllChainAutopilotReport(autopilotLatest, autopilotLatestCompleted),
   );
