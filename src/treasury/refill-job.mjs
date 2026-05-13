@@ -73,11 +73,7 @@ function jobExecutionCostUsd(job) {
 function jobEconomicReviewReasons(job = {}) {
   if (!["REFILL_REQUIRED", "BLOCKED"].includes(job.decision)) return [];
   if (!fundingSourceAutoExecutable(job.fundingSource)) return [];
-  if (
-    job.origin === "capital_rebalance_matched_transfer" ||
-    job.origin === "gas_float_keeper" ||
-    job.executionReason === "capital_rebalance"
-  ) {
+  if (job.origin === "gas_float_keeper") {
     return [];
   }
   const effectiveSystemNetPnlUsd = finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd);
