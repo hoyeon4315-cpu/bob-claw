@@ -87,6 +87,7 @@ import {
   activeProtocolPositions,
   latestProtocolMarksByPosition,
   mergeProtocolMarksIntoPositions,
+  protocolPositionEventsFromSignerAudit,
 } from "../treasury/protocol-position-ledger.mjs";
 
 function uniqueStrings(values = []) {
@@ -637,9 +638,13 @@ export async function buildCurrentDashboardContext({
         })),
       }
     : null;
-  const activeMerklProtocolPositions = activeProtocolPositions(merklPositionEvents);
+  const protocolPositionEvents = [
+    ...merklPositionEvents,
+    ...protocolPositionEventsFromSignerAudit(signerAuditRecords),
+  ];
+  const activeMerklProtocolPositions = activeProtocolPositions(protocolPositionEvents);
   const merklPositionDisplayEvents =
-    activeMerklProtocolPositions.length > 0 ? activeMerklProtocolPositions : merklPositionEvents;
+    activeMerklProtocolPositions.length > 0 ? activeMerklProtocolPositions : protocolPositionEvents;
   dashboardStatus.strategy.protocolPositionMarks = buildProtocolPositionMarksSlice(protocolPositionMarks, {
     generatedAt: dashboardStatus.generatedAt,
     activePositionIds: activeMerklProtocolPositions.map((position) => position.positionId),

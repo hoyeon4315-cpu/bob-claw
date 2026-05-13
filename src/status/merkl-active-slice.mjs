@@ -95,6 +95,7 @@ function aggregateByOpportunity(events = []) {
       latestMarkConfidence: null,
       latestMarkFailureKind: null,
       latestMarkFailureMessage: null,
+      hasCurrentValue: false,
     };
     current.eventCount += 1;
     current.activePositionCount += 1;
@@ -116,6 +117,7 @@ function aggregateByOpportunity(events = []) {
     const markUsd = positionMarkUsd(event);
     if (Number.isFinite(markUsd)) {
       current.totalValueUsd += markUsd;
+      current.hasCurrentValue = true;
       if (isProtocolPositionMark(event)) {
         current.markedPositionCount += 1;
         if (!current.latestMarkAt || observedAtMs(event.markObservedAt || event.observedAt) >= observedAtMs(current.latestMarkAt)) {
@@ -125,8 +127,9 @@ function aggregateByOpportunity(events = []) {
           current.latestMarkConfidence = event.markConfidence || current.latestMarkConfidence;
         }
       }
-    } else if (Number.isFinite(event.amountUsd)) {
+    } else if (!event.liveMarkRequired && Number.isFinite(event.amountUsd)) {
       current.totalValueUsd += event.amountUsd;
+      current.hasCurrentValue = true;
     }
     if (event.markFailure && (!current.latestMarkAt || observedAtMs(event.markFailure.observedAt || event.observedAt) >= observedAtMs(current.latestMarkAt))) {
       current.latestMarkFailureKind = event.markFailure.failureKind || current.latestMarkFailureKind;
@@ -179,7 +182,7 @@ export function buildMerklActivePositions(
       type: inferType(position.name, position.protocolId),
       pair: inferAssets(position.name),
       capUsd: Number.isFinite(position.totalEntryUsd) ? Number(position.totalEntryUsd.toFixed(6)) : null,
-      valueUsd: Number.isFinite(position.totalValueUsd) ? Number(position.totalValueUsd.toFixed(6)) : null,
+      valueUsd: position.hasCurrentValue && Number.isFinite(position.totalValueUsd) ? Number(position.totalValueUsd.toFixed(6)) : null,
       markUsd: position.markedPositionCount > 0 && Number.isFinite(position.totalValueUsd)
         ? Number(position.totalValueUsd.toFixed(6))
         : null,

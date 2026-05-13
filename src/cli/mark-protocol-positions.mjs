@@ -12,7 +12,11 @@ import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { getMultiSourcePricesUsd, latestPriceSnapshot, priceForAssetUsd, pricesFromSnapshot } from "../market/prices.mjs";
 import { resolveProtocolPositionAdapter } from "../treasury/protocol-position-adapter-registry.mjs";
 import { normalizeProtocolPositionMark } from "../treasury/protocol-position-mark-schema.mjs";
-import { activeProtocolPositions } from "../treasury/protocol-position-ledger.mjs";
+import {
+  activeProtocolPositions,
+  protocolPositionEventsFromSignerAudit,
+} from "../treasury/protocol-position-ledger.mjs";
+import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import {
   buildProtocolPositionMarkSummary,
   markActiveProtocolPositions,
@@ -338,10 +342,17 @@ export async function runMarkProtocolPositionMarksCli(options = {}) {
     readJsonlImpl = readJsonl,
     readFileImpl = readFile,
     fetchPrices = getMultiSourcePricesUsd,
+    signerAuditRecords,
   } = options;
   const args = parseArgs(rawArgs);
   const loadedPositionEvents = positionEvents ?? await readJsonlImpl(dataDir, "merkl-portfolio-positions");
-  const positions = activeProtocolPositions(loadedPositionEvents);
+  const loadedSignerAuditRecords = Object.hasOwn(options, "signerAuditRecords")
+    ? signerAuditRecords
+    : (positionEvents ? [] : await readSignerAuditLog().catch(() => []));
+  const positions = activeProtocolPositions([
+    ...loadedPositionEvents,
+    ...protocolPositionEventsFromSignerAudit(loadedSignerAuditRecords || []),
+  ]);
   const resolvedWalletAddress = Object.hasOwn(options, "walletAddress")
     ? options.walletAddress
     : await resolveOperatorWalletAddress({ dataDir });
