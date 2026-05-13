@@ -1,0 +1,27 @@
+name: dependency-release-age-policy
+
+on:
+  pull_request:
+    paths:
+      - ".github/dependabot.yml"
+      - ".github/workflows/dependency-release-age-policy.yml"
+      - ".github/renovate.json"
+      - ".renovaterc"
+      - ".renovaterc.json"
+      - "docs/readiness/dependency-release-age-policy.md"
+      - "package.json"
+      - "renovate.json"
+      - "scripts/check-dependency-release-age-policy.mjs"
+      - "test/check-dependency-release-age-policy.test.mjs"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run check:dependency-release-age
+      - run: node --test test/check-dependency-release-age-policy.test.mjs
