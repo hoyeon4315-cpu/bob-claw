@@ -12,27 +12,49 @@
   checks pass, docs match code, and final diff review confirms no live-path
   regression.
 
+## Task Kickoff Prompt Contract
+
+- For every non-trivial BOB Claw operator task, before doing substantial repo
+  work or handing the task to another agent/session, first provide one
+  copy-pasteable prompt block that includes the recommended LLM/model,
+  reasoning level, and one-line rationale.
+- The kickoff prompt must also include the exact command or Codex mode to use
+  (`/goal ...`, `codex -C "<repo>" ...`, or "no /goal needed" when direct
+  execution in the current session is better), the concrete verification
+  commands expected for the task, and the PR/merge boundary such as "open PR
+  only" versus "merge after green checks."
+- If the operator asks Codex to execute directly in the current session, still
+  state the intended model/command plan in the first progress update before
+  exploration or edits. Do not make the operator reconstruct the prompt from
+  scattered messages.
+- Keep the prompt one block whenever possible. For readiness fixes, include the
+  failing signal, strict scope, quality rules, verification ladder, and whether
+  `/goal` should be used. For runtime or live-cap tasks, include the
+  deterministic safety gates from this file and never suggest signer, cap,
+  policy, or kill-switch bypasses.
+
 ## Diagnostic Entry Points
 
 진단 / 평가 / 분석 답을 만들기 전에 다음 명령을 먼저 호출한다. 이미
 측정된 사실을 추측으로 다시 만드는 일을 막기 위함이다. 새 진단 모듈을
-신설하기 전에도 같은 명령을 먼저 호출하고 *부족한 부분만* 보강한다.
+신설하기 전에도 같은 명령을 먼저 호출하고 _부족한 부분만_ 보강한다.
 
-| 질문 종류 | 먼저 호출할 entry point |
-|---|---|
-| NAV 변동 / gas burn / slippage / payback 누적 | `npm run report:capital-audit -- --json` |
-| 완전 자동 readiness blocker / 무엇이 막혀있나 | `node src/cli/check-full-automation-readiness.mjs --json` |
-| refill 거부 사유 / capital plan decision | `node src/cli/plan-capital-manager-refill-jobs.mjs --json` |
-| payback 상태 / 누적 sats / carry 사유 | `npm run report:payback-status -- --json` |
-| dashboard 표면 상태 (배포된 truth) | `dashboard/public/dashboard-status.json` 조회 |
-| autopilot 가장 최근 run | `data/all-chain-autopilot-latest.json` |
-| 코드 호출 그래프 / 심볼 관계 | `python3 -m graphify query/explain/path` (graphify 섹션 참조) |
+| 질문 종류                                     | 먼저 호출할 entry point                                       |
+| --------------------------------------------- | ------------------------------------------------------------- |
+| NAV 변동 / gas burn / slippage / payback 누적 | `npm run report:capital-audit -- --json`                      |
+| 완전 자동 readiness blocker / 무엇이 막혀있나 | `node src/cli/check-full-automation-readiness.mjs --json`     |
+| refill 거부 사유 / capital plan decision      | `node src/cli/plan-capital-manager-refill-jobs.mjs --json`    |
+| payback 상태 / 누적 sats / carry 사유         | `npm run report:payback-status -- --json`                     |
+| dashboard 표면 상태 (배포된 truth)            | `dashboard/public/dashboard-status.json` 조회                 |
+| autopilot 가장 최근 run                       | `data/all-chain-autopilot-latest.json`                        |
+| 코드 호출 그래프 / 심볼 관계                  | `python3 -m graphify query/explain/path` (graphify 섹션 참조) |
 
 규칙:
+
 - 위 entry point 가 답할 수 있는 사실은 추측 / 가설 / "아마" 로 메우지 않는다.
 - 새 모듈 / 새 CLI 제안 전에 `ls src/cli | grep <키워드>` 로 동명/유사
   도구가 있는지 확인한다.
-- 명령 결과는 자기 답에 *그대로 인용* 한다. 요약 / 재작성 금지.
+- 명령 결과는 자기 답에 _그대로 인용_ 한다. 요약 / 재작성 금지.
 - 명령이 실패하거나 데이터 없음으로 응답하면 그 사실을 그대로 보고하고
   "데이터 부족" 으로 답한다. 추측으로 빈칸 채우지 않는다.
 
@@ -133,7 +155,7 @@
   - `regimeMultipliers` — {bear: ≤1.5, neutral: 1.0, bull_peak: ≥0.5} — applied deterministically from a whitelisted oracle (Mayer Multiple from a pinned data source), never from an LLM judgment.
   - `emergencyPause` triggers: protocol exploit on any touched protocol, measured Gateway offramp slippage >2%, operating-capital drawdown >30%. On trigger, payback scheduler halts until committed diff resumes it.
 - On-chain note: `src/contracts/BalancerFlashArb.sol` ships with `minProfitUsdc = 300000` (USD 0.30, 6 decimals) in the constructor. Off-chain policy may permit any positive-EV trade, but the deployed contract still rejects flash-arb profits below USD 0.30 until it is redeployed or made owner-settable. Non-flash strategies are unaffected.
-- **Capital tracking is a gate, not an after-action report.** Every new position entry, refill, consolidation, or payback intent must attach a pre-trade capital snapshot (operating capital BTC/USD, per-chain inventory, protocol-locked NAV) and emit a post-broadcast reconciliation row tied to the intentHash within the next receipt-ingest tick. The Receipt Ingestor refuses to mark a position `verified_current` until the capital delta closes against fees + slippage + protocol position mark. A strategy whose latest broadcast has an unmatched capital-audit pair auto-pauses until the capital-audit issue count for that strategy id returns to zero. This rule does not raise caps, weaken policy, or bypass the signer — it only specifies *when* the existing receipt/audit guards must fire.
+- **Capital tracking is a gate, not an after-action report.** Every new position entry, refill, consolidation, or payback intent must attach a pre-trade capital snapshot (operating capital BTC/USD, per-chain inventory, protocol-locked NAV) and emit a post-broadcast reconciliation row tied to the intentHash within the next receipt-ingest tick. The Receipt Ingestor refuses to mark a position `verified_current` until the capital delta closes against fees + slippage + protocol position mark. A strategy whose latest broadcast has an unmatched capital-audit pair auto-pauses until the capital-audit issue count for that strategy id returns to zero. This rule does not raise caps, weaken policy, or bypass the signer — it only specifies _when_ the existing receipt/audit guards must fire.
 - **Live-read mandate for all NAV / balance / position queries (2026-05-11).** Recorded snapshot files — `btc-nav-history.jsonl`, `treasury-inventory.jsonl`, the latest `all-chain-autopilot-latest.json`, `protocol-position-marks.jsonl`, dashboard JSON slices — are **not** ground truth for current balances. They are accumulator projections, scheduler outputs, or last-known reads that go stale silently. Operating-capital, per-chain balance, and protocol-position queries used by policy gates must originate from on-chain reads in the same tick: Bitcoin operator addresses via Esplora / mempool.space for confirmed sats; EVM operator balances via chain RPC `eth_getBalance` and ERC20 `balanceOf` per chain in `src/config/chains.mjs`; protocol positions via the registered protocol-reader adapters. If a live read fails, the unified reader must return `valueUsd: null`, set a `*_stale_fallback` flag, and force `halt: true` — never substitute the JSONL row. A coding-session LLM may not present a recorded JSONL figure as the current balance to the operator; if live read failed, the answer is "data unavailable, X live read failed", not last week's projection.
 
 ## Unattended Execution Architecture
@@ -147,12 +169,12 @@ Every executor, capital mover, strategy module, and the payback engine fit this 
 3. **Signer Daemon** — `src/executor/signer/` — a long-running separate process. Holds keys for all chains. Signs only intents approved by Policy. Exposes a local socket. Two backends in tandem:
    - `EvmLocalKeySigner` — reads `BURNER_EVM_KEY_PATH`, signs for every EVM chain in `src/config/chains.mjs`, per-chain nonce manager (ethers v6).
    - `BtcLocalKeySigner` — reads `BURNER_BTC_KEY_PATH` (WIF or hex), UTXO selection, fee estimation, PSBT construction, RBF support. Used for Gateway onramp and native BTC sends.
-   Both share the same `Signer` interface so they can be swapped later for `HardwareSigner` / `MpcSigner` with a one-line change.
+     Both share the same `Signer` interface so they can be swapped later for `HardwareSigner` / `MpcSigner` with a one-line change.
 4. **Capital Manager** — `src/executor/capital/` — maintains per-chain target balances. Two target sources are supported and merge cleanly:
    - Static cap targets from `src/config/strategy-caps.mjs` (`buildTargetBalances`).
    - Score-weighted targets from `src/executor/capital/scored-target-balances.mjs`. Candidate set is every `autoExecute: true` strategy times its positive `caps.perChainUsd[chain]`, filtered to the 11 official Gateway destination chains. `destination-promotion-gate.json` is a score source only, not an execution gate: score lookup uses `strategyId`, `familyId`, and exposure-derived score families, then applies reduced weight to non-ready/no-gate candidates. Allocation water-fills by weight, clips by per-chain/per-strategy caps, and sums per-chain settlement targets.
-   The rebalancer is **bidirectional**: it emits `capital_rebalance` for chains under target and `capital_drain` for chains over target, with `buildCapitalRebalanceMatchedTransfers` pairing surplus chains to shortfall chains so the same dispatch consolidates scattered inventory (e.g., USDC dumped on BSC, surplus wBTC.OFT on a chain with no target). Tolerance configurable via `policy.capital.rebalanceToleranceUsd` (default $5).
-   The CLI `npm run executor:bootstrap-from-btc -- --total-capital-usd=<usd>` (or `--btc-balance-sats=<sats> --btc-price-usd=<usd>`) writes `data/bootstrap-from-btc.json` with the score-weighted target vector and the resulting refill plan; the all-chain autopilot accepts the same flags via `--bootstrap-btc-sats=...` etc. and runs it as the first step before the treasury refill plan. Auto-rebalances by enqueuing swap/bridge intents through the Signer. Replaces the human being told "swap this, hold that."
+     The rebalancer is **bidirectional**: it emits `capital_rebalance` for chains under target and `capital_drain` for chains over target, with `buildCapitalRebalanceMatchedTransfers` pairing surplus chains to shortfall chains so the same dispatch consolidates scattered inventory (e.g., USDC dumped on BSC, surplus wBTC.OFT on a chain with no target). Tolerance configurable via `policy.capital.rebalanceToleranceUsd` (default $5).
+     The CLI `npm run executor:bootstrap-from-btc -- --total-capital-usd=<usd>` (or `--btc-balance-sats=<sats> --btc-price-usd=<usd>`) writes `data/bootstrap-from-btc.json` with the score-weighted target vector and the resulting refill plan; the all-chain autopilot accepts the same flags via `--bootstrap-btc-sats=...` etc. and runs it as the first step before the treasury refill plan. Auto-rebalances by enqueuing swap/bridge intents through the Signer. Replaces the human being told "swap this, hold that."
 5. **Gas Float Keeper** — sub-policy of Capital Manager. Per-chain minimum native-token balance. Below threshold → auto-top-up from a configured source chain/asset.
 6. **Receipt Ingestor** — every broadcast result (tx hash, revert reason, HF path, liquidation-buffer path, realized cost, realized carry) is appended to audit log and fed into the existing `ingest:*` pipelines automatically. **Each broadcast must close a capital-audit pair (pre-NAV + post-NAV + delta breakdown) tied to its intentHash before the strategy's next intent is admitted by Policy.** No manual `npm run ingest:...`.
 7. **Kill-switch + Watchdog** — file-based hard stop checked per-tx. Watchdog heartbeats the daemon; missed heartbeats → Telegram alert + auto-halt.
@@ -167,19 +189,19 @@ Every executor, capital mover, strategy module, and the payback engine fit this 
 
 **LLM permissions matrix** (applies to Claude, Copilot, Codex, and any future coding agent):
 
-| May | May not |
-|---|---|
-| Write or edit strategy code under `src/strategy/` | Embed or log a private key, even briefly |
-| Write or edit policy functions under `src/executor/policy/` | Call the signer with raw tx bytes bypassing policy |
-| Write or edit payback scheduler/accumulator under `src/executor/payback/` | Decide payback ratio, timing, or trigger at runtime |
-| Propose cap changes via a committed diff | Raise caps (strategy or payback) at runtime through any side channel |
-| Read audit logs | Delete, rotate in place, or rewrite audit logs |
-| Configure a new chain by editing config | Move funds outside the Capital Manager |
-| Write inbound classification/routing policy | Auto-whitelist an unknown token at runtime (exception: ERC4626 vault tokens with known underlying — see auto-registration policy) |
-| Trigger a manual dev-mode run | Decide when to sign — that's policy code's call |
-| Toggle kill-switch (`kill:on`/`kill:off`) on explicit operator request, with audit log | Toggle kill-switch autonomously without an operator request |
-| Start, stop, or restart deterministic daemons (`executor:daemon`, `executor:watchdog`, autopilots, payback scheduler) on operator request | Bypass kill-switch, policy engine, or signer approval to launch a trade |
-| Trigger an idle radar candidate router tick (`radar:promote --preview` or `--execute`) or radar cap review (`radar:cap-review`) on operator request | Mutate radar thresholds, executionPath enum, `tinyLivePerTxUsd`, or any cap at runtime |
+| May                                                                                                                                                 | May not                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Write or edit strategy code under `src/strategy/`                                                                                                   | Embed or log a private key, even briefly                                                                                          |
+| Write or edit policy functions under `src/executor/policy/`                                                                                         | Call the signer with raw tx bytes bypassing policy                                                                                |
+| Write or edit payback scheduler/accumulator under `src/executor/payback/`                                                                           | Decide payback ratio, timing, or trigger at runtime                                                                               |
+| Propose cap changes via a committed diff                                                                                                            | Raise caps (strategy or payback) at runtime through any side channel                                                              |
+| Read audit logs                                                                                                                                     | Delete, rotate in place, or rewrite audit logs                                                                                    |
+| Configure a new chain by editing config                                                                                                             | Move funds outside the Capital Manager                                                                                            |
+| Write inbound classification/routing policy                                                                                                         | Auto-whitelist an unknown token at runtime (exception: ERC4626 vault tokens with known underlying — see auto-registration policy) |
+| Trigger a manual dev-mode run                                                                                                                       | Decide when to sign — that's policy code's call                                                                                   |
+| Toggle kill-switch (`kill:on`/`kill:off`) on explicit operator request, with audit log                                                              | Toggle kill-switch autonomously without an operator request                                                                       |
+| Start, stop, or restart deterministic daemons (`executor:daemon`, `executor:watchdog`, autopilots, payback scheduler) on operator request           | Bypass kill-switch, policy engine, or signer approval to launch a trade                                                           |
+| Trigger an idle radar candidate router tick (`radar:promote --preview` or `--execute`) or radar cap review (`radar:cap-review`) on operator request | Mutate radar thresholds, executionPath enum, `tinyLivePerTxUsd`, or any cap at runtime                                            |
 
 **Audit log** — every sign attempt (approved, rejected, errored) and every payback disbursement appends to `logs/signer-audit.jsonl` with timestamp, strategy id (or `payback:<periodId>`), chain, intent hash, policy verdict, and (on broadcast) tx hash + receipt. On payback completion, also records Gateway order id and destination Bitcoin txid as a three-way receipt. Append-only. Never deleted. Never rotated in place.
 
@@ -219,13 +241,13 @@ if anyEmergencyPauseTrigger():
 
 **KPI surface (BTC-denominated).** Stored in the dashboard JSON slice produced by the accumulator:
 
-| KPI | Definition | Target band |
-|---|---|---|
-| BYR (BTC Yield Ratio) | paid-back BTC over trailing 12 months ÷ operating-capital BTC at period start | 5–15% |
-| CG (Compound Growth) | operating-capital BTC growth over trailing 12 months | 10–25% |
-| TBR (Total BTC Return) | (paid-back BTC + end operating BTC) ÷ start operating BTC − 1 | 15–40% |
-| Round-trip efficiency | (gross realized profit BTC − Gateway round-trip cost BTC) ÷ gross realized profit BTC | >90% |
-| Days to breakeven | periods until paid-back BTC covers initial round-trip entry cost | <60d |
+| KPI                    | Definition                                                                            | Target band |
+| ---------------------- | ------------------------------------------------------------------------------------- | ----------- |
+| BYR (BTC Yield Ratio)  | paid-back BTC over trailing 12 months ÷ operating-capital BTC at period start         | 5–15%       |
+| CG (Compound Growth)   | operating-capital BTC growth over trailing 12 months                                  | 10–25%      |
+| TBR (Total BTC Return) | (paid-back BTC + end operating BTC) ÷ start operating BTC − 1                         | 15–40%      |
+| Round-trip efficiency  | (gross realized profit BTC − Gateway round-trip cost BTC) ÷ gross realized profit BTC | >90%        |
+| Days to breakeven      | periods until paid-back BTC covers initial round-trip entry cost                      | <60d        |
 
 The accumulator writes these to the dashboard status slice; the dashboard may display them but must not compute them.
 
@@ -249,10 +271,10 @@ The dev-automation lane is the pipeline by which a coding-session LLM (or the op
 
 **Two independent file flags.** Live and dev are coordinated by separate file flags so they cannot interfere:
 
-| Flag | Default path | Effect |
-|---|---|---|
-| `$KILL_SWITCH_PATH` | `~/.bob-claw/KILL_SWITCH` | Halts every signer broadcast and the payback offramp. Toggle via `npm run kill:on` / `kill:off` / `kill:status` (or the `live:start` / `live:stop` / `live:status` bundle). All toggles append to `logs/kill-switch-audit.jsonl`. |
-| `$DEV_LOCK_PATH` | `~/.bob-claw/DEV_LOCK` | Pauses the dev-automation CLIs only (auto-validation, route discovery, auto-promotion runner). Live execution is **not** affected. Toggle via `npm run dev:lock` / `dev:unlock` / `dev:lock-status`. All toggles append to `logs/dev-lock-audit.jsonl`. |
+| Flag                | Default path              | Effect                                                                                                                                                                                                                                                  |
+| ------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$KILL_SWITCH_PATH` | `~/.bob-claw/KILL_SWITCH` | Halts every signer broadcast and the payback offramp. Toggle via `npm run kill:on` / `kill:off` / `kill:status` (or the `live:start` / `live:stop` / `live:status` bundle). All toggles append to `logs/kill-switch-audit.jsonl`.                       |
+| `$DEV_LOCK_PATH`    | `~/.bob-claw/DEV_LOCK`    | Pauses the dev-automation CLIs only (auto-validation, route discovery, auto-promotion runner). Live execution is **not** affected. Toggle via `npm run dev:lock` / `dev:unlock` / `dev:lock-status`. All toggles append to `logs/dev-lock-audit.jsonl`. |
 
 The operator (or a coding-session LLM acting on operator request) holds the dev-lock while hand-coding so background automation does not race with in-progress edits. The kill-switch is for live trade safety and is independent.
 
@@ -341,6 +363,7 @@ post-commit / post-checkout git 훅이 자동으로 그래프를 갱신한다. �
 ### 사용 판단 (토큰 절감 목적, 객관 트리거)
 
 **graphify 먼저 쓸 것** — 벤치 3~10x 절감:
+
 - 기본 진입은 `npm run graph:focus -- explain <심볼>` / `path <A> <B>` / `query <질문>` 으로 시작한다. 이 래퍼는 앱 그래프를 기본값으로 쓰고 `query` budget을 낮게 잡아 출력 과다를 줄인다.
 - "X가 무엇에 연결?"·"이 함수의 호출자"·"이 모듈의 이웃" → `python3 -m graphify query "질문" --graph src/graphify-out/graph.json`
 - 단일 심볼 관계 설명 → `python3 -m graphify explain "심볼명" --graph src/graphify-out/graph.json`
@@ -350,12 +373,14 @@ post-commit / post-checkout git 훅이 자동으로 그래프를 갱신한다. �
 - **3개 이상 파일 읽을 것 같으면 먼저 `graphify query`로 관련 노드만 추려 읽을 파일 수를 줄인다**
 
 **graphify 쓰지 말 것** — 요약으로 정확성 손실:
+
 - 정확 수치·인용·버전 문자열 추출
 - `docs/research/*` 및 .md 문서 질문 (그래프는 .mjs/.js AST만, 문서 노드 없음)
 - 버그 원인·로직 분석·주석 의도 파악
 - 수정 대상 파일은 반드시 원문 읽기
 
 ### 운영
+
 - 기본 그래프: `src/graphify-out/graph.json` (연결성 99.5%). 루트 그래프는 테스트/vendored 섬 포함으로 92% — 보조용.
 - 허브에 제네릭 이름(`slice()`, `sort()`, `main()`) 있음 → 질의 시 파일 경로 필터 권장.
 - 훅 상태: `python3 -m graphify hook status`.
@@ -372,7 +397,7 @@ post-commit / post-checkout git 훅이 자동으로 그래프를 갱신한다. �
 - 사용자가 이해하기 쉽게 쓰는 것이 우선이다. 내부 모듈명은 꼭 필요할 때만 쓰고, 쓰면 한 줄로 의미를 풀어쓴다.
 - 단계가 안 올라갔으면 숨기지 말고 그대로 말한다. 대신 “무엇이 정리됐는지”를 짧게 같이 적는다.
 - 추정이나 희망 섞인 표현 대신, 방금 확인한 파일/로그/명령 결과를 기준으로만 설명한다.
-- **사용자가 "verified" 라고 명시한 항목은 사실로 취급한다.** 같은 항목을 retest / 의심 / 재검증하지 않는다. 데이터 조회만 허용. 예: 사용자가 "Verified final commit SHA = X" 라고 적었으면 git log 로 *조회* 는 가능하지만, "정말 X인지 다시 검증" 식의 도전은 금지. 사용자 신호와 코드 사실이 충돌하면 그 사실만 짧게 인용해 보고하고 사용자가 판단하게 한다.
+- **사용자가 "verified" 라고 명시한 항목은 사실로 취급한다.** 같은 항목을 retest / 의심 / 재검증하지 않는다. 데이터 조회만 허용. 예: 사용자가 "Verified final commit SHA = X" 라고 적었으면 git log 로 _조회_ 는 가능하지만, "정말 X인지 다시 검증" 식의 도전은 금지. 사용자 신호와 코드 사실이 충돌하면 그 사실만 짧게 인용해 보고하고 사용자가 판단하게 한다.
 - **모름 답을 허용한다.** timeline / 완료 시점 / "언제쯤" 류 질문에 데이터 근거가 없으면 "모름. 다음 측정 후 답 가능" 으로 답한다. 그럴듯한 숫자로 빈칸 채우지 않는다.
 - **추측에 표시한다.** 답에 데이터 근거 없는 추정이 들어가면 해당 줄 끝에 `[추측]` 으로 명시한다. 사용자가 한눈에 거를 수 있게.
 
