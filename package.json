@@ -378,7 +378,9 @@
     "check:feature-flags": "node --test test/feature-flags.test.mjs",
     "check:unused-dependencies": "node scripts/check-unused-dependencies.mjs",
     "check:architecture": "depcruise src scripts test dashboard/public",
-    "report:duplicate-code": "node scripts/check-duplicate-code.mjs --report-only"
+    "report:duplicate-code": "node scripts/check-duplicate-code.mjs --report-only",
+    "check:secret-scanning": "node scripts/check-secret-scanning.mjs",
+    "update:secret-scanning-baseline": "node scripts/check-secret-scanning.mjs --write-baseline"
   },
   "engines": {
     "node": ">=20"

@@ -5,6 +5,8 @@ on:
     types: [opened, synchronize]
     paths:
       - "AGENTS.md"
+      - ".gitignore"
+      - ".secrets.baseline"
       - ".github/workflows/auto-pr-validate.yml"
       - ".github/workflows/deploy-dashboard-cloudflare.yml"
       - "package.json"
@@ -81,6 +83,22 @@ jobs:
               repo: context.repo.repo,
               labels: ['auto-merge-eligible']
             });
+
+  secret_scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: python3 -m pip install detect-secrets==1.5.0
+      - run: npm run check:secret-scanning
 
   coverage_thresholds:
     runs-on: ubuntu-latest
