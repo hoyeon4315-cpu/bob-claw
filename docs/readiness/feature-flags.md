@@ -15,6 +15,12 @@ non-live code paths. They are not runtime controls for trading authority.
 - Manifest and lookup API: `src/config/feature-flags.mjs`
 - Focused verification: `npm run check:feature-flags`
 - Current non-live consumer: `src/status/feature-flag-catalog-slice.mjs`
+- Current committed flags:
+  - `report.feature_flag_catalog_slice` — default on, keeps the read-only
+    catalog visible as the steady-state status surface.
+  - `non_live_rollout.feature_flag_profile_overrides_preview` — default off,
+    enables preview-only rollout metadata for explicit non-live profiles like
+    `dashboard_preview` and `report_snapshot`.
 
 The manifest is validated at import/use time. Validation fails for unknown
 lookups, missing owner/scope/description/safety boundary, invalid boolean

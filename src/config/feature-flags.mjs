@@ -53,6 +53,25 @@ export const FEATURE_FLAGS = Object.freeze({
     createdAt: "2026-05-12",
     reviewCadence: "quarterly",
   }),
+  "non_live_rollout.feature_flag_profile_overrides_preview": freezeDefinition(
+    "non_live_rollout.feature_flag_profile_overrides_preview",
+    {
+      owner: "ops-harness",
+      scope: "non_live_rollout",
+      defaultEnabled: false,
+      description:
+        "Enables profile-specific rollout preview metadata for read-only feature flag consumers in approved non-live profiles.",
+      safetyBoundary:
+        "preview-only metadata; no live execution, policy, signer, caps, kill-switch, payback, or readiness authority",
+      createdAt: "2026-05-13",
+      reviewCadence: "quarterly",
+      profileOverrides: {
+        dashboard_preview: true,
+        non_live_rollout: true,
+        report_snapshot: true,
+      },
+    },
+  ),
 });
 
 function assertNonEmptyString(value, label, flagId) {
