@@ -55,6 +55,128 @@ function cloneJsonEvent(event) {
   return JSON.parse(JSON.stringify(event));
 }
 
+function signerRecordObservedAt(record = {}) {
+  return record.timestamp || record.observedAt || record.lifecycle?.observedAt || null;
+}
+
+function signerRecordStage(record = {}) {
+  return record.lifecycle?.stage || record.stage || null;
+}
+
+function signerIntent(record = {}) {
+  return record.intent && typeof record.intent === "object" ? record.intent : {};
+}
+
+function signerIntentMetadata(record = {}) {
+  const intent = signerIntent(record);
+  return intent.metadata && typeof intent.metadata === "object" ? intent.metadata : {};
+}
+
+function signerProtocolId(record = {}) {
+  const intent = signerIntent(record);
+  const metadata = signerIntentMetadata(record);
+  return metadata.protocolId || metadata.protocol || intent.protocolId || record.protocolId || null;
+}
+
+function signerBindingKind(record = {}) {
+  const intent = signerIntent(record);
+  const metadata = signerIntentMetadata(record);
+  if (intent.intentType === "pendle_yt_entry" || intent.intentType === "pendle_yt_exit") {
+    return "pendle_market_swap";
+  }
+  return metadata.bindingKind || intent.bindingKind || record.bindingKind || "erc4626_vault_supply_withdraw";
+}
+
+function signerShareTokenAddress(record = {}) {
+  const intent = signerIntent(record);
+  const metadata = signerIntentMetadata(record);
+  if (intent.intentType === "pendle_yt_entry" || intent.intentType === "pendle_yt_exit") {
+    return metadata.marketAddress || metadata.pendleMarketAddress || null;
+  }
+  return metadata.shareTokenAddress || metadata.vaultAddress || metadata.expectedTxTo || null;
+}
+
+function signerPositionAction(record = {}) {
+  const intent = signerIntent(record);
+  const metadata = signerIntentMetadata(record);
+  const action = String(metadata.exposureAction || "").toLowerCase();
+  if (action === "open") return "open";
+  if (["close", "exit", "redeem", "withdraw"].includes(action)) return "close";
+  if (intent.intentType === "erc4626_deposit" || intent.intentType === "pendle_yt_entry") return "open";
+  if (intent.intentType === "erc4626_redeem" || intent.intentType === "pendle_yt_exit") return "close";
+  return null;
+}
+
+function signerProtocolPositionFields(record = {}) {
+  const intent = signerIntent(record);
+  const metadata = signerIntentMetadata(record);
+  return {
+    intent,
+    metadata,
+    chain: record.chain || intent.chain || metadata.chain || null,
+    protocolId: signerProtocolId(record),
+    opportunityId: metadata.opportunityId || intent.opportunityId || record.opportunityId || null,
+    bindingKind: signerBindingKind(record),
+    shareTokenAddress: signerShareTokenAddress(record),
+  };
+}
+
+function hasRequiredSignerProtocolFields(fields = {}) {
+  return Boolean(
+    fields.chain &&
+      fields.protocolId &&
+      fields.opportunityId &&
+      fields.bindingKind &&
+      fields.shareTokenAddress,
+  );
+}
+
+function signerProtocolPositionEvent(record = {}) {
+  const action = signerRecordStage(record) === "confirmed" ? signerPositionAction(record) : null;
+  if (!action) return null;
+  const fields = signerProtocolPositionFields(record);
+  if (!hasRequiredSignerProtocolFields(fields)) return null;
+
+  const observedAt = signerRecordObservedAt(record);
+  const positionId = [
+    "signer",
+    fields.chain,
+    fields.protocolId,
+    fields.opportunityId,
+    fields.bindingKind,
+    String(fields.shareTokenAddress).toLowerCase(),
+  ].join(":");
+
+  return {
+    event: action === "open" ? "position_opened" : "position_exit_confirmed",
+    status: action === "open" ? "open" : "closed",
+    observedAt,
+    positionId,
+    opportunityId: fields.opportunityId,
+    strategyId: record.strategyId || fields.intent.strategyId || fields.metadata.strategyId || null,
+    chain: fields.chain,
+    protocolId: fields.protocolId,
+    bindingKind: fields.bindingKind,
+    amountUsd: finiteNumberOrNull(fields.intent.amountUsd ?? fields.metadata.capCheckAmountUsd),
+    vaultAddress: fields.shareTokenAddress,
+    shareTokenAddress: fields.shareTokenAddress,
+    assetAddress: fields.metadata.assetAddress || fields.metadata.inputTokenAddress || null,
+    marketAddress: fields.metadata.marketAddress || fields.metadata.pendleMarketAddress || fields.shareTokenAddress,
+    name: fields.metadata.name || fields.metadata.marketLabel || `${fields.protocolId} ${fields.opportunityId}`,
+    source: "signer_audit_confirmed_intent",
+    sourceIntentHash: record.intentHash || null,
+    sourceTxHash: record.lifecycle?.txHash || record.broadcast?.txHash || record.txHash || null,
+    liveMarkRequired: true,
+  };
+}
+
+export function protocolPositionEventsFromSignerAudit(records = []) {
+  return records
+    .map((record) => signerProtocolPositionEvent(record))
+    .filter(Boolean)
+    .sort((left, right) => observedAtMs(left.observedAt) - observedAtMs(right.observedAt));
+}
+
 function malformedMarkFailure(mark) {
   return {
     event: "position_mark_failed",

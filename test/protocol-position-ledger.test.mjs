@@ -4,6 +4,7 @@ import {
   activeProtocolPositions,
   latestProtocolMarksByPosition,
   mergeProtocolMarksIntoPositions,
+  protocolPositionEventsFromSignerAudit,
 } from "../src/treasury/protocol-position-ledger.mjs";
 
 test("activeProtocolPositions returns open entries not subsequently closed by positionId", () => {
@@ -166,6 +167,69 @@ test("activeProtocolPositions coalesces repeated entries into one account-level 
   assert.equal(position.amountUsd, 12);
   assert.equal(position.observedAt, "2026-05-03T10:05:00.000Z");
   assert.equal(position.shareTokenAddress, "0xVault");
+});
+
+test("protocolPositionEventsFromSignerAudit converts confirmed Pendle entries into live-read candidates", () => {
+  const [event] = protocolPositionEventsFromSignerAudit([
+    {
+      timestamp: "2026-05-13T10:24:44.361Z",
+      strategyId: "pendle-yt-canary",
+      chain: "base",
+      intentHash: "intent-hash",
+      intent: {
+        intentType: "pendle_yt_entry",
+        amountUsd: 5,
+        metadata: {
+          exposureAction: "open",
+          opportunityId: "pendle-direct:8453:0xmarket",
+          protocol: "pendle",
+          pendleMarketAddress: "0xMarket",
+          assetAddress: "0xAsset",
+        },
+      },
+      lifecycle: {
+        stage: "confirmed",
+        txHash: "0xTx",
+      },
+    },
+  ]);
+
+  assert.equal(event.event, "position_opened");
+  assert.equal(event.status, "open");
+  assert.equal(event.bindingKind, "pendle_market_swap");
+  assert.equal(event.protocolId, "pendle");
+  assert.equal(event.shareTokenAddress, "0xMarket");
+  assert.equal(event.marketAddress, "0xMarket");
+  assert.equal(event.amountUsd, 5);
+  assert.equal(event.liveMarkRequired, true);
+  assert.equal(event.source, "signer_audit_confirmed_intent");
+});
+
+test("protocolPositionEventsFromSignerAudit ignores reverted entries and lets confirmed exits close candidates", () => {
+  const records = [
+    ["reverted", "pendle_yt_entry", "open", "2026-05-13T10:16:51.484Z"],
+    ["confirmed", "pendle_yt_entry", "open", "2026-05-13T10:24:44.361Z"],
+    ["confirmed", "pendle_yt_exit", "close", "2026-05-13T10:30:00.000Z"],
+  ].map(([stage, intentType, exposureAction, timestamp]) => ({
+    timestamp,
+    strategyId: "pendle-yt-canary",
+    chain: "base",
+    intent: {
+      intentType,
+      amountUsd: intentType === "pendle_yt_entry" ? 5 : 0,
+      metadata: {
+        exposureAction,
+        opportunityId: "pendle-direct:8453:0xmarket",
+        protocol: "pendle",
+        marketAddress: "0xMarket",
+      },
+    },
+    lifecycle: { stage, txHash: `0x${stage}${intentType}` },
+  }));
+
+  const events = protocolPositionEventsFromSignerAudit(records);
+  assert.equal(events.length, 2);
+  assert.deepEqual(activeProtocolPositions(events), []);
 });
 
 test("latestProtocolMarksByPosition returns latest mark or failure by positionId", () => {

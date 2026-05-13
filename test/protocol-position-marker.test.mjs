@@ -318,6 +318,57 @@ test("runMarkProtocolPositionMarksCli writes reader-backed logical marks with US
   assert.equal(summary.events[0].valueUsd, 5.1);
 });
 
+test("runMarkProtocolPositionMarksCli marks signer-confirmed Pendle entries through the live reader path", async () => {
+  const signerAuditRecords = [{
+    timestamp: "2026-05-13T10:24:44.361Z",
+    strategyId: "pendle-yt-canary",
+    chain: "base",
+    intentHash: "intent-hash",
+    intent: {
+      intentType: "pendle_yt_entry",
+      amountUsd: 5,
+      metadata: {
+        exposureAction: "open",
+        opportunityId: "pendle-direct:8453:0xmarket",
+        protocol: "pendle",
+        marketAddress: "0xMarket",
+        assetAddress: "0xAsset",
+      },
+    },
+    lifecycle: { stage: "confirmed", txHash: "0xTx" },
+  }];
+  const readerProviderFactory = ({ address }) => {
+    const contracts = {
+      "0xMarket": {
+        expiry: async () => 1_800_000_000n,
+        readTokens: async () => ["0xSy", "0xPt", "0xYt"],
+        balanceOf: async () => 0n,
+      },
+      "0xPt": { balanceOf: async () => 0n, decimals: async () => 18 },
+      "0xYt": { balanceOf: async () => 3_000_000_000_000_000_000n, decimals: async () => 18 },
+    };
+    if (contracts[address]) return contracts[address];
+    throw new Error(`unexpected address ${address}`);
+  };
+
+  const summary = await runMarkProtocolPositionMarksCli({
+    args: { write: false, json: true },
+    observedAt: OBSERVED_AT,
+    positionEvents: [],
+    signerAuditRecords,
+    walletAddress: WALLET_ADDRESS,
+    readerProviderFactory,
+    priceReader: async () => 1,
+  });
+
+  assert.equal(summary.markedCount, 1);
+  assert.equal(summary.failedCount, 0);
+  assert.equal(summary.events[0].protocolId, "pendle");
+  assert.equal(summary.events[0].bindingKind, "pendle_market_swap");
+  assert.equal(summary.events[0].assetSymbol, "YT");
+  assert.equal(summary.events[0].valueUsd, 3);
+});
+
 test("runMarkProtocolPositionMarksCli emits explicit failure when reader returns zero positions for active ledger entry", async () => {
   const summary = await runMarkProtocolPositionMarksCli({
     args: { write: false, json: true },
