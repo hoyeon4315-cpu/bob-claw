@@ -12,6 +12,7 @@ dist/
 coverage/
 artifacts/build-performance/
 artifacts/profiling/
+security-reports/
 *.log
 logs/
 state/

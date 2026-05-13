@@ -176,6 +176,7 @@
     "research:launchd:install": "node src/cli/manage-research-launchd.mjs --install",
     "research:launchd:status": "node src/cli/manage-research-launchd.mjs --status",
     "graph:focus": "node src/cli/graphify-focus.mjs",
+    "security:review": "node src/cli/generate-security-review.mjs",
     "check:structured-logger": "node src/cli/check-structured-logger.mjs",
     "check:trace-context": "node src/cli/check-trace-context.mjs",
     "ai:claude:kimi": "ollama launch claude --model kimi-k2.6:cloud",
