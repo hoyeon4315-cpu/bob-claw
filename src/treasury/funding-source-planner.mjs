@@ -975,6 +975,26 @@ function rankConditionalSupport(candidate = {}) {
 
 function chooseCandidate(candidates, action = null) {
   return [...candidates].sort((left, right) => {
+    const preserveMatchedTransferSource = action?.origin === "capital_rebalance_matched_transfer";
+    const leftPreferredReserve =
+      left.preferred === true && ["same_chain_native_transfer", "same_chain_token_transfer"].includes(left.method);
+    const rightPreferredReserve =
+      right.preferred === true && ["same_chain_native_transfer", "same_chain_token_transfer"].includes(right.method);
+    if (leftPreferredReserve !== rightPreferredReserve) return leftPreferredReserve ? -1 : 1;
+    if (preserveMatchedTransferSource && left.preferred !== right.preferred) return left.preferred ? -1 : 1;
+    const leftSameChainUsable =
+      String(left.method || "").startsWith("same_chain_") &&
+      left.availability === "ready" &&
+      Boolean(left.source) &&
+      !left.manualFundingDependency &&
+      (left.missingInputs || []).length === 0;
+    const rightSameChainUsable =
+      String(right.method || "").startsWith("same_chain_") &&
+      right.availability === "ready" &&
+      Boolean(right.source) &&
+      !right.manualFundingDependency &&
+      (right.missingInputs || []).length === 0;
+    if (leftSameChainUsable !== rightSameChainUsable) return leftSameChainUsable ? -1 : 1;
     if (left.preferred !== right.preferred) return left.preferred ? -1 : 1;
     if (Boolean(left.standbyFallback) !== Boolean(right.standbyFallback)) return left.standbyFallback ? 1 : -1;
     const availabilityDelta = rankAvailability(left.availability) - rankAvailability(right.availability);

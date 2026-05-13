@@ -312,9 +312,24 @@ function matchingPortfolioGraduationRequest(queueItem = {}, requestsByOpportunit
   return request;
 }
 
+function assetTrackingUtilizationGate(assetTracking = null) {
+  if (!assetTracking) return { ready: true, blockers: [] };
+  const coverageState = assetTracking.coverageState || assetTracking.status || assetTracking.verdict || null;
+  const ready =
+    assetTracking.riskReady === true ||
+    coverageState === "risk_ready" ||
+    (assetTracking.ok === true && coverageState === "closed");
+  return {
+    ready,
+    blockers: ready ? [] : ["asset_tracking_not_green"],
+    coverageState,
+  };
+}
+
 export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const portfolioGraduationRequests = graduationRequestByOpportunity(options.graduationCanaryRequests);
   const opportunityFilter = options.opportunityId ? String(options.opportunityId) : null;
+  const assetTrackingGate = assetTrackingUtilizationGate(options.assetTracking);
   const candidates = (queue.queue || [])
     .filter((queueItem) => {
       if (!opportunityFilter) return true;
@@ -355,6 +370,21 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
             amount: null,
             amountUsd: null,
             decimals: decimalsForQueueItem(refreshedItem),
+          },
+        };
+      }
+      if (!assetTrackingGate.ready) {
+        return {
+          queueItem: { ...hintedItem, autoEntry },
+          sizing: {
+            status: "blocked",
+            blockers: assetTrackingGate.blockers,
+            strategyId: refreshedItem.mappedStrategyId,
+            capUsd: null,
+            amount: null,
+            amountUsd: null,
+            decimals: decimalsForQueueItem(refreshedItem),
+            assetTrackingGate,
           },
         };
       }
@@ -886,6 +916,11 @@ export async function runMerklCanaryAutopilot({
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const runtimeRiskContext = await loadRuntimeRiskContextImpl({ now: new Date().toISOString() }).catch(() => null);
   const assetCoverage = runtimeRiskContext?.assetCoverage || null;
+  const assetTrackingForUtilization = assetCoverage || {
+    ok: false,
+    status: "missing",
+    coverageState: "asset_coverage_missing",
+  };
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
   const [portfolioOrchestratorReport, portfolioAllocatorReport] =
     graduationCanaryRequests == null
@@ -920,6 +955,7 @@ export async function runMerklCanaryAutopilot({
     protocolPositionMarks,
     receiptReconciliations,
     graduationCanaryRequests: portfolioGraduationRequests,
+    assetTracking: assetTrackingForUtilization,
   });
   if (!selection.selected.length) {
     const report = {

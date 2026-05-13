@@ -83,6 +83,199 @@ test("refill jobs stop requiring policy review when plan is refill-ready", () =>
   assert.equal(jobs.summary.mediumPriorityCount, 1);
 });
 
+test("capital-rebalance target refills defer when opportunity-attached EV is missing", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "wBTC.OFT",
+        token: "0x0555",
+        refillAmount: "25000",
+        refillAmountDecimal: 0.00025,
+        refillEstimatedUsd: 17.5,
+        origin: "capital_rebalance_target_shortfall",
+        rationale: "Capital Manager matched transfer without an attached opportunity.",
+      },
+    ],
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({ plan, policy });
+  const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
+
+  assert.equal(jobs.jobs[0].requiresManualReview, true);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("opportunity_attached_ev_missing"), true);
+  assert.equal(jobs.summary.autoQueuedJobCount, 0);
+});
+
+test("capital-rebalance target refills require positive EV after p90 receipt cost", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "1000000",
+        refillAmountDecimal: 1,
+        refillEstimatedUsd: 1,
+        origin: "capital_rebalance_target_shortfall",
+        rationale: "Capital Manager target refill with measured receipt cost.",
+      },
+    ],
+  };
+  const fundingSourcePlan = {
+    routeContext: {
+      routeKey: "base-low-ev",
+      srcChain: "ethereum",
+      dstChain: "base",
+      dstToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      netEdgeUsd: 0.16,
+      p90ReceiptCostUsd: 0.12,
+      routeFailureRate: 0,
+      inputUsd: 1,
+    },
+    selections: [
+      {
+        resourceKey: "base:0x833589fcD6eDb6E08f4c7C32D4f71b54bdA02913".toLowerCase(),
+        actionType: "refill_token",
+        chain: "base",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        selectionStatus: "ready",
+        selectedMethod: "same_chain_native_to_token_swap",
+        selectedSource: { source: { chain: "base", token: "0x0000000000000000000000000000000000000000" } },
+        expectedExecutionRefillCostUsd: 0.04,
+        expectedReserveReplenishmentCostUsd: 0,
+        requiresManualFunding: false,
+        requiresReserveState: false,
+        missingInputs: [],
+        settlementRequirements: [],
+        candidates: [],
+      },
+    ],
+  };
+  const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
+
+  assert.equal(jobs.jobs[0].systemEconomics.p90ReceiptCostUsd, 0.12);
+  assert.equal(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd, 0);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("route_refill_economically_unjustified"), true);
+});
+
+test("funding source planner prefers usable same-chain inventory before cross-chain refill", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [{ chain: "base", actual: "10000000000000000", actualDecimal: 0.01, estimatedUsd: 22 }],
+      tokens: [
+        {
+          chain: "base",
+          actual: "1000000",
+          actualDecimal: 1,
+          token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+          ticker: "cbBTC",
+          family: "wrapped_btc",
+          estimatedUsd: 79,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "1000000",
+        refillAmountDecimal: 1,
+        refillEstimatedUsd: 1,
+        sourceHint: { chain: "bsc", token: "0x0000000000000000000000000000000000000000" },
+        rationale: "Use local inventory before moving capital across chains.",
+      },
+    ],
+  };
+
+  const fundingSourcePlan = buildFundingSourcePlan({
+    plan,
+    policy,
+    routeContext: {
+      routeKey: "bsc-to-base",
+      srcChain: "bsc",
+      dstChain: "base",
+      srcToken: "0x0000000000000000000000000000000000000000",
+      dstToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      netEdgeUsd: 1,
+      inputUsd: 1,
+    },
+  });
+
+  assert.equal(fundingSourcePlan.selections[0].selectedMethod.startsWith("same_chain_"), true);
+  assert.equal(fundingSourcePlan.selections[0].selectedSource.source.chain, "base");
+});
+
+test("capital manager target refills stay blocked until asset tracking is risk ready", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        refillAmount: "1000000",
+        refillAmountDecimal: 1,
+        refillEstimatedUsd: 1,
+        origin: "capital_rebalance_target_shortfall",
+        rationale: "Asset tracking must be green before utilization expands.",
+      },
+    ],
+  };
+  const fundingSourcePlan = {
+    routeContext: {
+      routeKey: "base-positive",
+      srcChain: "base",
+      dstChain: "base",
+      dstToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      netEdgeUsd: 1,
+      p90ReceiptCostUsd: 0.1,
+      routeFailureRate: 0,
+      inputUsd: 1,
+    },
+    selections: [
+      {
+        resourceKey: "base:0x833589fcD6eDb6E08f4c7C32D4f71b54bdA02913".toLowerCase(),
+        actionType: "refill_token",
+        chain: "base",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        selectionStatus: "ready",
+        selectedMethod: "same_chain_native_to_token_swap",
+        selectedSource: { source: { chain: "base", token: "0x0000000000000000000000000000000000000000" } },
+        expectedExecutionRefillCostUsd: 0.04,
+        expectedReserveReplenishmentCostUsd: 0,
+        requiresManualFunding: false,
+        requiresReserveState: false,
+        missingInputs: [],
+        settlementRequirements: [],
+        candidates: [],
+      },
+    ],
+  };
+
+  const jobs = buildTreasuryRefillJobs({
+    plan,
+    policy,
+    fundingSourcePlan,
+    assetTracking: { riskReady: false, coverageState: "protocol_or_movement_gap" },
+  });
+
+  assert.equal(jobs.jobs[0].requiresManualReview, true);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("asset_tracking_not_green"), true);
+  assert.equal(jobs.jobs[0].assetTrackingGate.ready, false);
+});
+
 test("refill jobs preserve strategy policy metadata for holding-period carry funding", () => {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const plan = {

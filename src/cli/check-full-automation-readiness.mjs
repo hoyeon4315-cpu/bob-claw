@@ -62,7 +62,7 @@ export function runJsonCli(scriptPath, args = [], { timeoutMs = readinessChildTi
       error: stderr.trim() || stdout.trim() || `exit ${result.status ?? 1}`,
     };
   }
-  let parsed = null;
+  let parsed;
   try {
     parsed = JSON.parse(stdout);
   } catch (error) {

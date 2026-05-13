@@ -55,6 +55,23 @@ test("sizes Merkl canary amount to the committed tiny cap and inventory", () => 
   assert.equal(sizing.amountUsd, 0.414771);
 });
 
+test("blocks Merkl utilization selection when asset tracking is not green", () => {
+  const selection = selectMerklCanaryAutopilotCandidates(
+    { queue: [queueItem()] },
+    {
+      assetTracking: {
+        riskReady: false,
+        coverageState: "protocol_or_movement_gap",
+      },
+    },
+  );
+
+  assert.equal(selection.readyCount, 0);
+  assert.equal(selection.selected.length, 0);
+  assert.equal(selection.candidates[0].sizing.status, "blocked");
+  assert.deepEqual(selection.candidates[0].sizing.blockers, ["asset_tracking_not_green"]);
+});
+
 test("uses committed graduation ladder as the live canary sizing cap", () => {
   const sizing = sizeMerklCanaryAmount(
     queueItem({

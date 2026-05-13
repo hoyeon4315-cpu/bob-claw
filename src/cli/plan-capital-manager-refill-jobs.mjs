@@ -116,7 +116,9 @@ async function readJsonIfExists(path) {
 }
 
 function normalizeAssetName(value) {
-  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function unitsFromActualDecimal(amount, decimals) {
@@ -127,16 +129,10 @@ function unitsFromActualDecimal(amount, decimals) {
 
 function resolveDashboardWalletItemToken(chain, item = {}) {
   if (item.family === "native") return ZERO_TOKEN;
-  const targets = new Set([
-    normalizeAssetName(item.name),
-    normalizeAssetName(item.sym),
-  ].filter(Boolean));
+  const targets = new Set([normalizeAssetName(item.name), normalizeAssetName(item.sym)].filter(Boolean));
   for (const definition of knownWholeWalletTokenTargets({ chain })) {
     const asset = tokenAsset(chain, definition.token);
-    const labels = new Set([
-      normalizeAssetName(definition.ticker),
-      normalizeAssetName(asset.ticker),
-    ].filter(Boolean));
+    const labels = new Set([normalizeAssetName(definition.ticker), normalizeAssetName(asset.ticker)].filter(Boolean));
     if ([...targets].some((label) => labels.has(label))) {
       return definition.token;
     }
@@ -189,11 +185,7 @@ async function main() {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const prices = await resolveCapitalManagerPrices({ dataDir: config.dataDir });
   const strategyCaps = listStrategyCaps({ includeInactive: args.includeInactive }) || [];
-  const {
-    treasuryInventory,
-    inventorySource,
-    inventoryRefreshError,
-  } = await resolveCapitalManagerTreasuryInventory({
+  const { treasuryInventory, inventorySource, inventoryRefreshError } = await resolveCapitalManagerTreasuryInventory({
     refreshInventory: args.refreshInventory,
     context,
     policy,
@@ -201,7 +193,15 @@ async function main() {
     prices,
   });
 
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords, bootstrapSnapshot, dashboardStatus] = await Promise.all([
+  const [
+    quotes,
+    readinessRecords,
+    readinessFailures,
+    scoreSnapshot,
+    wholeWalletInventoryRecords,
+    bootstrapSnapshot,
+    dashboardStatus,
+  ] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
     readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
@@ -242,6 +242,7 @@ async function main() {
     routeCandidates: routePlan.candidates || [],
     supplementalInventory: wholeWalletInventory,
     scoredTargets: bootstrapSnapshot?.scoredTargets || null,
+    assetTracking: dashboardStatus?.assetTracking || null,
   });
 
   if (args.write) {
@@ -256,13 +257,19 @@ async function main() {
   }
 
   if (args.json) {
-    console.log(JSON.stringify({
-      ...result,
-      inventorySource,
-        inventoryRefreshError,
-        routeDemandSignalCount: (routeDemand?.signals || []).length,
-        bootstrapObservedAt: bootstrapSnapshot?.generatedAt || null,
-      }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...result,
+          inventorySource,
+          inventoryRefreshError,
+          routeDemandSignalCount: (routeDemand?.signals || []).length,
+          bootstrapObservedAt: bootstrapSnapshot?.generatedAt || null,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 

@@ -105,7 +105,10 @@ test("capital inventory merge prefers whole-wallet observations and aggregates s
   const balancesByChain = observedCapitalBalancesByChain({ inventory });
 
   assert.equal(inventory.native.find((item) => item.chain === "base").estimatedUsd, 2);
-  assert.equal(inventory.tokens.find((item) => item.chain === "base" && item.token === WBTC_OFT_TOKEN).estimatedUsd, 42);
+  assert.equal(
+    inventory.tokens.find((item) => item.chain === "base" && item.token === WBTC_OFT_TOKEN).estimatedUsd,
+    42,
+  );
   assert.equal(balancesByChain.base.nativeUsd, 2);
   assert.equal(balancesByChain.base.settlementUsd, 52);
   assert.equal(balancesByChain.ethereum.nativeUsd, 5);
@@ -217,9 +220,18 @@ test("capital manager wrapper still emits same-tick active-chain gas-float refil
     now: "2026-04-20T12:00:00.000Z",
   });
 
-  assert.equal(result.rebalancePlan.actions.some((item) => item.type === "gas_float_top_up" && item.chain === "soneium"), true);
-  assert.equal(result.capitalPlan.actions.some((item) => item.type === "refill_native" && item.chain === "soneium"), true);
-  assert.equal(result.jobs.jobs.some((item) => item.executionMethod === "gas_refuel_bridge_gas_zip"), true);
+  assert.equal(
+    result.rebalancePlan.actions.some((item) => item.type === "gas_float_top_up" && item.chain === "soneium"),
+    true,
+  );
+  assert.equal(
+    result.capitalPlan.actions.some((item) => item.type === "refill_native" && item.chain === "soneium"),
+    true,
+  );
+  assert.equal(
+    result.jobs.jobs.some((item) => item.executionMethod === "gas_refuel_bridge_gas_zip"),
+    true,
+  );
 });
 
 test("capital manager wrapper emits wrapped-BTC settlement rebalance jobs from observed source inventory", () => {
@@ -272,11 +284,12 @@ test("capital manager wrapper emits wrapped-BTC settlement rebalance jobs from o
   assert.equal(result.capitalPlan.actions.length, 1);
   assert.equal(result.capitalPlan.actions[0].type, "refill_token");
   assert.equal(result.capitalPlan.actions[0].token, WBTC_OFT_TOKEN);
-  assert.equal(result.jobs.requiresManualReview, false);
+  assert.equal(result.jobs.requiresManualReview, true);
   assert.equal(result.jobs.jobs.length, 1);
   assert.equal(result.jobs.jobs[0].executionMethod, "cross_chain_bridge_or_swap");
   assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "base");
   assert.equal(result.jobs.jobs[0].fundingSource.source.token, WBTC_OFT_TOKEN);
+  assert.equal(result.jobs.jobs[0].reviewReasons.includes("opportunity_attached_ev_missing"), true);
 });
 
 test("capital manager targets Ethereum canonical WBTC instead of non-canonical wBTC.OFT", () => {
@@ -357,14 +370,14 @@ test("capital manager promotes executable LI.FI fallback when preferred gateway 
     now: "2026-05-04T18:31:47.947Z",
   });
 
-  assert.equal(result.jobs.requiresManualReview, false);
-  assert.equal(result.jobs.summary.manualReviewJobCount, 0);
-  assert.equal(result.jobs.summary.autoQueuedJobCount, 1);
+  assert.equal(result.jobs.requiresManualReview, true);
+  assert.equal(result.jobs.summary.manualReviewJobCount, 1);
+  assert.equal(result.jobs.summary.autoQueuedJobCount, 0);
   assert.equal(result.jobs.jobs[0].executionMethod, "cross_chain_bridge_lifi");
   assert.equal(result.jobs.jobs[0].fundingSource.method, "cross_chain_bridge_lifi");
   assert.equal(result.jobs.jobs[0].fundingSource.selectionStatus, "ready");
   assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "bera");
-  assert.deepEqual(result.jobs.jobs[0].reviewReasons, []);
+  assert.deepEqual(result.jobs.jobs[0].reviewReasons, ["opportunity_attached_ev_missing"]);
 });
 
 test("capital manager wrapper prefers cross-chain wrapped BTC when destination native gas exists but cannot cover settlement refill", () => {
@@ -414,7 +427,10 @@ test("capital manager wrapper prefers cross-chain wrapped BTC when destination n
   assert.equal(result.jobs.jobs.length, 1);
   assert.equal(result.jobs.jobs[0].executionMethod, "cross_chain_bridge_or_swap");
   assert.equal(result.jobs.jobs[0].fundingSource.source.chain, "base");
-  assert.equal(result.jobs.jobs[0].candidateMethods.some((item) => item.method === "cross_chain_bridge_or_swap"), true);
+  assert.equal(
+    result.jobs.jobs[0].candidateMethods.some((item) => item.method === "cross_chain_bridge_or_swap"),
+    true,
+  );
 });
 
 test("capital manager reserve concentration splits a scattered 11-chain wallet into Base-matched source jobs", () => {
@@ -446,13 +462,62 @@ test("capital manager reserve concentration splits a scattered 11-chain wallet i
         { chain: "bob", token: ZERO_TOKEN, balance: "1500000000000000", actualDecimal: 0.0015, estimatedUsd: 3 },
       ],
       tokenBalances: [
-        { chain: "sei", token: WBTC_OFT_TOKEN, ticker: "wBTC.OFT", balance: "30000", actualDecimal: 0.0003, estimatedUsd: 24 },
-        { chain: "bsc", token: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", ticker: "USDC", balance: "10000000000000000000", actualDecimal: 10, estimatedUsd: 10 },
-        { chain: "sonic", token: "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38", ticker: "wS", balance: "14000000000000000000", actualDecimal: 14, estimatedUsd: 7 },
-        { chain: "ethereum", token: "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD", ticker: "RLUSD", balance: "9000000000000000000", actualDecimal: 9, estimatedUsd: 9 },
-        { chain: "optimism", token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", balance: "6000000", actualDecimal: 6, estimatedUsd: 6 },
-        { chain: "unichain", token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6", ticker: "USDC", balance: "5000000", actualDecimal: 5, estimatedUsd: 5 },
-        { chain: "avalanche", token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", ticker: "USDC", balance: "5000000", actualDecimal: 5, estimatedUsd: 5 },
+        {
+          chain: "sei",
+          token: WBTC_OFT_TOKEN,
+          ticker: "wBTC.OFT",
+          balance: "30000",
+          actualDecimal: 0.0003,
+          estimatedUsd: 24,
+        },
+        {
+          chain: "bsc",
+          token: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+          ticker: "USDC",
+          balance: "10000000000000000000",
+          actualDecimal: 10,
+          estimatedUsd: 10,
+        },
+        {
+          chain: "sonic",
+          token: "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38",
+          ticker: "wS",
+          balance: "14000000000000000000",
+          actualDecimal: 14,
+          estimatedUsd: 7,
+        },
+        {
+          chain: "ethereum",
+          token: "0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
+          ticker: "RLUSD",
+          balance: "9000000000000000000",
+          actualDecimal: 9,
+          estimatedUsd: 9,
+        },
+        {
+          chain: "optimism",
+          token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          ticker: "USDC",
+          balance: "6000000",
+          actualDecimal: 6,
+          estimatedUsd: 6,
+        },
+        {
+          chain: "unichain",
+          token: "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
+          ticker: "USDC",
+          balance: "5000000",
+          actualDecimal: 5,
+          estimatedUsd: 5,
+        },
+        {
+          chain: "avalanche",
+          token: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+          ticker: "USDC",
+          balance: "5000000",
+          actualDecimal: 5,
+          estimatedUsd: 5,
+        },
       ],
     },
     prices: priceFixture(),
@@ -471,15 +536,22 @@ test("capital manager reserve concentration splits a scattered 11-chain wallet i
   const projectedBaseShare = projectedBaseUsd / result.rebalancePlan.reserveConcentration.totalWalletUsd;
   assert.ok(projectedBaseShare >= 0.8, `expected Base share >= 0.8, got ${projectedBaseShare}`);
 
-  const matchedSources = new Set(result.rebalancePlan.matchedTransfers.map((item) => `${item.from}:${item.sourceTicker}`));
+  const matchedSources = new Set(
+    result.rebalancePlan.matchedTransfers.map((item) => `${item.from}:${item.sourceTicker}`),
+  );
   assert.equal(matchedSources.has("bsc:USDC"), true);
   assert.equal(matchedSources.has("bera:BERA"), true);
   assert.equal(matchedSources.has("avalanche:AVAX"), true);
   assert.equal(matchedSources.has("sonic:wS"), true);
 
-  const refillActions = result.capitalPlan.actions.filter((item) => item.origin === "capital_rebalance_matched_transfer");
+  const refillActions = result.capitalPlan.actions.filter(
+    (item) => item.origin === "capital_rebalance_matched_transfer",
+  );
   assert.ok(refillActions.length >= 4);
-  assert.equal(refillActions.every((item) => item.chain === "base"), true);
+  assert.equal(
+    refillActions.every((item) => item.chain === "base"),
+    true,
+  );
 
   const jobSources = new Set(
     result.jobs.jobs

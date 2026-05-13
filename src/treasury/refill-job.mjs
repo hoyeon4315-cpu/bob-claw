@@ -52,6 +52,32 @@ function crossChainFallbackAutoPromotionAllowed(job = {}) {
   return typeof job.executionMethod === "string" && job.executionMethod.startsWith("cross_chain_");
 }
 
+function isCapitalRebalanceTargetRefill(job = {}) {
+  return String(job.origin || "").startsWith("capital_rebalance");
+}
+
+function assetTrackingUtilizationGate(assetTracking = null) {
+  if (!assetTracking) {
+    return {
+      ready: true,
+      reason: null,
+      coverageState: null,
+      riskReady: null,
+    };
+  }
+  const coverageState = assetTracking.coverageState || assetTracking.status || assetTracking.verdict || null;
+  const riskReady =
+    assetTracking.riskReady === true ||
+    coverageState === "risk_ready" ||
+    (assetTracking.ok === true && coverageState === "closed");
+  return {
+    ready: riskReady,
+    reason: riskReady ? null : "asset_tracking_not_green",
+    coverageState,
+    riskReady,
+  };
+}
+
 function fundingSourceReviewReasons(fundingSource) {
   if (!fundingSource) return ["funding_source_missing"];
   const reasons = [];
@@ -77,7 +103,7 @@ function jobEconomicReviewReasons(job = {}) {
     return [];
   }
   const effectiveSystemNetPnlUsd = finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd);
-  if (effectiveSystemNetPnlUsd === null || effectiveSystemNetPnlUsd >= 0) return [];
+  if (effectiveSystemNetPnlUsd === null || effectiveSystemNetPnlUsd > 0) return [];
   return ["route_refill_economically_unjustified"];
 }
 
@@ -122,6 +148,15 @@ function actionWithSourceLimitedPartialRefill(action, selection = null) {
 
 function routeNetUsd(routeContext = null) {
   return finiteOrNull(routeContext?.executableNetEdgeUsd) ?? finiteOrNull(routeContext?.netEdgeUsd);
+}
+
+function p90ReceiptCostUsd(routeContext = null) {
+  return (
+    finiteOrNull(routeContext?.p90ReceiptCostUsd) ??
+    finiteOrNull(routeContext?.p90RealizedCostUsd) ??
+    finiteOrNull(routeContext?.p90RoundTripCostUsd) ??
+    finiteOrNull(routeContext?.receiptCostP90Usd)
+  );
 }
 
 function actionRouteMatchRank(action, routeContext, selection = null) {
@@ -177,27 +212,44 @@ function selectRouteContextForAction(action, selection, routeCandidates = [], fa
       const leftTxReady = Boolean(left.route.txReady);
       const rightTxReady = Boolean(right.route.txReady);
       if (leftTxReady !== rightTxReady) return leftTxReady ? -1 : 1;
-      const leftBlockers = Number.isFinite(left.route.blockerCount) ? left.route.blockerCount : Number.POSITIVE_INFINITY;
-      const rightBlockers = Number.isFinite(right.route.blockerCount) ? right.route.blockerCount : Number.POSITIVE_INFINITY;
+      const leftBlockers = Number.isFinite(left.route.blockerCount)
+        ? left.route.blockerCount
+        : Number.POSITIVE_INFINITY;
+      const rightBlockers = Number.isFinite(right.route.blockerCount)
+        ? right.route.blockerCount
+        : Number.POSITIVE_INFINITY;
       if (leftBlockers !== rightBlockers) return leftBlockers - rightBlockers;
-      const leftPrepFunding = isFiniteNumber(left.route.prepFundingUsd) ? left.route.prepFundingUsd : Number.POSITIVE_INFINITY;
-      const rightPrepFunding = isFiniteNumber(right.route.prepFundingUsd) ? right.route.prepFundingUsd : Number.POSITIVE_INFINITY;
+      const leftPrepFunding = isFiniteNumber(left.route.prepFundingUsd)
+        ? left.route.prepFundingUsd
+        : Number.POSITIVE_INFINITY;
+      const rightPrepFunding = isFiniteNumber(right.route.prepFundingUsd)
+        ? right.route.prepFundingUsd
+        : Number.POSITIVE_INFINITY;
       if (leftPrepFunding !== rightPrepFunding) return leftPrepFunding - rightPrepFunding;
       return String(left.route.routeKey || "").localeCompare(String(right.route.routeKey || ""));
     });
   return matches[0]?.route || fallbackRouteContext;
 }
 
-function estimateExpectedFailureCostUsd({ routeContext = null, executionRefillExpectedCostUsd = null, reserveReplenishmentExpectedCostUsd = null }) {
+function estimateExpectedFailureCostUsd({
+  routeContext = null,
+  executionRefillExpectedCostUsd = null,
+  reserveReplenishmentExpectedCostUsd = null,
+}) {
   const failureRate = Math.max(0, finiteOrNull(routeContext?.routeFailureRate) ?? 0);
-  const failureExposureUsd = [routeContext?.knownCostUsd, executionRefillExpectedCostUsd, reserveReplenishmentExpectedCostUsd]
+  const failureExposureUsd = [
+    routeContext?.knownCostUsd,
+    executionRefillExpectedCostUsd,
+    reserveReplenishmentExpectedCostUsd,
+  ]
     .filter(isFiniteNumber)
     .reduce((sum, value) => sum + value, 0);
   return failureExposureUsd * failureRate;
 }
 
 function estimateCapitalFragmentationDragUsd({ action, policy, routeContext = null }) {
-  const maxIdleCapitalPerChainUsd = finiteOrNull(policy?.capital?.maxIdleCapitalPerChainUsd) ?? Number.POSITIVE_INFINITY;
+  const maxIdleCapitalPerChainUsd =
+    finiteOrNull(policy?.capital?.maxIdleCapitalPerChainUsd) ?? Number.POSITIVE_INFINITY;
   const fragmentationDragPct = finiteOrNull(policy?.capital?.fragmentationDragPct) ?? 0.005;
   const estimatedAssetValueUsd = finiteOrNull(action?.refillEstimatedUsd);
   if (!isFiniteNumber(estimatedAssetValueUsd)) {
@@ -222,19 +274,23 @@ function estimateCapitalFragmentationDragUsd({ action, policy, routeContext = nu
 function buildJobSystemEconomics({ action, selection, routeContext, policy }) {
   const executionRefillExpectedCostUsd = finiteOrNull(selection?.expectedExecutionRefillCostUsd);
   const reserveReplenishmentExpectedCostUsd = finiteOrNull(selection?.expectedReserveReplenishmentCostUsd);
+  const receiptCostP90Usd = p90ReceiptCostUsd(routeContext);
   const expectedFailureCostUsd = routeContext
-    ? estimateExpectedFailureCostUsd({ routeContext, executionRefillExpectedCostUsd, reserveReplenishmentExpectedCostUsd })
+    ? estimateExpectedFailureCostUsd({
+        routeContext,
+        executionRefillExpectedCostUsd,
+        reserveReplenishmentExpectedCostUsd,
+      })
     : null;
-  const {
-    fragmentedCapitalUsd,
-    strandedCapitalUsd,
-    capitalFragmentationDragUsd,
-  } = estimateCapitalFragmentationDragUsd({ action, policy, routeContext });
+  const { fragmentedCapitalUsd, strandedCapitalUsd, capitalFragmentationDragUsd } = estimateCapitalFragmentationDragUsd(
+    { action, policy, routeContext },
+  );
   const preferredRouteNetUsd = routeNetUsd(routeContext);
   const effectiveSystemNetPnlUsd = isFiniteNumber(preferredRouteNetUsd)
     ? preferredRouteNetUsd -
       (executionRefillExpectedCostUsd || 0) -
       (reserveReplenishmentExpectedCostUsd || 0) -
+      (receiptCostP90Usd || 0) -
       (expectedFailureCostUsd || 0) -
       (capitalFragmentationDragUsd || 0)
     : null;
@@ -246,6 +302,7 @@ function buildJobSystemEconomics({ action, selection, routeContext, policy }) {
     routeNetEdgeUsd: finiteOrNull(routeContext?.netEdgeUsd),
     routeExecutableNetEdgeUsd: finiteOrNull(routeContext?.executableNetEdgeUsd),
     routeKnownCostUsd: finiteOrNull(routeContext?.knownCostUsd),
+    p90ReceiptCostUsd: receiptCostP90Usd,
     routeFailureRate: finiteOrNull(routeContext?.routeFailureRate),
     executionRefillExpectedCostUsd,
     reserveReplenishmentExpectedCostUsd,
@@ -253,11 +310,19 @@ function buildJobSystemEconomics({ action, selection, routeContext, policy }) {
     fragmentedCapitalUsd,
     strandedCapitalUsd,
     capitalFragmentationDragUsd,
-    effectiveSystemNetPnlUsd,
+    effectiveSystemNetPnlUsd: isFiniteNumber(effectiveSystemNetPnlUsd)
+      ? Number(effectiveSystemNetPnlUsd.toFixed(12))
+      : null,
   };
 }
 
-export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null, routeCandidates = [] }) {
+export function buildTreasuryRefillJobs({
+  plan,
+  policy,
+  fundingSourcePlan = null,
+  routeCandidates = [],
+  assetTracking = null,
+}) {
   const refillPolicy = policy.refillPolicy || {};
   const bridgeQuoteCostCeilingUsd = bridgeMovementDiscretionaryBudget().quoteCostCeilingUsd;
   const resolvedFundingSourcePlan = fundingSourcePlan || buildFundingSourcePlan({ plan, policy });
@@ -282,7 +347,12 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       policyRevision,
       sourceHint: effectiveAction.sourceHint || null,
     };
-    const actionRouteContext = selectRouteContextForAction(effectiveAction, selection, routeCandidates, resolvedFundingSourcePlan.routeContext || null);
+    const actionRouteContext = selectRouteContextForAction(
+      effectiveAction,
+      selection,
+      routeCandidates,
+      resolvedFundingSourcePlan.routeContext || null,
+    );
     const candidateMethods = (selection?.candidates || []).map((item) => ({
       method: item.method,
       availability: item.availability,
@@ -301,7 +371,11 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
       settlementRequirements: item.settlementRequirements || [],
       notes: item.notes,
     }));
-    const selectedMethod = selection?.selectedMethod || candidateMethods.find((item) => item.preferred)?.method || candidateMethods[0]?.method || null;
+    const selectedMethod =
+      selection?.selectedMethod ||
+      candidateMethods.find((item) => item.preferred)?.method ||
+      candidateMethods[0]?.method ||
+      null;
     const classification = movementClassification(action);
     const bridgeCostGuard = evaluateBridgeMovementCostGuard({
       method: selectedMethod,
@@ -370,7 +444,13 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
         liveInventoryDependencyOverride: bridgeCostGuard.liveInventoryDependencyOverride,
         classification,
       },
-      systemEconomics: buildJobSystemEconomics({ action: effectiveAction, selection, routeContext: actionRouteContext, policy }),
+      systemEconomics: buildJobSystemEconomics({
+        action: effectiveAction,
+        selection,
+        routeContext: actionRouteContext,
+        policy,
+      }),
+      assetTrackingGate: assetTrackingUtilizationGate(assetTracking),
       rationale: effectiveAction.rationale,
       sourceHint: {
         strategy: policy.walletMode === "dual_wallet" ? "same_chain_reserve_first" : "single_wallet_swap_or_manual",
@@ -378,8 +458,8 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
           action.type === "refill_native"
             ? "Native refill can come from reserve transfer in dual-wallet mode or token-to-native swap when bootstrap gas exists."
             : "Token refill can come from reserve transfer in dual-wallet mode, same-chain token-to-token swap, or native-to-token swap when bootstrap gas exists.",
-        },
-      };
+      },
+    };
     if (fundingSourceAutoExecutable(draftJob.fundingSource) || !crossChainFallbackAutoPromotionAllowed(draftJob)) {
       return draftJob;
     }
@@ -391,7 +471,8 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
   const explicitGlobalReviewReasons = planReasons.filter((reason) => reason !== "too_many_pending_refills");
   const rankedJobIds = [...draftJobs]
     .sort((left, right) => {
-      const priorityDelta = ["high", "medium", "low"].indexOf(left.priority) - ["high", "medium", "low"].indexOf(right.priority);
+      const priorityDelta =
+        ["high", "medium", "low"].indexOf(left.priority) - ["high", "medium", "low"].indexOf(right.priority);
       if (priorityDelta !== 0) return priorityDelta;
       const leftSelectionRank = selectionStatusRank(left.fundingSource?.selectionStatus);
       const rightSelectionRank = selectionStatusRank(right.fundingSource?.selectionStatus);
@@ -423,19 +504,29 @@ export function buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan = null
     }
   }
   const jobs = draftJobs.map((job) => {
-      const reviewReasons = [
-        ...explicitGlobalReviewReasons.filter((reason) => reason !== "refill_cost_above_daily_cap"),
-        ...(dailyBudgetDeferredJobIds.has(job.jobId) ? ["refill_cost_above_daily_cap"] : []),
-        ...(deferredJobIds.has(job.jobId) ? ["too_many_pending_refills"] : []),
-        ...(!evaluateBridgeMovementCostGuard({
-          method: job.executionMethod,
-          costUsd: job.fundingSource?.expectedExecutionRefillCostUsd,
-          record: job,
-          ceilingUsd: bridgeQuoteCostCeilingUsd,
-        }).accepted ? ["bridge_quote_cost_above_discretionary_ceiling"] : []),
-        ...jobEconomicReviewReasons(job),
-        ...fundingSourceReviewReasons(job.fundingSource),
-      ];
+    const reviewReasons = [
+      ...explicitGlobalReviewReasons.filter((reason) => reason !== "refill_cost_above_daily_cap"),
+      ...(dailyBudgetDeferredJobIds.has(job.jobId) ? ["refill_cost_above_daily_cap"] : []),
+      ...(deferredJobIds.has(job.jobId) ? ["too_many_pending_refills"] : []),
+      ...(!evaluateBridgeMovementCostGuard({
+        method: job.executionMethod,
+        costUsd: job.fundingSource?.expectedExecutionRefillCostUsd,
+        record: job,
+        ceilingUsd: bridgeQuoteCostCeilingUsd,
+      }).accepted
+        ? ["bridge_quote_cost_above_discretionary_ceiling"]
+        : []),
+      ...(isCapitalRebalanceTargetRefill(job) && job.assetTrackingGate?.ready === false
+        ? ["asset_tracking_not_green"]
+        : []),
+      ...jobEconomicReviewReasons(job),
+      ...(isCapitalRebalanceTargetRefill(job) &&
+      fundingSourceAutoExecutable(job.fundingSource) &&
+      finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd) === null
+        ? ["opportunity_attached_ev_missing"]
+        : []),
+      ...fundingSourceReviewReasons(job.fundingSource),
+    ];
     const requiresManualReview =
       reviewReasons.length > 0 || (plan.decision === "REVIEW_REFILL_PLAN" && planReasons.length === 0);
     return {
