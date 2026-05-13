@@ -129,7 +129,9 @@ function buildCapitalMaps(holdings = null) {
   const byChain = {};
   const walletByChain = {};
   const deployedByChain = {};
+  const estimatedDeployedByChain = {};
   const byProtocol = {};
+  const estimatedByProtocol = {};
   const walletItems = Array.isArray(holdings?.all) ? holdings.all : [];
   const positionItems = Array.isArray(holdings?.positions) ? holdings.positions : [];
 
@@ -140,22 +142,30 @@ function buildCapitalMaps(holdings = null) {
 
   positionItems.forEach((item) => {
     const usd = Number(item?.usd);
+    const estimatedUsd = Number.isFinite(usd) && usd > 0
+      ? usd
+      : Number(item?.unverifiedEntryUsd);
     accumulateUsd(byChain, item?.chain || null, usd);
     accumulateUsd(deployedByChain, item?.chain || null, usd);
     accumulateUsd(byProtocol, capitalProtocolKey(item?.chain || null, item?.protocol || null), usd);
+    accumulateUsd(estimatedDeployedByChain, item?.chain || null, estimatedUsd);
+    accumulateUsd(estimatedByProtocol, capitalProtocolKey(item?.chain || null, item?.protocol || null), estimatedUsd);
   });
 
   return {
     byChain,
     walletByChain,
     deployedByChain,
+    estimatedDeployedByChain,
     byProtocol,
+    estimatedByProtocol,
     walletUsd: Number.isFinite(holdings?.walletUsd) ? holdings.walletUsd : null,
     deployedUsd: Number.isFinite(holdings?.deployedUsd) ? holdings.deployedUsd : null,
     totalUsd: Number.isFinite(holdings?.totalUsd) ? holdings.totalUsd : null,
     estimatedProtocolDeployedUsd: Number.isFinite(holdings?.estimatedProtocolDeployedUsd) ? holdings.estimatedProtocolDeployedUsd : null,
     estimatedCurrentTotalUsd: Number.isFinite(holdings?.estimatedCurrentTotalUsd) ? holdings.estimatedCurrentTotalUsd : null,
     estimatedUntrackedProtocolUsd: Number.isFinite(holdings?.estimatedUntrackedProtocolUsd) ? holdings.estimatedUntrackedProtocolUsd : null,
+    unverifiedProtocolEntryUsd: Number.isFinite(holdings?.unverifiedProtocolEntryUsd) ? holdings.unverifiedProtocolEntryUsd : null,
     verifiedMinimumUsd: Number.isFinite(holdings?.verifiedMinimumUsd) ? holdings.verifiedMinimumUsd : null,
     pending: holdings?.pending === true,
     generatedAt: holdings?.generatedAt || null,
@@ -438,6 +448,10 @@ function normalizeProtocolPositionStrategy(position = {}) {
     activitySurfaceCount: 0,
     riskHint: null,
     actualProtocolCapitalUsd: Number.isFinite(position.usd) ? position.usd : (Number.isFinite(valueUsd) ? valueUsd : 0),
+    estimatedProtocolCapitalUsd: Number.isFinite(position.unverifiedEntryUsd)
+      ? position.unverifiedEntryUsd
+      : (Number.isFinite(position.usd) ? position.usd : (Number.isFinite(valueUsd) ? valueUsd : 0)),
+    capitalValuationState: position.valuationState || null,
     actualChainCapitalUsd: 0,
   };
 }
@@ -735,6 +749,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
         estimatedCurrentTotalUsd: summaryEstimatedCurrentTotalUsd,
         verifiedMinimumUsd: summaryVerifiedMinimumUsd,
         estimatedUntrackedProtocolUsd: summaryEstimatedUntrackedProtocolUsd,
+        unverifiedProtocolEntryUsd: Number.isFinite(capitalSummary.unverifiedProtocolEntryUsd) ? capitalSummary.unverifiedProtocolEntryUsd : null,
         estimatedTotalUsdSource: capitalSummary.estimatedTotalUsdSource || null,
         assetFormula: capitalSummary.assetFormula || 'current_wallet_plus_tracked_protocol_positions',
         assetClaimLabel: capitalSummary.assetClaimLabel || null,
@@ -1010,7 +1025,9 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     const micro = microByNormalized[normalizedId] || microById[s.id] || null;
     const tickMode = parity?.readinessVerdict || parity?.tickMode || null;
     const protocolCapitalUsd = CAPITAL.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || 0;
+    const estimatedProtocolCapitalUsd = CAPITAL.estimatedByProtocol[capitalProtocolKey(s.chain, s.protocol)] || protocolCapitalUsd;
     const chainCapitalUsd = CAPITAL.byChain[s.chain] || 0;
+    const estimatedChainCapitalUsd = CAPITAL.estimatedDeployedByChain[s.chain] || chainCapitalUsd;
     const activitySurface = activitySurfaces.byProtocol[capitalProtocolKey(s.chain, s.protocol)] || null;
     const allocatedSats = Number(parity?.scoredAllocation?.allocatedSats ?? 0);
     const allocatedCapitalUsd = Number.isFinite(allocatedSats) && allocatedSats > 0
@@ -1076,7 +1093,9 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       riskHint: riskByNormalized[normalizedId] || null,
       capUsd: effectiveCapUsd,
       actualProtocolCapitalUsd: effectiveProtocolCapitalUsd,
+      estimatedProtocolCapitalUsd,
       actualChainCapitalUsd: chainCapitalUsd,
+      estimatedChainCapitalUsd,
     };
   });
 
@@ -1169,7 +1188,10 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
       activitySurfaceCount: 0,
       riskHint: riskByNormalized[normalizedId] || null,
       actualProtocolCapitalUsd: CAPITAL.byProtocol[capitalProtocolKey(m.chain, m.protocol)] || 0,
+      estimatedProtocolCapitalUsd: CAPITAL.estimatedByProtocol[capitalProtocolKey(m.chain, m.protocol)] || 0,
+      capitalValuationState: m.markConfidence === 'adapter_missing' || m.markFailureKind ? 'mark_failed' : null,
       actualChainCapitalUsd: CAPITAL.byChain[m.chain] || 0,
+      estimatedChainCapitalUsd: CAPITAL.estimatedDeployedByChain[m.chain] || 0,
     });
   }
 
@@ -1204,6 +1226,7 @@ async function bootData(payload = null, { preserveCurrentOnMismatch = false } = 
     return {
       ...c,
       capitalUsd: CAPITAL.byChain[c.id] || 0,
+      estimatedCapitalUsd: CAPITAL.estimatedDeployedByChain[c.id] || CAPITAL.byChain[c.id] || 0,
       wrappedBtcVenueStatus: cleanUnknown(p?.wrappedBtcVenueStatus),
       stableVenueStatus: cleanUnknown(p?.stableVenueStatus),
       nativeEthArrivalClass: cleanUnknown(p?.nativeEthArrivalClass),

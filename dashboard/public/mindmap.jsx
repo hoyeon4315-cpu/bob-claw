@@ -742,6 +742,9 @@ function summarizedStatus(strategies = []) {
 
 function aprWeightUsd(strategy) {
   if (Number.isFinite(strategy?.capUsd) && strategy.capUsd > 0) return strategy.capUsd;
+  if (Number.isFinite(strategy?.estimatedProtocolCapitalUsd) && strategy.estimatedProtocolCapitalUsd > 0) {
+    return strategy.estimatedProtocolCapitalUsd;
+  }
   if (Number.isFinite(strategy?.actualProtocolCapitalUsd) && strategy.actualProtocolCapitalUsd > 0) {
     return strategy.actualProtocolCapitalUsd;
   }
@@ -797,6 +800,13 @@ function groupStrategiesByProtocol(strategies = []) {
         ...items.map((item) => Number(item.actualProtocolCapitalUsd || 0)),
         0,
       ),
+      estimatedCapitalUsd: Math.max(
+        ...items.map((item) => Number(item.estimatedProtocolCapitalUsd || item.actualProtocolCapitalUsd || 0)),
+        0,
+      ),
+      capitalValuationState: items.some((item) => item.capitalValuationState === 'mark_failed')
+        ? 'mark_failed'
+        : null,
       loops: Math.max(...items.map((item) => item.loops || 0), 0) || null,
       apyPct: weightedProtocolApr(items),
       recentActivityCount,
@@ -812,7 +822,9 @@ function groupStrategiesByProtocol(strategies = []) {
 
 function ProtocolChip({ strategy, x, y, size, onTap, selected, dimmed, onDragStart }) {
   const R = size * 1.12;
-  const capitalLabel = formatCompactUsdLabel(Number(strategy.capitalUsd || 0));
+  const capitalUsd = Number(strategy.capitalUsd || 0);
+  const estimatedCapitalUsd = Number(strategy.estimatedCapitalUsd || 0);
+  const capitalLabel = formatCompactUsdLabel(capitalUsd > 0 ? capitalUsd : estimatedCapitalUsd);
   const handleTap = (event) => {
     event.stopPropagation?.();
     onTap?.();
@@ -1559,7 +1571,10 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
 function ProtocolCard({ protocolNode }) {
   if (!protocolNode) return null;
   const chain = CHAINS.find(c => c.id === protocolNode.chain);
-  const capitalLabel = formatCompactUsdLabel(protocolNode.capitalUsd);
+  const capitalUsd = Number(protocolNode.capitalUsd || 0);
+  const estimatedCapitalUsd = Number(protocolNode.estimatedCapitalUsd || 0);
+  const usesEstimatedCapital = capitalUsd <= 0 && estimatedCapitalUsd > 0;
+  const capitalLabel = formatCompactUsdLabel(capitalUsd > 0 ? capitalUsd : estimatedCapitalUsd);
   const yieldValue = formatYieldDisplay(protocolNode.earnedUsd, protocolNode.yieldBasis);
   const protocolAssets = Array.from(new Set([
     ...uniqueProtocolAssetsForStrategies(protocolNode.strategies || []),
@@ -1591,13 +1606,13 @@ function ProtocolCard({ protocolNode }) {
         {capitalLabel && (
           <div style={{ textAlign:'right' }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#111113', letterSpacing:-0.2 }}>{capitalLabel}</div>
-            <div style={{ fontSize:9.5, color:'#6B6B6E', marginTop:1 }}>capital</div>
+            <div style={{ fontSize:9.5, color:'#6B6B6E', marginTop:1 }}>{usesEstimatedCapital ? 'entry cap' : 'capital'}</div>
           </div>
         )}
       </div>
       <div style={{ marginTop:7, display:'flex', gap:8, flexWrap:'wrap' }}>
         <Metric label="Live" value={`${protocolNode.liveCount}/${protocolNode.strategyCount}`}/>
-        <Metric label="Capital" value={capitalLabel || '—'}/>
+        <Metric label={usesEstimatedCapital ? 'Entry cap' : 'Capital'} value={capitalLabel || '—'}/>
         <Metric label={yieldMetricLabel(protocolNode.yieldBasis)} value={yieldValue || '—'} accent={protocolNode.earnedUsd > 0}/>
         {protocolNode.apyPct != null && <Metric label="APR" value={`${protocolNode.apyPct.toFixed(1)}%`}/>}
         {protocolNode.recentActivityCount > 0 && <Metric label="Activity" value={`${protocolNode.recentActivityCount} tx`}/>}

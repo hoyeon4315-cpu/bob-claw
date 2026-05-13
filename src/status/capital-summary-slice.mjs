@@ -40,7 +40,7 @@ function priceSourceForPosition(position = {}) {
 }
 
 function deployedPositionItem(position = {}) {
-  const usd = finiteNumber(position.valueUsd) ??
+  const rawUsd = finiteNumber(position.valueUsd) ??
     finiteNumber(position.markUsd) ??
     finiteNumber(position.currentValueUsd) ??
     finiteNumber(position.positionValueUsd);
@@ -49,7 +49,14 @@ function deployedPositionItem(position = {}) {
   const observedAt = position.markObservedAt || position.lastObservedAt || null;
   const hasMarkFailure = Boolean(position.markFailureKind || position.markFailureMessage);
   const markFreshness = position.markFreshness || (hasMarkFailure ? "failed" : observedAt ? "fresh" : null);
-  const markConfidence = position.markConfidence || (hasMarkFailure ? "adapter_missing" : Number.isFinite(usd) && usd <= 0 ? "verified_current" : null);
+  const markConfidence = position.markConfidence || (hasMarkFailure ? "adapter_missing" : Number.isFinite(rawUsd) && rawUsd <= 0 ? "verified_current" : null);
+  const hasCurrentMark =
+    position.markSource === "protocol_position_mark" &&
+    (markConfidence === "verified_current" || markFreshness === "fresh" || markFreshness === "recent");
+  const zeroResidual = Number.isFinite(rawUsd) && rawUsd <= 0 && !hasMarkFailure;
+  const usd = hasCurrentMark || zeroResidual ? rawUsd : null;
+  const staleReferenceUsd = !Number.isFinite(usd) && Number.isFinite(rawUsd) && rawUsd > 0 ? rawUsd : null;
+  const unverifiedEntryUsd = !Number.isFinite(usd) && Number.isFinite(entryUsd) && entryUsd > 0 ? entryUsd : null;
   return {
     sym: symbol,
     name: position.label || `Position ${position.opportunityId || ""}`.trim(),
@@ -58,6 +65,17 @@ function deployedPositionItem(position = {}) {
     amount: null,
     usd: Number.isFinite(usd) ? usd : null,
     entryUsd,
+    staleReferenceUsd,
+    unverifiedEntryUsd,
+    valuationState: Number.isFinite(usd)
+      ? "verified_current"
+      : hasMarkFailure
+        ? "mark_failed"
+        : staleReferenceUsd != null
+          ? "stale_reference"
+          : unverifiedEntryUsd != null
+            ? "entry_only"
+            : "unpriced",
     family: "position",
     status: "deployed",
     opportunityId: position.opportunityId || null,
@@ -133,6 +151,10 @@ export function buildCapitalSummarySlice({
   const unmarkedProtocolPositionCount = positionItems.filter(
     (item) => !isCurrentProtocolMark(item),
   ).length;
+  const unverifiedProtocolEntryUsd = roundUsd(positionItems.reduce((sum, item) => {
+    if (isCurrentProtocolMark(item)) return sum;
+    return sum + (Number(item.unverifiedEntryUsd) || 0);
+  }, 0));
   const protocolMarkFailedCount = Number(protocolPositionMarks?.failedPositionCount || 0);
   const protocolMarkStaleCount = Number(protocolPositionMarks?.stalePositionCount || 0);
   const protocolMarkExpiredCount = Number(protocolPositionMarks?.expiredPositionCount || 0);
@@ -191,7 +213,9 @@ export function buildCapitalSummarySlice({
   const protocolTrackingGapUsd = executorEstimateDeltaUsd;
   const estimatedUntrackedProtocolUsd = Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
     ? protocolTrackingGapUsd
-    : null;
+    : Number.isFinite(unverifiedProtocolEntryUsd) && unverifiedProtocolEntryUsd > 0
+      ? unverifiedProtocolEntryUsd
+      : null;
   const estimatedProtocolDeployedUsd = Number.isFinite(estimatedUntrackedProtocolUsd)
     ? roundUsd(protocolDeployedUsd + estimatedUntrackedProtocolUsd)
     : roundUsd(protocolDeployedUsd);
@@ -265,6 +289,7 @@ export function buildCapitalSummarySlice({
         : "Current total assets",
     reconciliationState,
     unmarkedProtocolPositionCount,
+    unverifiedProtocolEntryUsd,
     protocolMarkFailedCount,
     protocolMarkStaleCount,
     protocolMarkExpiredCount,
