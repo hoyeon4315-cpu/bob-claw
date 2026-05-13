@@ -14,7 +14,11 @@ import { latestWholeWalletInventoryForAddress } from "../treasury/whole-wallet-s
 import { buildDefaultRoutePerformancePolicy, buildRoutePerformanceRanking } from "../risk/route-performance.mjs";
 import { buildExecutionRiskState } from "../risk/execution-gate.mjs";
 import { buildInventoryConsistencyAudit, resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
-import { buildRouteDemandFromCanaryState, buildShadowCycleSummary, stripVolatileShadowCycleFields } from "../session/shadow-cycle.mjs";
+import {
+  buildRouteDemandFromCanaryState,
+  buildShadowCycleSummary,
+  stripVolatileShadowCycleFields,
+} from "../session/shadow-cycle.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 
@@ -67,6 +71,8 @@ async function main() {
           policy,
           address,
           prices: canaryState.prices,
+          continueOnError: true,
+          fallbackInventory: context.inventorySnapshot,
         });
   const inventoryAudit = args.refreshInventory
     ? buildInventoryConsistencyAudit({
@@ -82,7 +88,10 @@ async function main() {
     inventory,
     routeDemand,
   });
-  const routeContext = canaryState.routePlan?.topCandidates?.find((item) => item.viableForPrep) || canaryState.routePlan?.topCandidates?.[0] || null;
+  const routeContext =
+    canaryState.routePlan?.topCandidates?.find((item) => item.viableForPrep) ||
+    canaryState.routePlan?.topCandidates?.[0] ||
+    null;
   const supplementalInventory = latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, address);
   const fundingSourcePlan = buildFundingSourcePlan({
     plan: treasuryPlan,

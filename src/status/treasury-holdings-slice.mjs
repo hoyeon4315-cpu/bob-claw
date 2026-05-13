@@ -1,10 +1,12 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 
 function latestByObservedAt(records = []) {
-  return [...records]
-    .filter((record) => record?.observedAt)
-    .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime())
-    .at(-1) || null;
+  return (
+    [...records]
+      .filter((record) => record?.observedAt)
+      .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime())
+      .at(-1) || null
+  );
 }
 
 const WHOLE_WALLET_PREFERENCE_WINDOW_MS = 15 * 60 * 1000;
@@ -14,7 +16,9 @@ const PRICE_DIVERGENCE_WARN_PCT = 1;
 const PRICE_DIVERGENCE_BLOCK_PCT = 3;
 
 function normalizeSymbol(value = "") {
-  return String(value || "").toLowerCase().replace(/\.oft$/u, "");
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\.oft$/u, "");
 }
 
 function normalizeChain(value = "") {
@@ -35,7 +39,9 @@ function sourceFreshness(observedAt, now, maxAgeMs = SOURCE_FRESH_MAX_AGE_MS) {
 }
 
 function normalizeTrackingStatus(value) {
-  const status = String(value || "").trim().toLowerCase();
+  const status = String(value || "")
+    .trim()
+    .toLowerCase();
   if (status === "pending_whitelist_review" || status === "unknown" || status === "unregistered") {
     return "unregistered";
   }
@@ -103,21 +109,41 @@ function normalizeConfidence(entry = {}, { freshness, priceFreshness, trackingSt
   return "registry_only";
 }
 
-function inventoryItem(entry = {}, family, { inventoryObservedAt = null, generatedAt = new Date().toISOString() } = {}) {
+function inventoryItem(
+  entry = {},
+  family,
+  { inventoryObservedAt = null, generatedAt = new Date().toISOString(), source = "whole_wallet_inventory" } = {},
+) {
   const symbol = entry.ticker || entry.asset || entry.symbol || entry.name || "asset";
   const amount = Number(entry.actualDecimal);
   const usd = Number(entry.estimatedUsd);
-  const sourceObservedAt = observedAtOrFallback(entry.sourceObservedAt, entry.observedAt, entry.markObservedAt, inventoryObservedAt);
-  const priceObservedAt = observedAtOrFallback(entry.priceObservedAt, entry.valuation?.observedAt, entry.markObservedAt, sourceObservedAt);
+  const sourceObservedAt = observedAtOrFallback(
+    entry.sourceObservedAt,
+    entry.observedAt,
+    entry.markObservedAt,
+    inventoryObservedAt,
+  );
+  const priceObservedAt = observedAtOrFallback(
+    entry.priceObservedAt,
+    entry.valuation?.observedAt,
+    entry.markObservedAt,
+    sourceObservedAt,
+  );
   const priceSource = normalizePriceSource(entry, family, { sourceObservedAt, priceObservedAt });
   const priceFreshness = normalizePriceFreshness(entry, { priceObservedAt, generatedAt });
   const priceDivergenceStatus = normalizeDivergenceStatus(entry, { priceSource, priceFreshness });
-  const freshness = ["fresh", "stale"].includes(String(entry.freshness || "").toLowerCase())
-    ? String(entry.freshness).toLowerCase()
-    : sourceFreshness(sourceObservedAt, generatedAt);
+  const sourceFailed = Boolean(entry.scanError);
+  const sourceFallback = entry.staleFallback === true || String(entry.source || "") === "stored_treasury_snapshot";
+  const freshness = sourceFailed
+    ? "failed"
+    : sourceFallback
+      ? "stale"
+      : ["fresh", "stale"].includes(String(entry.freshness || "").toLowerCase())
+        ? String(entry.freshness).toLowerCase()
+        : sourceFreshness(sourceObservedAt, generatedAt);
   const trackingStatus = normalizeTrackingStatus(entry.trackingStatus);
   const countedInWalletTotal =
-    trackingStatus === "unregistered" || priceDivergenceStatus === "block"
+    trackingStatus === "unregistered" || priceDivergenceStatus === "block" || sourceFailed || sourceFallback
       ? false
       : entry.countedInWalletTotal !== false;
   return {
@@ -131,8 +157,10 @@ function inventoryItem(entry = {}, family, { inventoryObservedAt = null, generat
     token: entry.token || null,
     trackingStatus,
     valuation: entry.valuation || null,
-    source: "whole_wallet_inventory",
+    source,
     sourceObservedAt,
+    staleFallback: sourceFallback,
+    scanError: entry.scanError || null,
     priceSource,
     priceObservedAt,
     priceFreshness,
@@ -172,6 +200,24 @@ function finiteNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function itemFreshnessIsStale(item = {}) {
+  return ["stale", "expired", "failed"].includes(String(item.freshness || item.markFreshness || "").toLowerCase());
+}
+
+function priceFreshnessIsStale(item = {}) {
+  return ["stale", "expired", "failed"].includes(String(item.priceFreshness || "").toLowerCase());
+}
+
+function oldestMaterialSourceObservedAt(items = []) {
+  return (
+    items
+      .filter((item) => Number(item.usd || 0) > 0 || Number(item.amount || 0) > 0 || item.scanError)
+      .map((item) => item.sourceObservedAt || item.markObservedAt || item.lastObservedAt || null)
+      .filter(Boolean)
+      .sort()[0] || null
+  );
+}
+
 function hasWholeWalletValue(record = null) {
   if (Number.isFinite(record?.totalUsd)) return record.totalUsd > 0;
   return [...(record?.native || []), ...(record?.tokenBalances || [])].some((item) => {
@@ -188,7 +234,8 @@ function selectWalletSource(treasuryRecord, wholeWalletRecord) {
   const wholeObservedAtMs = observedAtMs(wholeWalletRecord?.observedAt);
   if (
     hasWholeWalletValue(wholeWalletRecord) &&
-    (wholeObservedAtMs >= treasuryObservedAtMs || treasuryObservedAtMs - wholeObservedAtMs <= WHOLE_WALLET_PREFERENCE_WINDOW_MS)
+    (wholeObservedAtMs >= treasuryObservedAtMs ||
+      treasuryObservedAtMs - wholeObservedAtMs <= WHOLE_WALLET_PREFERENCE_WINDOW_MS)
   ) {
     return { record: wholeWalletRecord, source: "whole_wallet_inventory" };
   }
@@ -309,27 +356,35 @@ export function buildTreasuryHoldingsSlice(
     };
   }
 
-  const externalCoverage = selected.source === "whole_wallet_inventory"
-    ? selectExternalCoverage(latest, wholeWalletRecords)
-    : null;
-  const items = applyReconciledExitBalances([
-    ...(latest.native || []).map((entry) => inventoryItem(entry, "native", {
-      inventoryObservedAt: latest.observedAt,
-      generatedAt,
-    })),
-    ...((selected.source === "whole_wallet_inventory" ? latest.tokenBalances : latest.tokens) || [])
-      .filter((entry) => !isExternalUnclassifiedEntry(entry))
-      .filter((entry) =>
-        entry.countedInWalletTotal !== false ||
-        !/protocol_reader_covered|protocol_position/u.test(String(entry.trackingStatus || "")),
-      )
-      .map((entry) =>
-      inventoryItem(entry, "token", {
-        inventoryObservedAt: latest.observedAt,
-        generatedAt,
-      }),
-    ),
-  ], merklPositionEvents, latest.observedAt)
+  const externalCoverage =
+    selected.source === "whole_wallet_inventory" ? selectExternalCoverage(latest, wholeWalletRecords) : null;
+  const items = applyReconciledExitBalances(
+    [
+      ...(latest.native || []).map((entry) =>
+        inventoryItem(entry, "native", {
+          inventoryObservedAt: latest.observedAt,
+          generatedAt,
+          source: selected.source,
+        }),
+      ),
+      ...((selected.source === "whole_wallet_inventory" ? latest.tokenBalances : latest.tokens) || [])
+        .filter((entry) => !isExternalUnclassifiedEntry(entry))
+        .filter(
+          (entry) =>
+            entry.countedInWalletTotal !== false ||
+            !/protocol_reader_covered|protocol_position/u.test(String(entry.trackingStatus || "")),
+        )
+        .map((entry) =>
+          inventoryItem(entry, "token", {
+            inventoryObservedAt: latest.observedAt,
+            generatedAt,
+            source: selected.source,
+          }),
+        ),
+    ],
+    merklPositionEvents,
+    latest.observedAt,
+  )
     .filter((item) => item.usd > 0 || item.amount > 0)
     .sort((a, b) => (b.usd || 0) - (a.usd || 0));
 
@@ -338,11 +393,13 @@ export function buildTreasuryHoldingsSlice(
     0,
   );
   const itemizedSupportedWalletUsd = supportedItemizedUsd(latest, itemTotalUsd);
-  const scanErrors = Array.isArray(latest.scanErrors)
-    ? latest.scanErrors.filter(isAuthoritativeScanError)
-    : [];
+  const staleItemCount = items.filter(itemFreshnessIsStale).length;
+  const stalePriceItemCount = items.filter(priceFreshnessIsStale).length;
+  const scanErrors = Array.isArray(latest.scanErrors) ? latest.scanErrors.filter(isAuthoritativeScanError) : [];
   const walletCoverage = externalCoverage
-    ? externalCoverage.stale ? "full_external_stale" : "full_external"
+    ? externalCoverage.stale
+      ? "full_external_stale"
+      : "full_external"
     : selected.source === "whole_wallet_inventory"
       ? latest.summary?.walletCoverage || "partial_supported"
       : selected.source;
@@ -353,13 +410,14 @@ export function buildTreasuryHoldingsSlice(
     observedAt: latest.observedAt || null,
     pending: false,
     address: latest.address || null,
-    totalUsd: itemTotalUsd > 0
-      ? itemTotalUsd
-      : Number.isFinite(latest.summary?.estimatedWalletUsd)
-      ? latest.summary.estimatedWalletUsd
-      : Number.isFinite(latest.totalUsd)
-      ? latest.totalUsd
-      : itemTotalUsd,
+    totalUsd:
+      itemTotalUsd > 0 || items.length > 0
+        ? itemTotalUsd
+        : Number.isFinite(latest.summary?.estimatedWalletUsd)
+          ? latest.summary.estimatedWalletUsd
+          : Number.isFinite(latest.totalUsd)
+            ? latest.totalUsd
+            : itemTotalUsd,
     activeChainCount:
       latest.summary?.activeChainCount ?? latest.summary?.chainCount ?? latest.activeChains?.length ?? 0,
     supportedChainCount:
@@ -372,6 +430,9 @@ export function buildTreasuryHoldingsSlice(
     scanErrorCount: scanErrors.length,
     scanErrors: scanErrors.slice(0, 5).map(scanErrorItem),
     itemizedSupportedWalletUsd,
+    staleItemCount,
+    stalePriceItemCount,
+    oldestMaterialSourceObservedAt: oldestMaterialSourceObservedAt(items),
     walletCoverage,
     fullWalletUsd: externalCoverage?.walletUsd ?? null,
     fullWalletObservedAt: externalCoverage?.observedAt ?? null,

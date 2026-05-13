@@ -31,6 +31,14 @@ function formatDecimal(value, ticker) {
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 12 })} ${ticker}`;
 }
 
+function inventorySourceLabel(inventory = {}) {
+  if (!inventory.scanErrors?.length) return "live_scan";
+  const usedFallback = [...(inventory.native || []), ...(inventory.tokens || []), ...(inventory.allowances || [])].some(
+    (item) => item.staleFallback === true,
+  );
+  return usedFallback ? "live_scan_with_stale_fallback" : "live_scan_with_errors";
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
@@ -45,7 +53,7 @@ async function main() {
     policy,
     address: resolved.address,
     prices,
-    continueOnError: Boolean(context.inventorySnapshot),
+    continueOnError: true,
     fallbackInventory: context.inventorySnapshot,
   });
   const store = new JsonlStore(config.dataDir);
@@ -57,8 +65,10 @@ async function main() {
   }
 
   console.log(`address=${inventory.address}`);
-  console.log(`inventorySource=${inventory.scanErrors?.length ? "live_scan_with_fallback" : "live_scan"}`);
-  console.log(`supportedChains=${inventory.summary.supportedChainCount} activeChains=${inventory.summary.activeChainCount}`);
+  console.log(`inventorySource=${inventorySourceLabel(inventory)}`);
+  console.log(
+    `supportedChains=${inventory.summary.supportedChainCount} activeChains=${inventory.summary.activeChainCount}`,
+  );
   console.log(
     `nativeRefillRequired=${inventory.summary.nativeRefillRequiredCount} tokenRefillRequired=${inventory.summary.tokenRefillRequiredCount} allowanceOverCap=${inventory.summary.allowanceOverCapCount}`,
   );
@@ -66,15 +76,21 @@ async function main() {
   console.log(`estimatedWalletUsd=${inventory.summary.estimatedWalletUsd.toFixed(4)}`);
 
   for (const item of inventory.native.filter((entry) => entry.active || entry.actual !== "0")) {
-    console.log(`${item.chain} native=${formatDecimal(item.actualDecimal, item.asset)} status=${item.status} target=${item.targetBalanceDecimal}`);
+    console.log(
+      `${item.chain} native=${formatDecimal(item.actualDecimal, item.asset)} status=${item.status} target=${item.targetBalanceDecimal}`,
+    );
   }
 
   for (const item of inventory.tokens) {
-    console.log(`${item.chain} ${item.ticker}=${formatDecimal(item.actualDecimal, item.ticker)} status=${item.status} target=${item.targetBalanceDecimal}`);
+    console.log(
+      `${item.chain} ${item.ticker}=${formatDecimal(item.actualDecimal, item.ticker)} status=${item.status} target=${item.targetBalanceDecimal}`,
+    );
   }
 
   for (const item of inventory.allowances) {
-    console.log(`${item.chain} allowance ${item.ticker} spender=${item.spender} status=${item.status} cap=${item.maxApprovalDecimal}`);
+    console.log(
+      `${item.chain} allowance ${item.ticker} spender=${item.spender} status=${item.status} cap=${item.maxApprovalDecimal}`,
+    );
   }
 }
 
