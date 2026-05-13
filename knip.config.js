@@ -48,6 +48,7 @@ const referencedEntries = collectPathReferencedEntries();
 
 const operatorEntryFiles = [
   // Operator-run CLIs that are canonical in AGENTS/docs but may be invoked outside package.json.
+  "dashboard/public/analytics.jsx",
   "dashboard/public/app.jsx",
   "dashboard/public/data.jsx",
   "dashboard/public/ios-frame.jsx",

@@ -4,7 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const PRETTIER_EXTENSIONS = new Set([".cjs", ".html", ".js", ".json", ".jsx", ".md", ".mjs", ".yaml", ".yml"]);
-const NODE_CHECK_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs"]);
+const NODE_CHECK_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
 const GENERATED_PREFIXES = Object.freeze([
   ".cloudflare/",
   ".playwright-cli/",
