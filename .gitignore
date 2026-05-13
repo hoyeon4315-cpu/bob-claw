@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.*
+!.env.example
 .DS_Store
 data/
 docs/current-status.md
@@ -33,6 +35,14 @@ state/
 graphify-out/
 src/graphify-out/
 *.bak-*
+
+# Local secret material
+*.key
+*.keystore
+*.pem
+*.p12
+*.pfx
+*.seed
 
 # Foundry
 /lib/
