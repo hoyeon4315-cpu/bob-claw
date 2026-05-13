@@ -28,11 +28,7 @@ test("staged-file helper excludes generated outputs and keeps source checks", as
     "logs/signer-audit.jsonl",
     "data/all-chain-autopilot-latest.json",
   ]);
-  assert.deepEqual(plan.nodeCheckFiles, [
-    "src/executor/policy/index.mjs",
-    "test/executor-policy-index.test.mjs",
-    "dashboard/public/app.jsx",
-  ]);
+  assert.deepEqual(plan.nodeCheckFiles, ["src/executor/policy/index.mjs", "test/executor-policy-index.test.mjs"]);
   assert.deepEqual(plan.nodeTestFiles, ["test/executor-policy-index.test.mjs"]);
   assert.deepEqual(plan.prettierFiles, [
     "src/executor/policy/index.mjs",
