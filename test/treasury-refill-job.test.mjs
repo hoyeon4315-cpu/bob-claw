@@ -348,9 +348,9 @@ test("capital manager matched transfers do not treat transport route alpha as th
   assert.equal(jobs.jobs[0].executionReason, "capital_rebalance");
   assert.equal(jobs.jobs[0].policyRevision, "capital_rebalance_ev_gate_v2");
   assert.equal(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd < 0, true);
-  assert.equal(jobs.jobs[0].reviewReasons.includes("route_refill_economically_unjustified"), false);
-  assert.equal(jobs.jobs[0].requiresManualReview, false);
-  assert.equal(jobs.summary.autoQueuedJobCount, 1);
+  assert.equal(jobs.jobs[0].reviewReasons.includes("route_refill_economically_unjustified"), true);
+  assert.equal(jobs.jobs[0].requiresManualReview, true);
+  assert.equal(jobs.summary.autoQueuedJobCount, 0);
 });
 
 test("refill jobs keep explicit live destination-inventory override bridgeable", () => {
