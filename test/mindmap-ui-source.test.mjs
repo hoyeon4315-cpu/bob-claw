@@ -23,6 +23,7 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /if \(!strategy\.protocol\) return false;/);
     assert.match(MINDMAP_JSX, /function isDisplayableMindmapProtocol\(protocol\)/);
     assert.match(MINDMAP_JSX, /if \(!isDisplayableMindmapProtocol\(strategy\.protocol\)\) return false;/);
+    assert.match(MINDMAP_JSX, /MINDMAP_HIDDEN_PROTOCOLS = new Set\(\['across', 'gaszip', 'gas_zip', 'li\.fi', 'lifi', 'odos'\]\)/);
     assert.match(MINDMAP_JSX, /MINDMAP_NON_PROTOCOL_IDS = new Set\(\[/);
     assert.match(MINDMAP_JSX, /'wrapped_native'/);
     assert.match(MINDMAP_JSX, /return strategy\.status === 'LIVE'/);
@@ -67,6 +68,8 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /const recentMovements = dedupeRecentMovements\(/);
     assert.match(MINDMAP_JSX, /\.sort\(\(left, right\) => new Date\(right\.observedAt \|\| 0\) - new Date\(left\.observedAt \|\| 0\)\)/);
     assert.match(MINDMAP_JSX, /function movementUsesGateway\(movement = \{\}\)/);
+    assert.match(MINDMAP_JSX, /const mindmapMovements = recentMovements\.filter\(\(movement\) => movementUsesGateway\(movement\)\)/);
+    assert.match(MINDMAP_JSX, /mindmapMovements\.flatMap\(\(movement\) => \[movement\.fromChainId, movement\.toChainId\]\)\.filter\(Boolean\)/);
     assert.match(MINDMAP_JSX, /return MOVEMENT_ROUTE_COLORS\[index % MOVEMENT_ROUTE_COLORS\.length\]/);
     assert.match(MINDMAP_JSX, /function movementLaneOffset\(laneIndex = 0, totalTracks = 1, segmentIndex = 0\)/);
     assert.match(MINDMAP_JSX, /const centered = laneIndex - \(total - 1\) \/ 2;/);

@@ -67,9 +67,10 @@ function screenToLocal(svg, clientX, clientY, zoom, tx, ty) {
 // Mindmap shows protocols where user capital is parked or very recent signer
 // activity proves the protocol was touched. Activity-only nodes do not light up
 // chain lanes as live capital.
-// Hidden: pure swap/refuel/arb routing (odos, gaszip). Kept: lending, loops, LPs,
-// payback, and BOB Gateway as the BTC <-> EVM entrypoint.
-const MINDMAP_HIDDEN_PROTOCOLS = new Set(['odos', 'gaszip']);
+// Hidden: pure swap/refuel/third-party transport routing (LiFi, Across, Odos,
+// GasZip). Kept: lending, loops, LPs, payback, and BOB Gateway as the
+// BTC <-> EVM entrypoint.
+const MINDMAP_HIDDEN_PROTOCOLS = new Set(['across', 'gaszip', 'gas_zip', 'li.fi', 'lifi', 'odos']);
 const MINDMAP_NON_PROTOCOL_IDS = new Set([
   'wrapped_native',
   'wrapped-native',
@@ -1098,11 +1099,12 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
       ? window.FLOW.recentMovements.filter((movement) => movement?.fromChainId && movement?.toChainId && isRecentMovement(movement, movementNowMs))
       : [],
   ).sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0));
+  const mindmapMovements = recentMovements.filter((movement) => movementUsesGateway(movement));
   const movementChains = new Set(
-    recentMovements.flatMap((movement) => [movement.fromChainId, movement.toChainId]).filter(Boolean),
+    mindmapMovements.flatMap((movement) => [movement.fromChainId, movement.toChainId]).filter(Boolean),
   );
   const focusedMovements = selectedChain
-    ? recentMovements
+    ? mindmapMovements
       .filter((movement) => movement.fromChainId === selectedChain || movement.toChainId === selectedChain)
       .slice(0, MAX_FOCUSED_MOVEMENT_TRACKS)
     : [];
@@ -1283,8 +1285,8 @@ function Mindmap({ motionSpeed = 1.4, refreshTick = 0, onFocusChange = null }) {
   }
 
   const visibleMovementSeeds = (selectedChain
-    ? recentMovements.filter((movement) => movement.fromChainId === selectedChain || movement.toChainId === selectedChain)
-    : recentMovements
+    ? mindmapMovements.filter((movement) => movement.fromChainId === selectedChain || movement.toChainId === selectedChain)
+    : mindmapMovements
   ).slice(0, selectedChain ? MAX_FOCUSED_MOVEMENT_TRACKS : MAX_ROOT_MOVEMENT_TRACKS);
   const visibleMovementTracks = visibleMovementSeeds
     .map((movement, index) => buildMovementTrack(movement, index, visibleMovementSeeds.length))

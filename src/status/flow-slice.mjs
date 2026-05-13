@@ -139,6 +139,15 @@ function routeKindForProvider(provider) {
   return provider === "gateway" ? "gateway_bridge" : "direct_bridge";
 }
 
+function routeSemanticFields(provider) {
+  const routeProvider = stringOrNull(provider)?.toLowerCase() || "direct";
+  return Object.freeze({
+    semanticLayer: "transport",
+    positionLike: false,
+    routeCategory: routeProvider === "gateway" ? "gateway_transport" : "third_party_bridge",
+  });
+}
+
 function isDeliveredExecution(event = {}) {
   if (!event?.strategyId) return false;
   if (event.eventType === "execution_funding_outcome" && event.settlementStatus === "delivered") return true;
@@ -344,9 +353,11 @@ function normalizeExecutionMovement(event = {}) {
   const txHash = lastTxHash(event);
   const routeProvider = routeProviderFromExecution(event);
   const kind = routeKindForProvider(routeProvider);
+  const semantic = routeSemanticFields(routeProvider);
   return Object.freeze({
     id: normalizeActivityId(["movement", txHash || event.jobId || route.routeKey, event.observedAt]),
     kind,
+    ...semantic,
     observedAt: stringOrNull(event.observedAt),
     status: stringOrNull(event.status) || "delivered",
     strategyId: stringOrNull(event.strategyId),
@@ -373,12 +384,14 @@ function normalizeExecutionRoutePlan(event = {}) {
   const fundingMethod = stringOrNull(event?.fundingSource?.method)?.toLowerCase() || "";
   if (!method.includes("cross_chain") && !fundingMethod.includes("cross_chain")) return null;
   const routeProvider = routeProviderFromExecution(event);
+  const semantic = routeSemanticFields(routeProvider);
   const fromAssetId = normalizeAssetId(source.ticker || source.asset || source.token);
   const toAssetId = normalizeAssetId(event.asset || event.token || fromAssetId);
   const routeKey = `${fromChainId}:${fromAssetId || "asset"}->${toChainId}:${toAssetId || "asset"}`;
   return Object.freeze({
     id: normalizeActivityId(["movement-plan", event.jobId || routeKey, event.observedAt]),
     kind: routeKindForProvider(routeProvider),
+    ...semantic,
     observedAt: stringOrNull(event.observedAt),
     status: stringOrNull(event.status) || "planned",
     projected: true,
@@ -410,6 +423,7 @@ function normalizeSignerAuditMovement(record = {}) {
   return Object.freeze({
     id: normalizeActivityId(["movement", txHash || record.intentHash || record.intentId, record.timestamp]),
     kind: "gateway_bridge",
+    ...routeSemanticFields("gateway"),
     observedAt: stringOrNull(record.timestamp),
     status,
     strategyId: stringOrNull(record.strategyId),
