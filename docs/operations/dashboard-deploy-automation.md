@@ -3,6 +3,9 @@
 This repository deploys the read-only dashboard to Cloudflare Pages through
 `.github/workflows/deploy-dashboard-cloudflare.yml`.
 
+For deploy-impact verification surfaces and PR-safe observability checks, see
+`docs/readiness/deployment-observability.md`.
+
 The workflow uses the existing deploy path instead of a fake release or no-op
 job:
 
