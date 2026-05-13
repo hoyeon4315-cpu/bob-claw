@@ -2,9 +2,9 @@ name: Readiness / Safety Blocker
 description: Report a blocker that prevents readiness work or safe execution from progressing.
 title: "[Blocker] "
 labels:
-  - readiness
-  - safety
-  - blocker
+  - readiness/blocker
+  - priority/P1
+  - safety/live-path
 body:
   - type: markdown
     attributes:

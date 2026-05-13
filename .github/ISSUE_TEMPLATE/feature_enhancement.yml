@@ -2,8 +2,8 @@ name: Feature / Enhancement
 description: Propose a useful improvement for BOB Claw that stays within committed scope.
 title: "[Feature] "
 labels:
-  - enhancement
-  - feature
+  - type/feature
+  - priority/P2
 body:
   - type: markdown
     attributes:

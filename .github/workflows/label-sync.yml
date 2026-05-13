@@ -1,0 +1,50 @@
+name: label-sync
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/labels.yml"
+      - ".github/workflows/label-sync.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync tracked labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ruby <<'RUBY'
+          require 'json'
+          require 'set'
+          require 'yaml'
+
+          labels = YAML.safe_load(File.read('.github/labels.yml'), permitted_classes: [], aliases: false)
+          existing = JSON.parse(`gh label list --limit 200 --json name`)
+            .map { |label| label.fetch('name') }
+            .to_set
+
+          labels.each do |label|
+            name = label.fetch('name')
+            args = [
+              '--color',
+              label.fetch('color'),
+              '--description',
+              label.fetch('description'),
+            ]
+
+            if existing.include?(name)
+              system('gh', 'label', 'edit', name, *args, exception: true)
+            else
+              system('gh', 'label', 'create', name, *args, exception: true)
+            end
+          end
+          RUBY
