@@ -1,0 +1,107 @@
+name: Bug / Regression
+description: Report a broken behavior, failed path, or regression in BOB Claw.
+title: "[Bug] "
+labels:
+  - bug
+  - regression
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for broken behavior, regressions, or incorrect results.
+
+        Do not paste secrets, private keys, API tokens, wallet secrets, or other sensitive values. Redact them and use safe placeholders instead.
+        This issue does not authorize deploys, live trading, signer changes, cap changes, or kill-switch bypasses.
+  - type: dropdown
+    id: affected_area
+    attributes:
+      label: Affected area
+      description: Choose the closest subsystem or surface.
+      options:
+        - Strategy / opportunity discovery
+        - Policy / safety / signer boundary
+        - Payback / capital / treasury
+        - Dashboard / public status surface
+        - Docs / tooling / tests
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+      placeholder: Describe the correct result in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: observed_behavior
+    attributes:
+      label: Observed behavior
+      description: What happened instead?
+      placeholder: Describe the wrong result, error, or regression.
+    validations:
+      required: true
+  - type: textarea
+    id: exact_command_output_evidence
+    attributes:
+      label: Exact command output / evidence
+      description: Paste the exact command, terminal output, logs, screenshots, or file references that prove the issue. Redact secrets.
+      render: shell
+      placeholder: |
+        $ npm run <command>
+        <exact output here>
+    validations:
+      required: true
+  - type: dropdown
+    id: safety_impact
+    attributes:
+      label: Safety impact
+      description: Does this touch live trading, signer, payback, capital, or kill-switch boundaries?
+      options:
+        - None / offline only
+        - Possible live-path impact
+        - Direct live-path impact
+    validations:
+      required: true
+  - type: textarea
+    id: generated_runtime_files_touched
+    attributes:
+      label: Generated/runtime files touched
+      description: List any generated/runtime/dashboard public JSON, logs, data snapshots, build artifacts, coverage, or dependency/cache paths touched. Write "none" if not applicable.
+      placeholder: |
+        none
+    validations:
+      required: true
+  - type: dropdown
+    id: live_path_impact
+    attributes:
+      label: Live-path impact
+      description: Does this affect any live execution or settlement path?
+      options:
+        - No
+        - Yes
+        - Unsure
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety_acknowledgement
+    attributes:
+      label: Safety acknowledgement
+      description: Confirm the issue is described without asking for unsafe runtime changes.
+      options:
+        - label: I have not attached secrets, private keys, API tokens, or wallet secrets.
+          required: true
+        - label: I will not ask this issue to bypass policy, caps, signer, or kill-switch controls.
+          required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps to reproduce, if known.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: false

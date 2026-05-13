@@ -1,0 +1,113 @@
+name: Readiness / Safety Blocker
+description: Report a blocker that prevents readiness work or safe execution from progressing.
+title: "[Blocker] "
+labels:
+  - readiness
+  - safety
+  - blocker
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a blocker that stops readiness progress, safe execution, or a required verification path.
+
+        Do not paste secrets, private keys, API tokens, wallet secrets, or other sensitive values. Redact them and use safe placeholders instead.
+        This issue does not authorize deploys, live trading, signer changes, cap changes, or kill-switch bypasses.
+  - type: dropdown
+    id: affected_area
+    attributes:
+      label: Affected area
+      description: Choose the closest subsystem or surface.
+      options:
+        - Policy / safety / signer boundary
+        - Payback / capital / treasury
+        - Dashboard / public status surface
+        - Strategy / opportunity discovery
+        - Docs / tooling / tests
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: blocker_summary
+    attributes:
+      label: Blocker summary
+      description: State the blocker in one short paragraph.
+      placeholder: Explain what is blocked and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What should be possible once the blocker is resolved?
+      placeholder: Describe the desired readiness or safety outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: observed_behavior
+    attributes:
+      label: Observed behavior
+      description: What is happening now?
+      placeholder: Describe the current blocker, error, or missing condition.
+    validations:
+      required: true
+  - type: textarea
+    id: exact_command_output_evidence
+    attributes:
+      label: Exact command output / evidence
+      description: Paste the exact command, terminal output, logs, screenshots, or file references that prove the blocker. Redact secrets.
+      render: shell
+      placeholder: |
+        $ npm run <readiness-check>
+        <exact output here>
+    validations:
+      required: true
+  - type: dropdown
+    id: safety_impact
+    attributes:
+      label: Safety impact
+      description: Does this affect live trading, signer, payback, capital, or kill-switch boundaries?
+      options:
+        - None / offline only
+        - Possible live-path impact
+        - Direct live-path impact
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety_controls
+    attributes:
+      label: Safety controls
+      description: Required when the blocker touches live trading, signer, payback, capital, or kill-switch paths.
+      options:
+        - label: I will not ask this issue to bypass policy, caps, signer, or kill-switch controls.
+          required: true
+        - label: I have not attached secrets, private keys, API tokens, or wallet secrets.
+          required: true
+  - type: textarea
+    id: generated_runtime_files_touched
+    attributes:
+      label: Generated/runtime files touched
+      description: List any generated/runtime/dashboard public JSON, logs, data snapshots, build artifacts, coverage, or dependency/cache paths touched. Write "none" if not applicable.
+      placeholder: |
+        none
+    validations:
+      required: true
+  - type: dropdown
+    id: live_path_impact
+    attributes:
+      label: Live-path impact
+      description: Does this affect any live execution or settlement path?
+      options:
+        - No
+        - Yes
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: remediation_hypothesis
+    attributes:
+      label: Remediation hypothesis
+      description: If you have a likely fix path, describe it without asking for unsafe runtime changes.
+      placeholder: Explain the safest likely next step.
+    validations:
+      required: false
