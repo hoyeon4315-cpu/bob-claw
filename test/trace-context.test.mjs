@@ -26,10 +26,14 @@ test("trace context propagates request id and parent span across child work", ()
     boundary: "http",
     name: "dashboard-probe",
     requestId: "operator-check-42",
+    component: "status-dashboard",
+    operation: "ingress",
+    startedAt: "2026-05-13T00:00:00.000Z",
   });
   const child = childTraceContext(root, {
     boundary: "status",
     name: "build-dashboard",
+    operation: "build_dashboard_status",
   });
 
   assert.equal(root.requestId, "operator-check-42");
@@ -38,22 +42,44 @@ test("trace context propagates request id and parent span across child work", ()
   assert.equal(child.requestId, root.requestId);
   assert.equal(child.parentSpanId, root.spanId);
   assert.notEqual(child.spanId, root.spanId);
+  assert.equal(child.component, "status-dashboard");
+  assert.equal(child.operation, "build_dashboard_status");
+  assert.equal(child.startedAt, "2026-05-13T00:00:00.000Z");
 });
 
 test("trace context round-trips through request headers", () => {
   const traceId = "1234567890abcdef1234567890abcdef";
+  const parentSpanId = "1111111111111111";
   const context = traceContextFromHeaders({
+    traceparent: `00-${traceId}-${parentSpanId}-01`,
     "X-Request-ID": "dash-req-7",
-    "X-Trace-ID": traceId,
+    "X-Parent-Span-ID": parentSpanId,
   });
 
   assert.equal(context.traceId, traceId);
   assert.equal(context.requestId, "dash-req-7");
+  assert.equal(context.parentSpanId, parentSpanId);
   assert.deepEqual(traceHeaders(context), {
     "X-Request-ID": "dash-req-7",
     "X-Trace-ID": traceId,
     "X-Span-ID": context.spanId,
+    "X-Parent-Span-ID": parentSpanId,
+    traceparent: `00-${traceId}-${context.spanId}-01`,
   });
+});
+
+test("trace context rejects invalid inbound ids and falls back to generated safe values", () => {
+  const context = traceContextFromHeaders({
+    traceparent: "00-xyz-xyz-01",
+    "X-Request-ID": "bad id with spaces",
+    "X-Trace-ID": "not-hex",
+    "X-Span-ID": "short",
+  });
+
+  assert.equal(isValidTraceId(context.traceId), true);
+  assert.equal(context.requestId.startsWith("req-"), true);
+  assert.equal(context.requestId.includes(" "), false);
+  assert.equal(context.parentSpanId, null);
 });
 
 test("trace metadata drops sensitive attributes before logs use it", async () => {

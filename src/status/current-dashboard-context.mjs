@@ -299,6 +299,7 @@ export async function buildCurrentDashboardContext({
   logsDir = join(dataDir, "..", "logs"),
   address = null,
   syncStageAudit = true,
+  traceContext = null,
 } = {}) {
   const now = new Date().toISOString();
   const state = await loadCanaryState({ address, dataDir });
@@ -526,7 +527,7 @@ export async function buildCurrentDashboardContext({
       radarBoard,
       radarCapReview,
     },
-    { now },
+    { now, traceContext },
   );
 
   // P1/P2 parity floor injection — deterministic, pure slices
@@ -1192,6 +1193,7 @@ export async function buildCurrentDashboardContext({
   return {
     state,
     dashboardStatus,
+    traceContext,
     canaryInputs,
     canarySelectionGap,
     reviewPackage,
