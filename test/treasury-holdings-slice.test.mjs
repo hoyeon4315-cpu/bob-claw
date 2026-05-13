@@ -167,7 +167,12 @@ test("treasury holdings prefer fresh whole-wallet inventory when address scan da
           },
           scanErrors: [
             { kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" },
-            { kind: "token", chain: "ethereum", token: "0x0555", message: "All RPC endpoints failed for chain: ethereum" },
+            {
+              kind: "token",
+              chain: "ethereum",
+              token: "0x0555",
+              message: "All RPC endpoints failed for chain: ethereum",
+            },
           ],
         },
       ],
@@ -176,74 +181,77 @@ test("treasury holdings prefer fresh whole-wallet inventory when address scan da
 
   assert.equal(holdings.source, "whole_wallet_inventory");
   assert.equal(holdings.scanErrorCount, 1);
-  assert.deepEqual(holdings.scanErrors.map((error) => error.provider || error.chain), ["ethereum"]);
+  assert.deepEqual(
+    holdings.scanErrors.map((error) => error.provider || error.chain),
+    ["ethereum"],
+  );
   assert.equal(holdings.totalUsd, 12.2);
   assert.equal(holdings.externalWalletUsd, 25);
   assert.equal(holdings.unclassifiedUsd, 12.8);
-  assert.equal(holdings.items.some((item) => item.sym === "other"), false);
+  assert.equal(
+    holdings.items.some((item) => item.sym === "other"),
+    false,
+  );
 });
 
 test("treasury holdings ignore cached Zerion full-wallet coverage for live totals", () => {
-  const holdings = buildTreasuryHoldingsSlice(
-    [],
-    {
-      generatedAt: "2026-04-26T07:05:00.000Z",
-      wholeWalletRecords: [
-        {
-          observedAt: "2026-04-26T06:45:00.000Z",
-          totalUsd: 250,
-          native: [],
-          tokenBalances: [
-            {
-              chain: "base",
-              ticker: "USDC",
-              actualDecimal: 220,
-              estimatedUsd: 220,
-            },
-            {
-              chain: null,
-              ticker: "OTHER",
-              actualDecimal: 0,
-              estimatedUsd: 30,
-              family: "external_unclassified",
-            },
-          ],
-          summary: {
-            itemizedWalletUsd: 220,
-            chainCount: 1,
-            scanErrorCount: 0,
-            externalWalletUsd: 250,
-            externalUnclassifiedUsd: 30,
-            externalProvider: "zerion",
+  const holdings = buildTreasuryHoldingsSlice([], {
+    generatedAt: "2026-04-26T07:05:00.000Z",
+    wholeWalletRecords: [
+      {
+        observedAt: "2026-04-26T06:45:00.000Z",
+        totalUsd: 250,
+        native: [],
+        tokenBalances: [
+          {
+            chain: "base",
+            ticker: "USDC",
+            actualDecimal: 220,
+            estimatedUsd: 220,
           },
-          scanErrors: [],
-        },
-        {
-          observedAt: "2026-04-26T07:04:00.000Z",
-          totalUsd: 214,
-          native: [],
-          tokenBalances: [
-            {
-              chain: "base",
-              ticker: "USDC",
-              actualDecimal: 214,
-              estimatedUsd: 214,
-            },
-          ],
-          summary: {
-            itemizedWalletUsd: 214,
-            chainCount: 1,
-            scanErrorCount: 1,
-            externalWalletUsd: null,
-            externalUnclassifiedUsd: null,
+          {
+            chain: null,
+            ticker: "OTHER",
+            actualDecimal: 0,
+            estimatedUsd: 30,
+            family: "external_unclassified",
           },
-          scanErrors: [
-            { kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" },
-          ],
+        ],
+        summary: {
+          itemizedWalletUsd: 220,
+          chainCount: 1,
+          scanErrorCount: 0,
+          externalWalletUsd: 250,
+          externalUnclassifiedUsd: 30,
+          externalProvider: "zerion",
         },
-      ],
-    },
-  );
+        scanErrors: [],
+      },
+      {
+        observedAt: "2026-04-26T07:04:00.000Z",
+        totalUsd: 214,
+        native: [],
+        tokenBalances: [
+          {
+            chain: "base",
+            ticker: "USDC",
+            actualDecimal: 214,
+            estimatedUsd: 214,
+          },
+        ],
+        summary: {
+          itemizedWalletUsd: 214,
+          chainCount: 1,
+          scanErrorCount: 1,
+          externalWalletUsd: null,
+          externalUnclassifiedUsd: null,
+        },
+        scanErrors: [
+          { kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" },
+        ],
+      },
+    ],
+  });
 
   assert.equal(holdings.totalUsd, 214);
   assert.equal(holdings.itemizedSupportedWalletUsd, 214);
@@ -255,46 +263,46 @@ test("treasury holdings ignore cached Zerion full-wallet coverage for live total
   assert.equal(holdings.walletCoverage, "partial_supported");
   assert.equal(holdings.externalWalletUsd, null);
   assert.equal(holdings.unclassifiedUsd, null);
-  assert.equal(holdings.items.some((item) => item.sym === "other"), false);
+  assert.equal(
+    holdings.items.some((item) => item.sym === "other"),
+    false,
+  );
 });
 
 test("treasury holdings preserves full_rpc coverage from closed tx-derived asset universe", () => {
-  const holdings = buildTreasuryHoldingsSlice(
-    [],
-    {
-      generatedAt: "2026-05-05T22:30:00.000Z",
-      wholeWalletRecords: [
-        {
-          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-          observedAt: "2026-05-05T22:29:00.000Z",
-          totalUsd: 100,
-          native: [],
-          tokenBalances: [
-            {
-              chain: "base",
-              ticker: "USDC",
-              actualDecimal: 100,
-              estimatedUsd: 100,
-            },
-          ],
-          summary: {
-            itemizedWalletUsd: 100,
-            chainCount: 1,
-            scanErrorCount: 0,
-            walletCoverage: "full_rpc",
-            assetUniverseStatus: "closed",
-            unknownAssetBalanceCount: 0,
+  const holdings = buildTreasuryHoldingsSlice([], {
+    generatedAt: "2026-05-05T22:30:00.000Z",
+    wholeWalletRecords: [
+      {
+        address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+        observedAt: "2026-05-05T22:29:00.000Z",
+        totalUsd: 100,
+        native: [],
+        tokenBalances: [
+          {
+            chain: "base",
+            ticker: "USDC",
+            actualDecimal: 100,
+            estimatedUsd: 100,
           },
-          assetUniverse: {
-            status: "closed",
-            targetCount: 3,
-            unknownTargetCount: 0,
-          },
-          scanErrors: [],
+        ],
+        summary: {
+          itemizedWalletUsd: 100,
+          chainCount: 1,
+          scanErrorCount: 0,
+          walletCoverage: "full_rpc",
+          assetUniverseStatus: "closed",
+          unknownAssetBalanceCount: 0,
         },
-      ],
-    },
-  );
+        assetUniverse: {
+          status: "closed",
+          targetCount: 3,
+          unknownTargetCount: 0,
+        },
+        scanErrors: [],
+      },
+    ],
+  });
 
   assert.equal(holdings.walletCoverage, "full_rpc");
   assert.equal(holdings.address, "0x96262bE63AA687563789225c2fE898c27a3b0AE4");
@@ -303,50 +311,47 @@ test("treasury holdings preserves full_rpc coverage from closed tx-derived asset
 });
 
 test("treasury holdings preserves freshness and price-source metadata for dashboard asset tracking", () => {
-  const holdings = buildTreasuryHoldingsSlice(
-    [],
-    {
-      generatedAt: "2026-05-08T13:46:00.000Z",
-      wholeWalletRecords: [
-        {
-          observedAt: "2026-05-08T13:45:30.000Z",
-          totalUsd: 100,
-          native: [],
-          tokenBalances: [
-            {
-              chain: "base",
-              ticker: "USDC",
-              actualDecimal: 100,
-              estimatedUsd: 100,
-              priceSource: {
-                name: "chainlink:usd_stable",
-                type: "chainlink_onchain_feed",
-                observedAt: "2026-05-08T13:45:30.000Z",
-                divergencePct: 0,
-              },
-              priceFreshness: "fresh",
-              freshness: "fresh",
-              confidence: "verified_current",
+  const holdings = buildTreasuryHoldingsSlice([], {
+    generatedAt: "2026-05-08T13:46:00.000Z",
+    wholeWalletRecords: [
+      {
+        observedAt: "2026-05-08T13:45:30.000Z",
+        totalUsd: 100,
+        native: [],
+        tokenBalances: [
+          {
+            chain: "base",
+            ticker: "USDC",
+            actualDecimal: 100,
+            estimatedUsd: 100,
+            priceSource: {
+              name: "chainlink:usd_stable",
+              type: "chainlink_onchain_feed",
+              observedAt: "2026-05-08T13:45:30.000Z",
+              divergencePct: 0,
             },
-          ],
-          summary: {
-            itemizedWalletUsd: 100,
-            chainCount: 1,
-            scanErrorCount: 0,
-            walletCoverage: "full_rpc",
-            assetUniverseStatus: "closed",
-            unknownAssetBalanceCount: 0,
+            priceFreshness: "fresh",
+            freshness: "fresh",
+            confidence: "verified_current",
           },
-          assetUniverse: {
-            status: "closed",
-            targetCount: 1,
-            unknownTargetCount: 0,
-          },
-          scanErrors: [],
+        ],
+        summary: {
+          itemizedWalletUsd: 100,
+          chainCount: 1,
+          scanErrorCount: 0,
+          walletCoverage: "full_rpc",
+          assetUniverseStatus: "closed",
+          unknownAssetBalanceCount: 0,
         },
-      ],
-    },
-  );
+        assetUniverse: {
+          status: "closed",
+          targetCount: 1,
+          unknownTargetCount: 0,
+        },
+        scanErrors: [],
+      },
+    ],
+  });
 
   assert.equal(holdings.items.length, 1);
   assert.equal(holdings.items[0].freshness, "fresh");
@@ -356,44 +361,114 @@ test("treasury holdings preserves freshness and price-source metadata for dashbo
   assert.equal(holdings.items[0].priceDivergenceStatus, "ok");
 });
 
-test("treasury holdings surfaces tx-derived unknown asset balances for dashboard blockers", () => {
-  const holdings = buildTreasuryHoldingsSlice(
-    [],
-    {
-      generatedAt: "2026-05-05T22:30:00.000Z",
-      wholeWalletRecords: [
-        {
-          observedAt: "2026-05-05T22:29:00.000Z",
-          totalUsd: 0,
-          native: [],
-          tokenBalances: [
-            {
-              chain: "base",
-              ticker: "NEW",
-              actualDecimal: 1,
-              estimatedUsd: null,
-              trackingStatus: "pending_whitelist_review",
-            },
-          ],
-          summary: {
-            itemizedWalletUsd: 0,
-            chainCount: 1,
-            scanErrorCount: 0,
-            walletCoverage: "partial_supported",
-            assetUniverseStatus: "needs_review",
-            unknownAssetBalanceCount: 1,
+test("treasury holdings surfaces stale wallet item counts for asset tracking", () => {
+  const holdings = buildTreasuryHoldingsSlice([], {
+    generatedAt: "2026-05-08T13:46:00.000Z",
+    wholeWalletRecords: [
+      {
+        observedAt: "2026-05-08T13:44:00.000Z",
+        totalUsd: 100,
+        native: [],
+        tokenBalances: [
+          {
+            chain: "base",
+            ticker: "USDC",
+            actualDecimal: 100,
+            estimatedUsd: 100,
+            freshness: "stale",
+            priceFreshness: "fresh",
           },
-          assetUniverse: {
-            status: "needs_review",
-            targetCount: 1,
-            unknownTargetCount: 1,
-          },
-          unknownAssetBalances: [{ chain: "base", ticker: "NEW", actualDecimal: 1 }],
-          scanErrors: [],
+        ],
+        summary: {
+          itemizedWalletUsd: 100,
+          chainCount: 1,
+          scanErrorCount: 0,
+          walletCoverage: "full_rpc",
         },
-      ],
+        scanErrors: [],
+      },
+    ],
+  });
+
+  assert.equal(holdings.staleItemCount, 1);
+  assert.equal(holdings.stalePriceItemCount, 0);
+  assert.equal(holdings.oldestMaterialSourceObservedAt, "2026-05-08T13:44:00.000Z");
+});
+
+test("treasury holdings does not count stale fallback balances as current wallet truth", () => {
+  const holdings = buildTreasuryHoldingsSlice(
+    [
+      {
+        observedAt: "2026-05-08T13:44:00.000Z",
+        native: [],
+        tokens: [
+          {
+            chain: "sei",
+            ticker: "wBTC",
+            actualDecimal: 0.001,
+            estimatedUsd: 80,
+            staleFallback: true,
+            scanError: { message: "All RPC endpoints failed for chain: sei" },
+          },
+        ],
+        summary: {
+          estimatedWalletUsd: 80,
+          activeChainCount: 1,
+          supportedChainCount: 11,
+          scanErrorCount: 1,
+        },
+        scanErrors: [{ kind: "token", chain: "sei", message: "All RPC endpoints failed for chain: sei" }],
+      },
+    ],
+    {
+      generatedAt: "2026-05-08T13:46:00.000Z",
     },
   );
+
+  assert.equal(holdings.items.length, 1);
+  assert.equal(holdings.items[0].countedInWalletTotal, false);
+  assert.equal(holdings.items[0].freshness, "failed");
+  assert.equal(holdings.scanErrorCount, 1);
+  assert.equal(holdings.totalUsd, 0);
+  assert.equal(holdings.itemizedSupportedWalletUsd, 0);
+  assert.equal(holdings.staleItemCount, 1);
+});
+
+test("treasury holdings surfaces tx-derived unknown asset balances for dashboard blockers", () => {
+  const holdings = buildTreasuryHoldingsSlice([], {
+    generatedAt: "2026-05-05T22:30:00.000Z",
+    wholeWalletRecords: [
+      {
+        observedAt: "2026-05-05T22:29:00.000Z",
+        totalUsd: 0,
+        native: [],
+        tokenBalances: [
+          {
+            chain: "base",
+            ticker: "NEW",
+            actualDecimal: 1,
+            estimatedUsd: null,
+            trackingStatus: "pending_whitelist_review",
+          },
+        ],
+        summary: {
+          itemizedWalletUsd: 0,
+          chainCount: 1,
+          scanErrorCount: 0,
+          walletCoverage: "partial_supported",
+          assetUniverseStatus: "needs_review",
+          unknownAssetBalanceCount: 1,
+        },
+        assetUniverse: {
+          status: "needs_review",
+          targetCount: 1,
+          unknownTargetCount: 1,
+        },
+        unknownAssetBalances: [{ chain: "base", ticker: "NEW", actualDecimal: 1 }],
+        scanErrors: [],
+      },
+    ],
+  });
 
   assert.equal(holdings.walletCoverage, "partial_supported");
   assert.equal(holdings.assetUniverse.unknownTargetCount, 1);
@@ -402,46 +477,49 @@ test("treasury holdings surfaces tx-derived unknown asset balances for dashboard
 });
 
 test("treasury holdings excludes protocol-reader-covered share tokens from wallet totals", () => {
-  const holdings = buildTreasuryHoldingsSlice(
-    [],
-    {
-      generatedAt: "2026-05-05T22:30:00.000Z",
-      wholeWalletRecords: [
-        {
-          observedAt: "2026-05-05T22:29:00.000Z",
-          totalUsd: 50,
-          native: [],
-          tokenBalances: [
-            {
-              chain: "base",
-              ticker: "yoUSD",
-              actualDecimal: 50,
-              estimatedUsd: 50,
-              countedInWalletTotal: false,
-              trackingStatus: "protocol_reader_covered",
-            },
-            {
-              chain: "base",
-              ticker: "USDC",
-              actualDecimal: 10,
-              estimatedUsd: 10,
-            },
-          ],
-          summary: {
-            itemizedWalletUsd: 10,
-            chainCount: 1,
-            scanErrorCount: 0,
-            walletCoverage: "full_rpc",
+  const holdings = buildTreasuryHoldingsSlice([], {
+    generatedAt: "2026-05-05T22:30:00.000Z",
+    wholeWalletRecords: [
+      {
+        observedAt: "2026-05-05T22:29:00.000Z",
+        totalUsd: 50,
+        native: [],
+        tokenBalances: [
+          {
+            chain: "base",
+            ticker: "yoUSD",
+            actualDecimal: 50,
+            estimatedUsd: 50,
+            countedInWalletTotal: false,
+            trackingStatus: "protocol_reader_covered",
           },
-          scanErrors: [],
+          {
+            chain: "base",
+            ticker: "USDC",
+            actualDecimal: 10,
+            estimatedUsd: 10,
+          },
+        ],
+        summary: {
+          itemizedWalletUsd: 10,
+          chainCount: 1,
+          scanErrorCount: 0,
+          walletCoverage: "full_rpc",
         },
-      ],
-    },
-  );
+        scanErrors: [],
+      },
+    ],
+  });
 
   assert.equal(holdings.totalUsd, 10);
-  assert.equal(holdings.items.some((item) => item.name === "yoUSD"), false);
-  assert.equal(holdings.items.some((item) => item.name === "USDC"), true);
+  assert.equal(
+    holdings.items.some((item) => item.name === "yoUSD"),
+    false,
+  );
+  assert.equal(
+    holdings.items.some((item) => item.name === "USDC"),
+    true,
+  );
 });
 
 test("treasury holdings preserve injected protocol APR entries for dashboard consumers", () => {
