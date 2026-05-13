@@ -9,6 +9,8 @@ updates:
       time: "03:00"
       timezone: "UTC"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "npm"
@@ -37,6 +39,8 @@ updates:
       time: "03:30"
       timezone: "UTC"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "github-actions"
