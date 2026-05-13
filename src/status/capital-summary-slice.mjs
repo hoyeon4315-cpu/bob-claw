@@ -43,20 +43,20 @@ function deployedPositionItem(position = {}) {
   const usd = finiteNumber(position.valueUsd) ??
     finiteNumber(position.markUsd) ??
     finiteNumber(position.currentValueUsd) ??
-    finiteNumber(position.positionValueUsd) ??
-    finiteNumber(position.capUsd);
+    finiteNumber(position.positionValueUsd);
   const entryUsd = finiteNumber(position.capUsd);
   const symbol = positionAssetSymbol(position);
   const observedAt = position.markObservedAt || position.lastObservedAt || null;
-  const markFreshness = position.markFreshness || (observedAt ? "fresh" : null);
-  const markConfidence = position.markConfidence || (Number.isFinite(usd) && usd <= 0 ? "verified_current" : null);
+  const hasMarkFailure = Boolean(position.markFailureKind || position.markFailureMessage);
+  const markFreshness = position.markFreshness || (hasMarkFailure ? "failed" : observedAt ? "fresh" : null);
+  const markConfidence = position.markConfidence || (hasMarkFailure ? "adapter_missing" : Number.isFinite(usd) && usd <= 0 ? "verified_current" : null);
   return {
     sym: symbol,
     name: position.label || `Position ${position.opportunityId || ""}`.trim(),
     chain: position.chain || null,
     protocol: position.protocol || null,
     amount: null,
-    usd: Number.isFinite(usd) ? usd : 0,
+    usd: Number.isFinite(usd) ? usd : null,
     entryUsd,
     family: "position",
     status: "deployed",
@@ -131,7 +131,7 @@ export function buildCapitalSummarySlice({
   const walletItems = Array.isArray(walletHoldings?.items) ? walletHoldings.items : [];
   const positionItems = (merklActivePositions?.items || []).map(deployedPositionItem);
   const unmarkedProtocolPositionCount = positionItems.filter(
-    (item) => (Number(item.usd) || 0) > 0 && !isCurrentProtocolMark(item),
+    (item) => !isCurrentProtocolMark(item),
   ).length;
   const protocolMarkFailedCount = Number(protocolPositionMarks?.failedPositionCount || 0);
   const protocolMarkStaleCount = Number(protocolPositionMarks?.stalePositionCount || 0);

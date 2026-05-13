@@ -923,10 +923,10 @@ test("capital summary treats unmarked deployed Merkl positions as verified minim
   });
 
   assert.equal(slice.walletUsd, 205.5);
-  assert.equal(slice.deployedUsd, 147.69);
-  assert.equal(slice.accountedUsd, 353.19);
+  assert.equal(slice.deployedUsd, 0);
+  assert.equal(slice.accountedUsd, 205.5);
   assert.equal(slice.executorEstimatedTotalUsd, null);
-  assert.equal(slice.totalUsd, 353.19);
+  assert.equal(slice.totalUsd, 205.5);
   assert.equal(slice.totalUsdSource, "accounted_wallet_plus_positions");
   assert.equal(slice.walletSource, null);
   assert.equal(slice.walletObservedAt, null);
@@ -940,16 +940,18 @@ test("capital summary treats unmarked deployed Merkl positions as verified minim
   assert.equal(slice.fullWalletStale, false);
   assert.equal(slice.walletCoverage, "full_external");
   assert.equal(slice.displayWalletUsd, 205.5);
-  assert.equal(slice.displayTotalUsd, 353.19);
+  assert.equal(slice.displayTotalUsd, 205.5);
   assert.equal(slice.displayTotalUsdSource, "supported_wallet_plus_positions_external_reference");
   assert.equal(slice.currentWalletUsd, 205.5);
-  assert.equal(slice.protocolDeployedUsd, 147.69);
-  assert.equal(slice.currentTotalUsd, 353.19);
+  assert.equal(slice.protocolDeployedUsd, 0);
+  assert.equal(slice.currentTotalUsd, 205.5);
   assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
   assert.equal(slice.assetConfidence, "verified_minimum");
   assert.equal(slice.assetHeadline, "Verified minimum assets");
   assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
   assert.equal(slice.activePositionCount, 2);
+  assert.equal(slice.positionItems[0].usd, null);
+  assert.equal(slice.positionItems[0].confidence, null);
   assert.deepEqual(
     slice.positionItems.map((item) => item.protocol),
     ["yo", "euler"],
@@ -1261,6 +1263,41 @@ test("capital summary surfaces adapter gaps and recent signer settlement as reco
   );
 });
 
+test("capital summary does not price failed protocol marks from entry cap", () => {
+  const slice = buildCapitalSummarySlice({
+    walletHoldings: {
+      totalUsd: 267.79,
+      walletCoverage: "partial_supported",
+      items: [{ sym: "usdc", usd: 267.79 }],
+    },
+    merklActivePositions: {
+      items: [
+        {
+          opportunityId: "pendle-direct",
+          label: "pendle direct",
+          chain: "base",
+          protocol: "pendle",
+          pair: ["usdc"],
+          capUsd: 5,
+          markFailureKind: "rpc_failed",
+          markFailureMessage: "missing revert data",
+          lastObservedAt: "2026-05-13T10:24:44.361Z",
+        },
+      ],
+    },
+    generatedAt: "2026-05-13T22:14:46.367Z",
+  });
+
+  assert.equal(slice.protocolDeployedUsd, 0);
+  assert.equal(slice.currentTotalUsd, 267.79);
+  assert.equal(slice.unmarkedProtocolPositionCount, 1);
+  assert.equal(slice.positionItems[0].usd, null);
+  assert.equal(slice.positionItems[0].entryUsd, 5);
+  assert.equal(slice.positionItems[0].freshness, "failed");
+  assert.equal(slice.positionItems[0].confidence, "adapter_missing");
+  assert.equal(slice.positionItems[0].priceFreshness, "failed");
+});
+
 test("capital summary ignores pending signer stages once a final stage exists for the same intent", () => {
   const slice = buildCapitalSummarySlice({
     walletHoldings: {
@@ -1380,21 +1417,21 @@ test("capital summary ignores stale external wallet references for live wallet a
     generatedAt: "2026-04-27T00:00:00.000Z",
   });
 
-  assert.equal(slice.accountedUsd, 284.5);
+  assert.equal(slice.accountedUsd, 230.88);
   assert.equal(slice.executorEstimatedTotalUsd, null);
   assert.equal(slice.capitalPlanRefillRequiredUsd, 469.01);
-  assert.equal(slice.totalUsd, 284.5);
+  assert.equal(slice.totalUsd, 230.88);
   assert.equal(slice.totalUsdSource, "accounted_wallet_plus_positions");
   assert.equal(slice.displayWalletUsd, 230.88);
-  assert.equal(slice.displayTotalUsd, 284.5);
+  assert.equal(slice.displayTotalUsd, 230.88);
   assert.equal(slice.displayTotalUsdSource, "partial_supported_wallet_plus_positions");
   assert.equal(slice.currentWalletUsd, 230.88);
-  assert.equal(slice.protocolDeployedUsd, 53.62);
-  assert.equal(slice.currentTotalUsd, 284.5);
-  assert.equal(slice.verifiedMinimumUsd, 284.5);
+  assert.equal(slice.protocolDeployedUsd, 0);
+  assert.equal(slice.currentTotalUsd, 230.88);
+  assert.equal(slice.verifiedMinimumUsd, 230.88);
   assert.equal(slice.estimatedUntrackedProtocolUsd, null);
-  assert.equal(slice.estimatedProtocolDeployedUsd, 53.62);
-  assert.equal(slice.estimatedCurrentTotalUsd, 284.5);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 0);
+  assert.equal(slice.estimatedCurrentTotalUsd, 230.88);
   assert.equal(slice.estimatedAssetHeadline, "Verified minimum assets");
   assert.equal(slice.estimatedTotalUsdSource, "verified_wallet_plus_tracked_protocols");
   assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
@@ -1446,12 +1483,12 @@ test("capital summary marks current total as a verified minimum when reconciliat
     generatedAt: "2026-05-02T20:30:00.000Z",
   });
 
-  assert.equal(slice.currentTotalUsd, 218.79);
-  assert.equal(slice.verifiedMinimumUsd, 218.79);
+  assert.equal(slice.currentTotalUsd, 213.23);
+  assert.equal(slice.verifiedMinimumUsd, 213.23);
   assert.equal(slice.capitalPlanRefillRequiredUsd, 454.56);
   assert.equal(slice.estimatedUntrackedProtocolUsd, null);
-  assert.equal(slice.estimatedProtocolDeployedUsd, 5.56);
-  assert.equal(slice.estimatedCurrentTotalUsd, 218.79);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 0);
+  assert.equal(slice.estimatedCurrentTotalUsd, 213.23);
   assert.equal(slice.estimatedAssetHeadline, "Verified minimum assets");
   assert.equal(slice.estimatedTotalUsdSource, "verified_wallet_plus_tracked_protocols");
   assert.equal(slice.assetConfidence, "verified_minimum");
@@ -1590,6 +1627,9 @@ test("flow dashboard slice exposes movement edges and policy rejection blockers"
   );
   assert.ok(movement, "expected Soneium -> Avalanche movement");
   assert.equal(movement.kind, "gateway_bridge");
+  assert.equal(movement.semanticLayer, "transport");
+  assert.equal(movement.positionLike, false);
+  assert.equal(movement.routeCategory, "gateway_transport");
   assert.equal(movement.routeProvider, "gateway");
   assert.equal(movement.viaGateway, true);
   assert.equal(movement.assetId, "wbtc");
@@ -1600,6 +1640,9 @@ test("flow dashboard slice exposes movement edges and policy rejection blockers"
   );
   assert.ok(directMovement, "expected Base -> Optimism direct movement");
   assert.equal(directMovement.kind, "direct_bridge");
+  assert.equal(directMovement.semanticLayer, "transport");
+  assert.equal(directMovement.positionLike, false);
+  assert.equal(directMovement.routeCategory, "third_party_bridge");
   assert.equal(directMovement.routeProvider, "lifi");
   assert.equal(directMovement.viaGateway, false);
   assert.equal(directMovement.assetId, "usdc");

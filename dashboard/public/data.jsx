@@ -205,6 +205,19 @@ function inferActivityAction(activity) {
   return activity?.status || 'activity';
 }
 
+const TRANSPORT_ONLY_PROTOCOLS = new Set([
+  'across',
+  'gaszip',
+  'gas_zip',
+  'li.fi',
+  'lifi',
+  'odos',
+]);
+
+function isTransportOnlyProtocol(protocol) {
+  return TRANSPORT_ONLY_PROTOCOLS.has(String(protocol || '').trim().toLowerCase());
+}
+
 function addSurfaceAsset(summary, assetId) {
   if (!assetId) return;
   if (!summary.assets.includes(assetId)) summary.assets.push(assetId);
@@ -253,7 +266,7 @@ function buildActivitySurfaces(activities = [], strategies = []) {
       addSurfaceAsset(chainSurface, assetId);
       if (!chainSurface.actions.includes(action)) chainSurface.actions.push(action);
     }
-    if (!chain || !protocol || !isDisplayableProtocolId(protocol)) continue;
+    if (!chain || !protocol || !isDisplayableProtocolId(protocol) || isTransportOnlyProtocol(protocol)) continue;
     const key = capitalProtocolKey(chain, protocol);
     const protocolSurface = (byProtocol[key] ||= {
       key,

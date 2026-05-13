@@ -621,7 +621,8 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(DATA_SOURCE, /const NON_PROTOCOL_ACTIVITY_IDS = new Set\(\[/);
     assert.match(DATA_SOURCE, /'wrapped_native'/);
     assert.match(DATA_SOURCE, /function isDisplayableProtocolId\(protocol\)/);
-    assert.match(DATA_SOURCE, /if \(!chain \|\| !protocol \|\| !isDisplayableProtocolId\(protocol\)\) continue;/);
+    assert.match(DATA_SOURCE, /function isTransportOnlyProtocol\(protocol\)/);
+    assert.match(DATA_SOURCE, /if \(!chain \|\| !protocol \|\| !isDisplayableProtocolId\(protocol\) \|\| isTransportOnlyProtocol\(protocol\)\) continue;/);
   });
 
   test("mindmap root view keeps protocol nodes hidden until chain zoom", () => {

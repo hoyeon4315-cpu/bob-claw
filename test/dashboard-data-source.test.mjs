@@ -39,6 +39,15 @@ test("dashboard data source estimates yield for live positions instead of forcin
   assert.doesNotMatch(DATA_JSX, /earnedUsd:\s*0,\s*\n\s*apyPct:/);
 });
 
+test("dashboard data source does not promote transport providers into protocol surfaces", () => {
+  assert.match(DATA_JSX, /const TRANSPORT_ONLY_PROTOCOLS = new Set\(\[/);
+  assert.match(DATA_JSX, /'lifi'/);
+  assert.match(DATA_JSX, /'across'/);
+  assert.match(DATA_JSX, /function isTransportOnlyProtocol\(protocol\)/);
+  assert.match(DATA_JSX, /isDisplayableProtocolId\(protocol\) \|\| isTransportOnlyProtocol\(protocol\)/);
+  assert.match(DATA_JSX, /STRATEGIES\.push\(\.\.\.activitySurfaces\.syntheticStrategies\)/);
+});
+
 test("dashboard data source refreshes on polling and window focus recovery", () => {
   assert.match(DATA_JSX, /async function refreshDashboardData\(\{ dispatch = true, payload = null \} = \{\}\)/);
   assert.match(DATA_JSX, /if \(!window\._DASHBOARD_REFRESH_IN_FLIGHT\)/);
