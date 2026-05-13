@@ -2,8 +2,9 @@ name: Bug / Regression
 description: Report a broken behavior, failed path, or regression in BOB Claw.
 title: "[Bug] "
 labels:
-  - bug
-  - regression
+  - type/bug
+  - priority/P1
+  - safety/no-secrets
 body:
   - type: markdown
     attributes:

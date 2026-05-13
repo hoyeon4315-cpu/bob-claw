@@ -1,0 +1,60 @@
+- name: priority/P0
+  color: B60205
+  description: Immediate live safety, secret exposure, signer bypass, or policy bypass incident.
+- name: priority/P1
+  color: D93F0B
+  description: High-priority safety, readiness blocker, or user-visible breakage for the next cycle.
+- name: priority/P2
+  color: FBCA04
+  description: Important reliability or maintainability work that should land soon without stop-line urgency.
+- name: priority/P3
+  color: 0E8A16
+  description: Low-urgency backlog, exploration, or cleanup behind active delivery and safety work.
+- name: type/bug
+  color: D73A4A
+  description: A defect, regression, incorrect behavior, or broken workflow that needs a fix.
+- name: type/feature
+  color: A2EEEF
+  description: New product, automation, or tooling capability.
+- name: type/chore
+  color: C5DEF5
+  description: Maintenance, refactor, dependency, or operational upkeep without a direct feature change.
+- name: type/docs
+  color: 0075CA
+  description: Documentation-only work such as runbooks, references, and agent guidance updates.
+- name: type/security
+  color: 8B1E3F
+  description: Secret handling, auth boundary, dependency risk, or exposure review.
+- name: area/runtime
+  color: 1D76DB
+  description: Runtime automation, executors, orchestrators, health loops, or execution-path code.
+- name: area/policy
+  color: 0E8A16
+  description: Deterministic policy rules, cap enforcement, guardrails, or risk checks.
+- name: area/signer
+  color: 5319E7
+  description: Signer daemon custody, signing adapters, nonce handling, or broadcast audit.
+- name: area/payback
+  color: FBCA04
+  description: BTC-first payback accounting, scheduling, reserve handling, or settlement proof.
+- name: area/capital
+  color: 006B75
+  description: Capital manager, refill or drain planning, treasury allocation, and chain inventory movement.
+- name: area/dashboard
+  color: 0052CC
+  description: Read-only dashboard UI, public status slices, and visibility schema surfaces.
+- name: area/ci
+  color: BFD4F2
+  description: CI workflows, validation jobs, and repository quality gates.
+- name: area/docs
+  color: C2E0C6
+  description: Docs, runbooks, onboarding, and written repository guidance.
+- name: safety/live-path
+  color: B60205
+  description: Touches live execution paths needing policy, signer, kill-switch, or receipt-proof review.
+- name: safety/no-secrets
+  color: D93F0B
+  description: Needs care to avoid exposing keys, tokens, sensitive config, or secrets in logs or code.
+- name: readiness/blocker
+  color: 5319E7
+  description: Blocks Agent Readiness or another required repository operability signal.
