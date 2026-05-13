@@ -187,7 +187,10 @@ describe("mindmap source guard", () => {
     assert.match(MINDMAP_JSX, /const PROTOCOL_BLOOM_MIN_RADIUS = 112;/);
     assert.match(MINDMAP_JSX, /const PROTOCOL_BLOOM_PADDING = 22;/);
     assert.match(MINDMAP_JSX, /\.\.\.items\.map\(\(item\) => Number\(item\.actualProtocolCapitalUsd \|\| 0\)\)/);
-    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(Number\(strategy\.capitalUsd \|\| 0\)\)/);
+    assert.match(MINDMAP_JSX, /\.\.\.items\.map\(\(item\) => Number\(item\.estimatedProtocolCapitalUsd \|\| item\.actualProtocolCapitalUsd \|\| 0\)\)/);
+    assert.match(MINDMAP_JSX, /const estimatedCapitalUsd = Number\(strategy\.estimatedCapitalUsd \|\| 0\)/);
+    assert.match(MINDMAP_JSX, /const capitalLabel = formatCompactUsdLabel\(capitalUsd > 0 \? capitalUsd : estimatedCapitalUsd\)/);
+    assert.match(MINDMAP_JSX, /usesEstimatedCapital \? 'Entry cap' : 'Capital'/);
     assert.match(MINDMAP_JSX, /const chainAvailableUsd = Number\(window\.CAPITAL\?\.walletByChain\?\.\[chainId\] \|\| 0\)/);
     assert.match(MINDMAP_JSX, /const chainDeployedUsd = Number\(window\.CAPITAL\?\.deployedByChain\?\.\[chainId\] \|\| 0\)/);
     assert.match(MINDMAP_JSX, /const chainTotalUsd = chainAvailableUsd \+ chainDeployedUsd/);

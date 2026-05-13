@@ -48,6 +48,16 @@ test("dashboard data source does not promote transport providers into protocol s
   assert.match(DATA_JSX, /STRATEGIES\.push\(\.\.\.activitySurfaces\.syntheticStrategies\)/);
 });
 
+test("dashboard data source carries unverified entry capital separately from verified marks", () => {
+  assert.match(DATA_JSX, /const estimatedDeployedByChain = \{\};/);
+  assert.match(DATA_JSX, /const estimatedByProtocol = \{\};/);
+  assert.match(DATA_JSX, /const estimatedUsd = Number\.isFinite\(usd\) && usd > 0/);
+  assert.match(DATA_JSX, /Number\(item\?\.unverifiedEntryUsd\)/);
+  assert.match(DATA_JSX, /unverifiedProtocolEntryUsd: Number\.isFinite\(holdings\?\.unverifiedProtocolEntryUsd\)/);
+  assert.match(DATA_JSX, /estimatedProtocolCapitalUsd: CAPITAL\.estimatedByProtocol/);
+  assert.match(DATA_JSX, /capitalValuationState: m\.markConfidence === 'adapter_missing' \|\| m\.markFailureKind \? 'mark_failed' : null/);
+});
+
 test("dashboard data source refreshes on polling and window focus recovery", () => {
   assert.match(DATA_JSX, /async function refreshDashboardData\(\{ dispatch = true, payload = null \} = \{\}\)/);
   assert.match(DATA_JSX, /if \(!window\._DASHBOARD_REFRESH_IN_FLIGHT\)/);

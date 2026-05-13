@@ -1178,14 +1178,21 @@ test("capital summary treats expired protocol marks as verified minimum", () => 
     generatedAt: "2026-05-03T12:01:00.000Z",
   });
 
-  assert.equal(slice.currentTotalUsd, 272.81);
-  assert.equal(slice.verifiedMinimumUsd, 272.81);
-  assert.equal(slice.protocolDeployedUsd, 5.02);
+  assert.equal(slice.currentTotalUsd, 267.79);
+  assert.equal(slice.verifiedMinimumUsd, 267.79);
+  assert.equal(slice.protocolDeployedUsd, 0);
+  assert.equal(slice.unverifiedProtocolEntryUsd, 5.56);
+  assert.equal(slice.estimatedUntrackedProtocolUsd, 5.56);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 5.56);
+  assert.equal(slice.estimatedCurrentTotalUsd, 273.35);
   assert.equal(slice.assetConfidence, "verified_minimum");
   assert.equal(slice.assetHeadline, "Verified minimum assets");
   assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
   assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
   assert.equal(slice.unmarkedProtocolPositionCount, 1);
+  assert.equal(slice.positionItems[0].usd, null);
+  assert.equal(slice.positionItems[0].staleReferenceUsd, 5.015801);
+  assert.equal(slice.positionItems[0].unverifiedEntryUsd, 5.56);
 });
 
 test("capital summary surfaces adapter gaps and recent signer settlement as reconciliation alerts", () => {
@@ -1290,6 +1297,10 @@ test("capital summary does not price failed protocol marks from entry cap", () =
 
   assert.equal(slice.protocolDeployedUsd, 0);
   assert.equal(slice.currentTotalUsd, 267.79);
+  assert.equal(slice.estimatedCurrentTotalUsd, 272.79);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 5);
+  assert.equal(slice.estimatedUntrackedProtocolUsd, 5);
+  assert.equal(slice.unverifiedProtocolEntryUsd, 5);
   assert.equal(slice.unmarkedProtocolPositionCount, 1);
   assert.equal(slice.positionItems[0].usd, null);
   assert.equal(slice.positionItems[0].entryUsd, 5);
@@ -1379,7 +1390,12 @@ test("capital summary treats unmarked protocol entries as a verified minimum", (
     generatedAt: "2026-05-03T00:46:00.000Z",
   });
 
-  assert.equal(slice.currentTotalUsd, 211.06);
+  assert.equal(slice.currentTotalUsd, 205.5);
+  assert.equal(slice.verifiedMinimumUsd, 205.5);
+  assert.equal(slice.unverifiedProtocolEntryUsd, 5.56);
+  assert.equal(slice.estimatedUntrackedProtocolUsd, 5.56);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 5.56);
+  assert.equal(slice.estimatedCurrentTotalUsd, 211.06);
   assert.equal(slice.assetConfidence, "verified_minimum");
   assert.equal(slice.assetHeadline, "Verified minimum assets");
   assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
@@ -1429,11 +1445,12 @@ test("capital summary ignores stale external wallet references for live wallet a
   assert.equal(slice.protocolDeployedUsd, 0);
   assert.equal(slice.currentTotalUsd, 230.88);
   assert.equal(slice.verifiedMinimumUsd, 230.88);
-  assert.equal(slice.estimatedUntrackedProtocolUsd, null);
-  assert.equal(slice.estimatedProtocolDeployedUsd, 0);
-  assert.equal(slice.estimatedCurrentTotalUsd, 230.88);
-  assert.equal(slice.estimatedAssetHeadline, "Verified minimum assets");
-  assert.equal(slice.estimatedTotalUsdSource, "verified_wallet_plus_tracked_protocols");
+  assert.equal(slice.estimatedUntrackedProtocolUsd, 53.62);
+  assert.equal(slice.unverifiedProtocolEntryUsd, 53.62);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 53.62);
+  assert.equal(slice.estimatedCurrentTotalUsd, 284.5);
+  assert.equal(slice.estimatedAssetHeadline, "Estimated total assets");
+  assert.equal(slice.estimatedTotalUsdSource, "automation_estimate_with_verified_wallet_floor");
   assert.equal(slice.assetFormula, "current_wallet_plus_tracked_protocol_positions");
   assert.equal(slice.walletCoverage, "partial_supported");
   assert.equal(slice.fullWalletUsd, null);
@@ -1486,11 +1503,12 @@ test("capital summary marks current total as a verified minimum when reconciliat
   assert.equal(slice.currentTotalUsd, 213.23);
   assert.equal(slice.verifiedMinimumUsd, 213.23);
   assert.equal(slice.capitalPlanRefillRequiredUsd, 454.56);
-  assert.equal(slice.estimatedUntrackedProtocolUsd, null);
-  assert.equal(slice.estimatedProtocolDeployedUsd, 0);
-  assert.equal(slice.estimatedCurrentTotalUsd, 213.23);
-  assert.equal(slice.estimatedAssetHeadline, "Verified minimum assets");
-  assert.equal(slice.estimatedTotalUsdSource, "verified_wallet_plus_tracked_protocols");
+  assert.equal(slice.estimatedUntrackedProtocolUsd, 5.56);
+  assert.equal(slice.unverifiedProtocolEntryUsd, 5.56);
+  assert.equal(slice.estimatedProtocolDeployedUsd, 5.56);
+  assert.equal(slice.estimatedCurrentTotalUsd, 218.79);
+  assert.equal(slice.estimatedAssetHeadline, "Estimated total assets");
+  assert.equal(slice.estimatedTotalUsdSource, "automation_estimate_with_verified_wallet_floor");
   assert.equal(slice.assetConfidence, "verified_minimum");
   assert.equal(slice.assetHeadline, "Verified minimum assets");
   assert.equal(slice.referenceFullWalletGapUsd, null);
