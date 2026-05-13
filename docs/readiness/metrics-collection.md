@@ -14,6 +14,15 @@ structured snapshot for agents and tests. This is intentionally local and
 secret-free; no Datadog, New Relic, CloudWatch, Axiom, Prometheus server, or
 vendor key is required.
 
+Two read-only diagnostics can also emit sidecar metrics files without changing
+their primary JSON/text output:
+
+```bash
+node src/cli/diagnose-signer-health.mjs --json --metrics-out=/tmp/bob-claw-metrics.prom
+node src/cli/report-automation-health.mjs --json --skip-runtime-probe --metrics-out=/tmp/bob-claw-automation-metrics.json --metrics-format=json
+node scripts/check-metrics-collection.mjs
+```
+
 ## Safe Scope
 
 Metrics are observability only. They must not feed caps, `autoExecute`, policy
@@ -26,6 +35,10 @@ Use metrics for engineering facts such as:
 - report/check durations
 - exporter health/info gauges
 - bounded status categories such as `result=ok` or `result=blocked`
+- signer-health gauges such as `bobclaw_signer_health_ready_for_broadcast`
+  and failed RPC count
+- automation-health gauges such as `bobclaw_automation_health_queue_candidates`
+  and refill-blocked count
 
 ## Forbidden Labels
 
@@ -39,6 +52,8 @@ Metric labels must stay low-cardinality and public-safe. Do not use:
 
 The registry validates metric names and labels and rejects secret-like,
 hash-like, path-like, address-like, and high-cardinality label values.
+The CLI metrics helper also refuses output paths that look like audit or
+receipt artifacts.
 
 ## Audit Log Relationship
 
