@@ -4,10 +4,12 @@ on:
   pull_request:
     types: [opened, synchronize]
     paths:
+      - "AGENTS.md"
       - ".github/workflows/auto-pr-validate.yml"
       - ".github/workflows/deploy-dashboard-cloudflare.yml"
       - "package.json"
       - "package-lock.json"
+      - "docs/**"
       - "docs/operations/dashboard-deploy-automation.md"
       - "docs/readiness/dead-code-baseline.json"
       - "docs/readiness/tech-debt-baseline.json"
@@ -39,6 +41,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: node scripts/track-build-performance.mjs --label=npm-ci --artifact-dir=artifacts/build-performance -- npm ci
+      - run: npm run check:agents-freshness
       - run: npm run perf:check:dead-code
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:duplicate-code
