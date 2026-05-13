@@ -1,0 +1,34 @@
+name: security-review
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/security-review.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/**"
+      - "src/**"
+      - "test/security-review-report.test.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-security-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Generate automated security review
+        run: npm run security:review -- --output-dir=security-reports --fail-on=critical
+      - name: Upload security review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: automated-security-review
+          path: security-reports/
+          if-no-files-found: error
