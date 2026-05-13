@@ -4,10 +4,16 @@ import { test } from "node:test";
 
 test("repository exposes substantive staged-file pre-commit checks", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const preCommitHelper = await readFile(new URL("../scripts/pre-commit-staged-checks.mjs", import.meta.url), "utf8");
   assert.equal(packageJson.scripts?.prepare, "husky");
   assert.match(packageJson.devDependencies?.husky || "", /^\^?\d+\.\d+\.\d+/u);
   assert.match(packageJson.devDependencies?.["lint-staged"] || "", /^\^?\d+\.\d+\.\d+/u);
   assert.ok(packageJson["lint-staged"], "lint-staged configuration must exist");
+  assert.match(
+    preCommitHelper,
+    /scripts\/check-large-files\.mjs/u,
+    "staged-file hook must prevent oversized source files before commit",
+  );
 });
 
 test("staged-file helper excludes generated outputs and keeps source checks", async () => {

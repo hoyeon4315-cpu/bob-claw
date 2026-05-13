@@ -116,6 +116,13 @@ function runChecks(files) {
     }
   }
 
+  if (plan.includedFiles.length > 0) {
+    const status = runCommand(process.execPath, ["scripts/check-large-files.mjs", ...plan.includedFiles]);
+    if (status !== 0) {
+      return status;
+    }
+  }
+
   for (const file of plan.nodeCheckFiles) {
     const status = runCommand(process.execPath, ["--check", file]);
     if (status !== 0) {

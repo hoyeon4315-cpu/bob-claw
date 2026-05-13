@@ -46,6 +46,7 @@ jobs:
       - run: npm run check:agents-freshness
       - run: npm run perf:check:dead-code
       - run: npm run perf:check:tech-debt
+      - run: npm run perf:check:large-files
       - run: npm run perf:check:duplicate-code
       - run: npm run check:unused-dependencies
       - run: npm run perf:check:architecture
