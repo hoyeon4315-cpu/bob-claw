@@ -328,6 +328,7 @@
     "profile:smoke": "node scripts/profile-smoke.mjs",
     "check:skills-config": "node scripts/check-skills-config.mjs",
     "check:agents-freshness": "node scripts/check-agents-freshness.mjs",
+    "check:branch-protection": "node scripts/check-branch-protection.mjs",
     "report:promotion-pr-preview": "node src/cli/promotion-pr-preview.mjs",
     "report:policy-coverage": "node src/cli/report-policy-coverage.mjs",
     "report:metrics-snapshot": "node src/cli/report-metrics-snapshot.mjs",
