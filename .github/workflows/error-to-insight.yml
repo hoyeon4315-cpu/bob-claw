@@ -1,0 +1,67 @@
+name: error-to-insight
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/error-to-insight.yml"
+      - "src/cli/error-to-issue.mjs"
+      - "src/observability/error-to-issue.mjs"
+      - "test/error-to-issue.test.mjs"
+      - "test/fixtures/error-to-issue-report.json"
+      - "package.json"
+  workflow_dispatch:
+    inputs:
+      error_report_json:
+        description: "Sanitized error report JSON. Do not paste secrets or raw wallet/signing data."
+        required: true
+        type: string
+      dry_run:
+        description: "Preview sanitized issue payload without creating a GitHub issue."
+        required: true
+        default: true
+        type: boolean
+      create_issue:
+        description: "Allow real issue creation. Must be true together with dry_run=false."
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - name: Validate sanitizer and payload builder
+        run: node --test test/error-to-issue.test.mjs
+      - name: Dry-run fixture preview for pull requests
+        if: github.event_name == 'pull_request'
+        run: npm run error-to-issue:dry-run
+      - name: Prepare manual sanitized report
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ERROR_REPORT_JSON: ${{ inputs.error_report_json }}
+        run: |
+          node -e "JSON.parse(process.env.ERROR_REPORT_JSON)"
+          printf '%s' "$ERROR_REPORT_JSON" > "$RUNNER_TEMP/error-report.json"
+      - name: Preview manual sanitized issue payload
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: node src/cli/error-to-issue.mjs --input "$RUNNER_TEMP/error-report.json" --dry-run=true --repo="${{ github.repository }}"
+      - name: Create issue from manual sanitized report
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run && inputs.create_issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node src/cli/error-to-issue.mjs --input "$RUNNER_TEMP/error-report.json" --dry-run=false --create --repo="${{ github.repository }}"
+      - name: Refuse ambiguous real issue creation
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run && !inputs.create_issue
+        run: |
+          echo "dry_run=false requires create_issue=true; refusing to create an issue."
+          exit 1

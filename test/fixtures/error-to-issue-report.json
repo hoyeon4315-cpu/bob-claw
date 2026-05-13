@@ -1,0 +1,18 @@
+{
+  "component": "status-dashboard",
+  "errorClass": "TypeError",
+  "severity": "error",
+  "observedAt": "2026-05-12T21:00:00.000Z",
+  "message": "Failed to render dashboard after token=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa wallet=0x1111111111111111111111111111111111111111",
+  "stack": "TypeError: Failed to render dashboard\n    at buildDashboardStatus (/Users/love/BOB Claw/src/status/dashboard-status.mjs:42:7)\n    at main (/Users/love/BOB Claw/src/cli/status-dashboard.mjs:12:3)",
+  "context": {
+    "route": "status:dashboard",
+    "BURNER_EVM_KEY_PATH": "/Users/love/.keys/burner-evm.key",
+    "intentHash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+    "txHash": "0x2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "evidence": [
+    "npm run status:dashboard failed locally",
+    "No live runtime, signer, payback, capital mover, deploy, or broadcast command is required to reproduce this fixture."
+  ]
+}
