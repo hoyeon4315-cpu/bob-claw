@@ -1,0 +1,31 @@
+# BOB Claw ownership map
+# Fallback owner for the full repository.
+* @hoyeon4315-cpu
+
+# Operating law and repo guidance.
+/AGENTS.md @hoyeon4315-cpu
+/CLAUDE.md @hoyeon4315-cpu
+/docs/ @hoyeon4315-cpu
+/.github/copilot-instructions.md @hoyeon4315-cpu
+
+# Safety-critical runtime, policy, and configuration.
+/src/config/ @hoyeon4315-cpu
+/src/executor/ @hoyeon4315-cpu
+/src/risk/ @hoyeon4315-cpu
+/src/contracts/ @hoyeon4315-cpu
+
+# Dashboard, status, and deploy surfaces.
+/dashboard/public/ @hoyeon4315-cpu
+/src/status/ @hoyeon4315-cpu
+/src/cli/build-dashboard-public.mjs @hoyeon4315-cpu
+/src/cli/deploy-dashboard-cloudflare.mjs @hoyeon4315-cpu
+/src/cli/status-dashboard.mjs @hoyeon4315-cpu
+/src/cli/verify-dashboard-publish.mjs @hoyeon4315-cpu
+/.github/workflows/deploy-dashboard-cloudflare.yml @hoyeon4315-cpu
+
+# CI, workflows, and tooling.
+/.github/workflows/ @hoyeon4315-cpu
+/scripts/ @hoyeon4315-cpu
+/package.json @hoyeon4315-cpu
+/package-lock.json @hoyeon4315-cpu
+/knip.config.js @hoyeon4315-cpu
