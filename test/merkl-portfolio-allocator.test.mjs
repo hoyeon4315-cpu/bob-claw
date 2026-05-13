@@ -118,13 +118,16 @@ function deliveredProof(opportunityId) {
 }
 
 test("portfolio score rewards canary-proven inventory-ready opportunities", () => {
-  const scored = merklPortfolioScore({
-    ...queueItem(),
-    executionReadiness: {
-      status: "inventory_ready",
-      matchedNative: { estimatedUsd: 2 },
+  const scored = merklPortfolioScore(
+    {
+      ...queueItem(),
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedNative: { estimatedUsd: 2 },
+      },
     },
-  }, { canaryProof: canaryExecutions[0] });
+    { canaryProof: canaryExecutions[0] },
+  );
 
   assert.ok(scored >= 100);
 });
@@ -351,6 +354,64 @@ test("active position loader keeps only positions without a close event", () => 
   assert.equal(active[0].positionId, "p2");
 });
 
+test("active position loader deduplicates aggregate residual share records", () => {
+  const records = [
+    {
+      event: "position_opened",
+      status: "open",
+      positionId: "p1",
+      opportunityId: "opp-1",
+      chain: "base",
+      protocolId: "yo",
+      amountUsd: 25,
+    },
+    { event: "position_exit_confirmed", status: "closed", positionId: "p1", opportunityId: "opp-1" },
+    {
+      event: "position_exit_residual_detected",
+      status: "open",
+      positionId: "p1",
+      opportunityId: "opp-1",
+      observedAt: "2026-05-10T07:21:19.370Z",
+      residualShareBalance: "38399132",
+    },
+    {
+      event: "position_opened",
+      status: "open",
+      positionId: "p2",
+      opportunityId: "opp-1",
+      chain: "base",
+      protocolId: "yo",
+      amountUsd: 25,
+    },
+    { event: "position_exit_confirmed", status: "closed", positionId: "p2", opportunityId: "opp-1" },
+    {
+      event: "position_exit_residual_detected",
+      status: "open",
+      positionId: "p2",
+      opportunityId: "opp-1",
+      observedAt: "2026-05-10T08:40:51.568Z",
+      residualShareBalance: "38399132",
+    },
+    {
+      event: "position_opened",
+      status: "open",
+      positionId: "p3",
+      opportunityId: "opp-1",
+      chain: "base",
+      protocolId: "yo",
+      amountUsd: 25,
+    },
+  ];
+
+  const active = activeMerklPortfolioPositions(records);
+
+  assert.equal(active.length, 2);
+  assert.deepEqual(active.map((position) => position.positionId).sort(), ["p3", "residual:opp-1"]);
+  const residual = active.find((position) => position.positionId === "residual:opp-1");
+  assert.equal(residual.amountUsd, null);
+  assert.equal(residual.sourcePositionId, "p2");
+});
+
 test("allocator tops up an already open opportunity within the per-opportunity cap", () => {
   const plan = buildMerklPortfolioAllocationPlan({
     queue: { queue: [queueItem()] },
@@ -444,6 +505,42 @@ test("allocator can still block duplicate opportunities when top-ups are disable
   assert.ok(plan.allocations[0].blockers.includes("opportunity_already_open"));
 });
 
+test("allocator blocks tiny live canary top-up when the same opportunity is already open", () => {
+  const plan = buildMerklPortfolioAllocationPlan({
+    queue: {
+      queue: [
+        queueItem({
+          validationMode: "tiny_live_canary_only",
+          metadata: { tinyLiveCanary: true },
+        }),
+      ],
+    },
+    inventorySnapshot,
+    canaryExecutions,
+    positionRecords: [
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "p1",
+        opportunityId: "opp-1",
+        amountUsd: 0.25,
+      },
+    ],
+    maxUsd: 0.25,
+    ...btcDecisionContext,
+    policy: {
+      allowTopUps: true,
+      maxActiveUsd: 1,
+      perOpportunityMaxUsd: 0.45,
+      minPositionUsd: 0.05,
+    },
+    now: "2026-04-24T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.entryReadyCount, 0);
+  assert.ok(plan.allocations[0].blockers.includes("open_position_active"));
+});
+
 test("allocator resizes a different opportunity to fit diversification caps", () => {
   const ethItem = queueItem({
     opportunityId: "eth-morpho",
@@ -519,10 +616,7 @@ test("allocator downgrades live balance races to a blocked execution", () => {
     parseInsufficientAssetBalance(new Error("Insufficient asset balance: required 111570916, available 104493122")),
     { required: "111570916", available: "104493122" },
   );
-  assert.equal(
-    retryAmountFromAvailableBalance({ available: "104493122", reservePct: 0.05 }),
-    "99268465",
-  );
+  assert.equal(retryAmountFromAvailableBalance({ available: "104493122", reservePct: 0.05 }), "99268465");
   assert.deepEqual(
     executionErrorBlockers(new Error("Insufficient asset balance: required 111570916, available 104493122")),
     ["insufficient_asset_balance"],
@@ -578,16 +672,62 @@ test("allocator diversification gate blocks the next Ethereum pick when current 
         { chain: "optimism", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
       ],
       tokens: [
-        { chain: "ethereum", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
-        { chain: "optimism", token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+        {
+          chain: "ethereum",
+          token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          ticker: "USDC",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+        {
+          chain: "optimism",
+          token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          ticker: "USDC",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
       ],
     },
     canaryExecutions: [proof("eth-next"), proof("op-next")],
     positionRecords: [
-      { event: "position_opened", status: "open", positionId: "base-1", opportunityId: "base-1", chain: "base", protocolId: "yo", amountUsd: 75 },
-      { event: "position_opened", status: "open", positionId: "eth-1", opportunityId: "eth-1", chain: "ethereum", protocolId: "aave", amountUsd: 25 },
-      { event: "position_opened", status: "open", positionId: "eth-2", opportunityId: "eth-2", chain: "ethereum", protocolId: "morpho", amountUsd: 75 },
-      { event: "position_opened", status: "open", positionId: "eth-3", opportunityId: "eth-3", chain: "ethereum", protocolId: "morpho", amountUsd: 50 },
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "base-1",
+        opportunityId: "base-1",
+        chain: "base",
+        protocolId: "yo",
+        amountUsd: 75,
+      },
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "eth-1",
+        opportunityId: "eth-1",
+        chain: "ethereum",
+        protocolId: "aave",
+        amountUsd: 25,
+      },
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "eth-2",
+        opportunityId: "eth-2",
+        chain: "ethereum",
+        protocolId: "morpho",
+        amountUsd: 75,
+      },
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "eth-3",
+        opportunityId: "eth-3",
+        chain: "ethereum",
+        protocolId: "morpho",
+        amountUsd: 50,
+      },
     ],
     maxUsd: 25,
     ...btcDecisionContext,
@@ -735,8 +875,22 @@ test("allocator includes external wallet chain exposure before re-entering after
         { chain: "optimism", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
       ],
       tokens: [
-        { chain: "ethereum", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
-        { chain: "optimism", token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+        {
+          chain: "ethereum",
+          token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          ticker: "USDC",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+        {
+          chain: "optimism",
+          token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          ticker: "USDC",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
       ],
     },
     externalChainUsd: {
@@ -744,7 +898,15 @@ test("allocator includes external wallet chain exposure before re-entering after
     },
     canaryExecutions: [proof("eth-reentry"), proof("op-next")],
     positionRecords: [
-      { event: "position_opened", status: "open", positionId: "base-1", opportunityId: "base-1", chain: "base", protocolId: "yo", amountUsd: 100 },
+      {
+        event: "position_opened",
+        status: "open",
+        positionId: "base-1",
+        opportunityId: "base-1",
+        chain: "base",
+        protocolId: "yo",
+        amountUsd: 100,
+      },
     ],
     maxUsd: 50,
     ...btcDecisionContext,
@@ -814,8 +976,22 @@ test("allocator respects scored chain targets so exit and entry do not churn the
         { chain: "optimism", actual: "1", actualDecimal: 1, estimatedUsd: 20 },
       ],
       tokens: [
-        { chain: "ethereum", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
-        { chain: "optimism", token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", ticker: "USDC", actual: "100000000", actualDecimal: 100, estimatedUsd: 100 },
+        {
+          chain: "ethereum",
+          token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          ticker: "USDC",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
+        {
+          chain: "optimism",
+          token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          ticker: "USDC",
+          actual: "100000000",
+          actualDecimal: 100,
+          estimatedUsd: 100,
+        },
       ],
     },
     externalChainUsd: {
@@ -907,7 +1083,7 @@ test("allocator blocks candidates whose measured bridge cost consumes expected B
           aprPct: 36.5,
           rewardTokenType: "stable",
           estimatedGasCostUsd: 0.01,
-          estimatedBridgeCostUsd: 0.20,
+          estimatedBridgeCostUsd: 0.2,
           estimatedClaimCostUsd: 0,
           estimatedRewardSwapCostUsd: 0,
           estimatedExitCostUsd: 0,

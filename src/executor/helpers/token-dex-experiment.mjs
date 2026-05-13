@@ -17,12 +17,8 @@ export const TOKEN_DEX_EXPERIMENT_STRATEGY_ID = "token-dex-experiment";
 
 const BASE_CBBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 
-const ERC20_INTERFACE = new Interface([
-  "function approve(address spender,uint256 amount)",
-]);
-const WRAPPED_NATIVE_INTERFACE = new Interface([
-  "function withdraw(uint256 wad)",
-]);
+const ERC20_INTERFACE = new Interface(["function approve(address spender,uint256 amount)"]);
+const WRAPPED_NATIVE_INTERFACE = new Interface(["function withdraw(uint256 wad)"]);
 const DEFAULT_APPROVE_GAS_UNITS = 100_000;
 const DEFAULT_UNWRAP_NATIVE_GAS_UNITS = 50_000;
 const DEFAULT_DIRECT_SWAP_GAS_UNITS = 450_000;
@@ -137,16 +133,17 @@ function resolveQuotedGasLimit(quote, gasBufferBps) {
 }
 
 function canUseDirectSwapGasFallback({ error, providerName, executableQuote } = {}) {
-  return providerName === "pancake_swap"
-    && executableQuote?.executionTrust === "on_chain_verified"
-    && classifyGasEstimateError(error) === "execution_reverted";
+  return (
+    providerName === "pancake_swap" &&
+    executableQuote?.executionTrust === "on_chain_verified" &&
+    classifyGasEstimateError(error) === "execution_reverted"
+  );
 }
 
 function approveGasLimitWithFloor(gasUnits, gasBufferBps) {
-  return String(Math.max(
-    applyGasBuffer(gasUnits, gasBufferBps),
-    applyGasBuffer(DEFAULT_APPROVE_GAS_UNITS, gasBufferBps),
-  ));
+  return String(
+    Math.max(applyGasBuffer(gasUnits, gasBufferBps), applyGasBuffer(DEFAULT_APPROVE_GAS_UNITS, gasBufferBps)),
+  );
 }
 
 function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
@@ -154,7 +151,9 @@ function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationB
   const required = BigInt(plan?.amount ?? 0);
   if (available >= required) return;
 
-  const error = new Error(`Insufficient source balance: required ${required.toString()}, available ${available.toString()}`);
+  const error = new Error(
+    `Insufficient source balance: required ${required.toString()}, available ${available.toString()}`,
+  );
   error.name = "InsufficientSourceBalance";
   error.partialExecution = {
     schemaVersion: 1,
@@ -205,6 +204,7 @@ export async function buildTokenDexExperimentPlan({
   slippageBps = config.slippageBps,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   quoteOnly = false,
+  systemEconomics = null,
   executionReason = "strategy_execution",
   now = new Date().toISOString(),
 } = {}) {
@@ -217,7 +217,9 @@ export async function buildTokenDexExperimentPlan({
   const strategyCaps = assertStrategyCaps(strategyId);
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
   const normalizedInputToken = normalizeErc20Token(chain, inputToken, "inputToken");
-  const requestedOutputToken = String(outputToken || "").trim().toLowerCase();
+  const requestedOutputToken = String(outputToken || "")
+    .trim()
+    .toLowerCase();
   const unwrapToNative = requestedOutputToken === "native" || isZeroToken(outputToken);
   const normalizedOutputToken = unwrapToNative
     ? WRAPPED_NATIVE_TOKENS[chain]
@@ -272,37 +274,39 @@ export async function buildTokenDexExperimentPlan({
       gasSnapshot,
       gasSnapshotError,
       minimumOutputAmount: normalizedAmount,
-      steps: [{
-        id: "unwrap_wrapped_native",
-        intent: {
-          strategyId,
-          chain,
-          family: "evm",
-          intentType: "unwrap_native",
-          amountUsd: null,
-          mode: "live",
-          observedAt: now,
-          executionReason,
-          approval: null,
-          tx: {
-            to: normalizedInputToken,
-            data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [normalizedAmount]),
-            value: "0",
-            gasLimit: unwrapGasLimit,
-          },
-          strategyConfig: {
-            intentTtlMs: strategyCaps.intentTtlMs,
-          },
-          metadata: {
-            skipAutoIngest: true,
+      steps: [
+        {
+          id: "unwrap_wrapped_native",
+          intent: {
+            strategyId,
+            chain,
+            family: "evm",
+            intentType: "unwrap_native",
+            amountUsd: null,
+            mode: "live",
+            observedAt: now,
             executionReason,
-            provider: "wrapped_native",
-            outputToken: ZERO_TOKEN,
-            wrappedOutputToken: normalizedInputToken,
-            minimumOutputAmount: normalizedAmount,
+            approval: null,
+            tx: {
+              to: normalizedInputToken,
+              data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [normalizedAmount]),
+              value: "0",
+              gasLimit: unwrapGasLimit,
+            },
+            strategyConfig: {
+              intentTtlMs: strategyCaps.intentTtlMs,
+            },
+            metadata: {
+              skipAutoIngest: true,
+              executionReason,
+              provider: "wrapped_native",
+              outputToken: ZERO_TOKEN,
+              wrappedOutputToken: normalizedInputToken,
+              minimumOutputAmount: normalizedAmount,
+            },
           },
         },
-      }],
+      ],
     };
   }
   if (normalizedInputToken.toLowerCase() === normalizedOutputToken.toLowerCase()) {
@@ -358,7 +362,9 @@ export async function buildTokenDexExperimentPlan({
         executionReady: false,
         gasSnapshot: null,
         gasSnapshotError: null,
-        minimumOutputAmount: quote?.outputAmount ? minimumOutputAmount(quote.outputAmount, slippageBps).toString() : null,
+        minimumOutputAmount: quote?.outputAmount
+          ? minimumOutputAmount(quote.outputAmount, slippageBps).toString()
+          : null,
         steps: [],
       };
     }
@@ -370,13 +376,9 @@ export async function buildTokenDexExperimentPlan({
 
     let allowanceBefore = null;
     try {
-      allowanceBefore = await readErc20AllowanceImpl(
-        chain,
-        normalizedInputToken,
-        senderAddress,
-        executableQuote.txTo,
-        { chainConfig: getEvmChainConfig(chain) },
-      );
+      allowanceBefore = await readErc20AllowanceImpl(chain, normalizedInputToken, senderAddress, executableQuote.txTo, {
+        chainConfig: getEvmChainConfig(chain),
+      });
     } catch {
       allowanceBefore = null;
     }
@@ -456,6 +458,7 @@ export async function buildTokenDexExperimentPlan({
       family: "evm",
       intentType,
       amountUsd,
+      systemEconomics,
       mode: "live",
       observedAt: now,
       executionReason,
@@ -473,57 +476,65 @@ export async function buildTokenDexExperimentPlan({
     });
 
     steps = [
-      ...(allowanceNeedsZeroReset ? [{
-        id: "reset_input_allowance",
-        intent: buildIntent({
-          intentType: "approve_exact",
-          approval: {
-            token: normalizedInputToken,
-            spender: executableQuote.txTo,
-            amount: "0",
-            mode: "per_tx",
-          },
-          tx: {
-            to: normalizedInputToken,
-            data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, "0"]),
-            value: "0",
-            gasLimit: approveGasLimit,
-          },
-          metadata: {
-            provider: providerName || "odos",
-            inputToken: normalizedInputToken,
-            outputToken: normalizedOutputToken,
-            sourceWhitelist: executableQuote.sourceWhitelist,
-            capCheckAmountUsd: 0,
-            approvalResetReason: "existing_allowance_below_required_amount",
-          },
-        }),
-      }] : []),
-      ...(!allowanceCoversAmount ? [{
-        id: "approve_input_token",
-        intent: buildIntent({
-          intentType: "approve_exact",
-          approval: {
-            token: normalizedInputToken,
-            spender: executableQuote.txTo,
-            amount: normalizedAmount,
-            mode: "per_tx",
-          },
-          tx: {
-            to: normalizedInputToken,
-            data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, normalizedAmount]),
-            value: "0",
-            gasLimit: approveGasLimit,
-          },
-          metadata: {
-            provider: providerName || "odos",
-            inputToken: normalizedInputToken,
-            outputToken: normalizedOutputToken,
-            sourceWhitelist: executableQuote.sourceWhitelist,
-            capCheckAmountUsd: 0,
-          },
-        }),
-      }] : []),
+      ...(allowanceNeedsZeroReset
+        ? [
+            {
+              id: "reset_input_allowance",
+              intent: buildIntent({
+                intentType: "approve_exact",
+                approval: {
+                  token: normalizedInputToken,
+                  spender: executableQuote.txTo,
+                  amount: "0",
+                  mode: "per_tx",
+                },
+                tx: {
+                  to: normalizedInputToken,
+                  data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, "0"]),
+                  value: "0",
+                  gasLimit: approveGasLimit,
+                },
+                metadata: {
+                  provider: providerName || "odos",
+                  inputToken: normalizedInputToken,
+                  outputToken: normalizedOutputToken,
+                  sourceWhitelist: executableQuote.sourceWhitelist,
+                  capCheckAmountUsd: 0,
+                  approvalResetReason: "existing_allowance_below_required_amount",
+                },
+              }),
+            },
+          ]
+        : []),
+      ...(!allowanceCoversAmount
+        ? [
+            {
+              id: "approve_input_token",
+              intent: buildIntent({
+                intentType: "approve_exact",
+                approval: {
+                  token: normalizedInputToken,
+                  spender: executableQuote.txTo,
+                  amount: normalizedAmount,
+                  mode: "per_tx",
+                },
+                tx: {
+                  to: normalizedInputToken,
+                  data: ERC20_INTERFACE.encodeFunctionData("approve", [executableQuote.txTo, normalizedAmount]),
+                  value: "0",
+                  gasLimit: approveGasLimit,
+                },
+                metadata: {
+                  provider: providerName || "odos",
+                  inputToken: normalizedInputToken,
+                  outputToken: normalizedOutputToken,
+                  sourceWhitelist: executableQuote.sourceWhitelist,
+                  capCheckAmountUsd: 0,
+                },
+              }),
+            },
+          ]
+        : []),
       {
         id: "swap_input_to_output",
         intent: buildIntent({
@@ -553,7 +564,9 @@ export async function buildTokenDexExperimentPlan({
           intentType: "unwrap_native",
           tx: {
             to: normalizedOutputToken,
-            data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [minimumOutputAmount(quote.outputAmount, slippageBps).toString()]),
+            data: WRAPPED_NATIVE_INTERFACE.encodeFunctionData("withdraw", [
+              minimumOutputAmount(quote.outputAmount, slippageBps).toString(),
+            ]),
             value: "0",
             gasLimit: unwrapGasLimit,
           },
@@ -691,17 +704,19 @@ export async function executeTokenDexExperimentPlan({
     });
   }
   const destinationProof = awaitDestinationSettlement
-    ? classifySettlementTimeout(await waitForEvmAssetDelta({
-        asset: plan.outputAsset,
-        owner: plan.senderAddress,
-        initialBalance: destinationBalanceBefore,
-        requiredDelta: destinationRequiredDelta(plan, stepResults),
-        readErc20BalanceImpl,
-        readNativeBalanceImpl,
-        timeoutMs: destinationSettlementTimeoutMs,
-        pollIntervalMs: destinationPollIntervalMs,
-        sleepImpl,
-      }))
+    ? classifySettlementTimeout(
+        await waitForEvmAssetDelta({
+          asset: plan.outputAsset,
+          owner: plan.senderAddress,
+          initialBalance: destinationBalanceBefore,
+          requiredDelta: destinationRequiredDelta(plan, stepResults),
+          readErc20BalanceImpl,
+          readNativeBalanceImpl,
+          timeoutMs: destinationSettlementTimeoutMs,
+          pollIntervalMs: destinationPollIntervalMs,
+          sleepImpl,
+        }),
+      )
     : null;
   const sourceBalanceAfter = await readEvmAssetBalance({
     asset: plan.inputAsset,

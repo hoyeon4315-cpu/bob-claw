@@ -53,6 +53,52 @@ test("replayAuditForCapitalGaps ignores non-broadcast records", () => {
   assert.equal(result.flaggedStrategies.length, 0);
 });
 
+test("replayAuditForCapitalGaps ignores approval-only helper broadcasts", () => {
+  const auditRecords = [
+    {
+      strategyId: "pendle-yt-canary",
+      chain: "base",
+      timestamp: "2026-05-13T10:09:55.632Z",
+      intentHash: "approval-hash",
+      policyVerdict: "approved",
+      intent: {
+        intentType: "approve_exact",
+        amountUsd: 0,
+        metadata: {
+          capCheckAmountUsd: 0,
+          approval: {
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            spender: "0x888888888889758F76e7103c6CbF23ABbF58F946",
+            amount: "5000000",
+          },
+        },
+      },
+      lifecycle: { stage: "confirmed" },
+      broadcast: { txHash: "0xapproval" },
+    },
+    {
+      strategyId: "lifi-bridge",
+      chain: "ethereum",
+      timestamp: "2026-05-13T10:38:40.668Z",
+      intentHash: "approval-hash-nonzero-cap",
+      policyVerdict: "approved",
+      intent: {
+        intentType: "approve_exact",
+        amountUsd: 0.842284,
+        metadata: {
+          capCheckAmountUsd: 0.884398,
+          provider: "lifi",
+        },
+      },
+      lifecycle: { stage: "confirmed" },
+      broadcast: { txHash: "0xlifiapproval" },
+    },
+  ];
+
+  const result = replayAuditForCapitalGaps({ auditRecords, capitalAuditRecords: [] });
+  assert.equal(result.flaggedStrategies.length, 0);
+});
+
 test("replayAuditForCapitalGaps counts multiple unmatched per strategy", () => {
   const auditRecords = [
     {

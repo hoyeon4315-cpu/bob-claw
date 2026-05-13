@@ -58,12 +58,32 @@ test("evaluateGasBudgetController honors configured quote maxAgeMs", () => {
   assert.equal(result.metrics.staleQuoteThresholdMs, 120_000);
 });
 
+test("evaluateGasBudgetController honors strategy intent TTL for gateway transfers", () => {
+  const now = "2026-05-13T13:19:33.000Z";
+  const result = evaluateGasBudgetController({
+    intent: makeIntent({
+      strategyId: "gateway-btc-funding-transfer",
+      intentType: "gateway_btc_transfer",
+      quote: {
+        observedAt: "2026-05-13T13:18:41.000Z",
+      },
+      strategyConfig: {
+        intentTtlMs: 60_000,
+      },
+    }),
+    auditRecords: [],
+    now,
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.metrics.staleQuoteThresholdMs, 60_000);
+});
+
 test("evaluateGasBudgetController blocks route failed gas budget", () => {
   const records = Array.from({ length: 5 }).map(() =>
     makeRecord({
       lifecycle: { stage: "reverted" },
       realized: { actualKnownCostUsd: 1 },
-    })
+    }),
   );
   const result = evaluateGasBudgetController({
     intent: makeIntent(),
@@ -179,10 +199,7 @@ test("evaluateGasBudgetController blocks consecutive reverts", () => {
 });
 
 test("evaluateGasBudgetController allows when reverts below threshold", () => {
-  const records = [
-    makeRecord({ lifecycle: { stage: "reverted" } }),
-    makeRecord({ lifecycle: { stage: "reverted" } }),
-  ];
+  const records = [makeRecord({ lifecycle: { stage: "reverted" } }), makeRecord({ lifecycle: { stage: "reverted" } })];
   const result = evaluateGasBudgetController({
     intent: makeIntent(),
     auditRecords: records,

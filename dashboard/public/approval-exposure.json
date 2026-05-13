@@ -1,17 +1,57 @@
 {
   "schemaVersion": 1,
-  "observedAt": "2026-05-07T09:34:34.425Z",
+  "observedAt": "2026-05-13T11:07:16.935Z",
   "summary": {
     "owner": "0x9626...ae4",
-    "watchlistCount": 36,
-    "nonzeroCount": 0,
-    "staleNonzeroCount": 0,
+    "watchlistCount": 56,
+    "nonzeroCount": 6,
+    "staleNonzeroCount": 4,
     "overCapCount": 0,
     "unknownSourceCount": 0,
-    "activeCount": 0,
-    "revocableCount": 0
+    "activeCount": 2,
+    "revocableCount": 4
   },
   "items": [
+    {
+      "chain": "base",
+      "token": "0x4200...006",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "stale_nonzero",
+      "allowanceRaw": "9153184180011338",
+      "exposureRaw": "9153184180011338",
+      "revocable": true
+    },
+    {
+      "chain": "base",
+      "token": "0x4200...006",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "stale_nonzero",
+      "allowanceRaw": "9153184180011338",
+      "exposureRaw": "9153184180011338",
+      "revocable": true
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x2260...599",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "stale_nonzero",
+      "allowanceRaw": "10000",
+      "exposureRaw": "10000",
+      "revocable": true
+    },
+    {
+      "chain": "ethereum",
+      "token": "0x8292...7ed",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "stale_nonzero",
+      "allowanceRaw": "24931082082169549352",
+      "exposureRaw": "24931082082169549352",
+      "revocable": true
+    },
     {
       "chain": "avalanche",
       "token": "0x0000...000",
@@ -53,6 +93,16 @@
       "revocable": false
     },
     {
+      "chain": "avalanche",
+      "token": "0xb97e...a6e",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
       "chain": "base",
       "token": "0x0000...a65",
       "symbol": null,
@@ -76,6 +126,16 @@
       "chain": "base",
       "token": "0x0555...b9c",
       "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x0555...b9c",
+      "symbol": null,
       "spender": "0x1231...eae",
       "status": "zero",
       "allowanceRaw": "0",
@@ -84,9 +144,9 @@
     },
     {
       "chain": "base",
-      "token": "0x4200...006",
+      "token": "0x8335...913",
       "symbol": null,
-      "spender": "0x0d05...d05",
+      "spender": "0x0000...a65",
       "status": "zero",
       "allowanceRaw": "0",
       "exposureRaw": "0",
@@ -107,6 +167,36 @@
       "token": "0x8335...913",
       "symbol": null,
       "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x8335...913",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x8335...913",
+      "symbol": null,
+      "spender": "0x8888...946",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "base",
+      "token": "0x8335...913",
+      "symbol": null,
+      "spender": "0x8888...946",
       "status": "zero",
       "allowanceRaw": "0",
       "exposureRaw": "0",
@@ -135,6 +225,16 @@
     {
       "chain": "bera",
       "token": "0x0000...000",
+      "symbol": null,
+      "spender": "0xf909...c66",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bera",
+      "token": "0x0555...b9c",
       "symbol": null,
       "spender": "0xf909...c66",
       "status": "zero",
@@ -206,6 +306,16 @@
       "chain": "bsc",
       "token": "0x8ac7...80d",
       "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "bsc",
+      "token": "0x8ac7...80d",
+      "symbol": null,
       "spender": "0x1231...eae",
       "status": "zero",
       "allowanceRaw": "0",
@@ -223,8 +333,18 @@
       "revocable": false
     },
     {
+      "chain": "bsc",
+      "token": "0xbb4c...95c",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
       "chain": "ethereum",
-      "token": "0x2260...599",
+      "token": "0x0000...000",
       "symbol": null,
       "spender": "0x0d05...d05",
       "status": "zero",
@@ -236,16 +356,6 @@
       "chain": "ethereum",
       "token": "0x2260...599",
       "symbol": null,
-      "spender": "0x1231...eae",
-      "status": "zero",
-      "allowanceRaw": "0",
-      "exposureRaw": "0",
-      "revocable": false
-    },
-    {
-      "chain": "ethereum",
-      "token": "0x8292...7ed",
-      "symbol": null,
       "spender": "0x0d05...d05",
       "status": "zero",
       "allowanceRaw": "0",
@@ -256,7 +366,7 @@
       "chain": "ethereum",
       "token": "0x8292...7ed",
       "symbol": null,
-      "spender": "0x1231...eae",
+      "spender": "0x0d05...d05",
       "status": "zero",
       "allowanceRaw": "0",
       "exposureRaw": "0",
@@ -294,6 +404,56 @@
     },
     {
       "chain": "ethereum",
+      "token": "0xa0b8...b48",
+      "symbol": null,
+      "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0xa0b8...b48",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0xa0b8...b48",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0xbeef...bf9",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "active_recent",
+      "allowanceRaw": "833944709749941900",
+      "exposureRaw": "833944709749941900",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
+      "token": "0xbeef...bf9",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "active_recent",
+      "allowanceRaw": "833944709749941900",
+      "exposureRaw": "833944709749941900",
+      "revocable": false
+    },
+    {
+      "chain": "ethereum",
       "token": "0xc02a...cc2",
       "symbol": null,
       "spender": "0x0d05...d05",
@@ -324,6 +484,26 @@
     },
     {
       "chain": "optimism",
+      "token": "0x0b2c...f85",
+      "symbol": null,
+      "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "optimism",
+      "token": "0x0b2c...f85",
+      "symbol": null,
+      "spender": "0x6f26...281",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "optimism",
       "token": "0x4200...006",
       "symbol": null,
       "spender": "0x0d05...d05",
@@ -337,6 +517,16 @@
       "token": "0x0555...b9c",
       "symbol": null,
       "spender": "0x1231...eae",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "soneium",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x864b...232",
       "status": "zero",
       "allowanceRaw": "0",
       "exposureRaw": "0",
@@ -357,6 +547,16 @@
       "token": "0x2921...894",
       "symbol": null,
       "spender": "0x0d05...d05",
+      "status": "zero",
+      "allowanceRaw": "0",
+      "exposureRaw": "0",
+      "revocable": false
+    },
+    {
+      "chain": "unichain",
+      "token": "0x0555...b9c",
+      "symbol": null,
+      "spender": "0x864b...232",
       "status": "zero",
       "allowanceRaw": "0",
       "exposureRaw": "0",

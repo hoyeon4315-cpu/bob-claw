@@ -86,8 +86,134 @@ test("all-chain autopilot dashboard slice keeps only public execution status", (
   assert.equal(slice.refill.blockedCount, 1);
   assert.equal(slice.refill.unresolvedCount, 1);
   assert.equal(slice.refill.blockers[0].taxonomy, null);
-  assert.equal(slice.topBlockers.some((item) => item.reason === "lifi_quote_rejected"), true);
+  assert.equal(
+    slice.topBlockers.some((item) => item.reason === "lifi_quote_rejected"),
+    true,
+  );
   assert.equal(slice.nextAction, "resolve_refill_routes");
+});
+
+test("all-chain autopilot dashboard slice treats policy no-trade refill blockers as resolved watch state", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-13T19:03:55.668Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    phase: "completed",
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 4,
+      autoRefillJobCount: 4,
+      refillAttemptedCount: 3,
+      refillExecutedCount: 0,
+      canarySweep: { status: "completed", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        liveEligibleCount: 0,
+        missingExecutorCount: 0,
+      },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 585 },
+      portfolio: { status: "no_position_opened", allocator: { deployments: [] } },
+    },
+    refillExecutions: [
+      {
+        chain: "base",
+        asset: "wBTC.OFT",
+        executionBlockedReason: "expected_net_below_receipt_cost_p90_floor,strategy_per_day_cap_exceeded",
+        selectedExecutionMethod: "cross_chain_bridge_lifi",
+        attempted: true,
+        executed: false,
+      },
+      {
+        chain: "optimism",
+        asset: "USDC",
+        executionBlockedReason: "expected_net_below_receipt_cost_p90_floor",
+        selectedExecutionMethod: "cross_chain_bridge_lifi",
+        attempted: true,
+        executed: false,
+      },
+      {
+        chain: "optimism",
+        asset: "wBTC.OFT",
+        previewStatus: "deferred",
+        previewBlockedReason: "routing_exhausted",
+        routeDeferralReason: "bridge_route_unavailable_gateway_no_route_lifi_quote_rejected",
+        routeDeferralAction: "defer_until_bridge_provider_supports_pair",
+        selectedExecutionMethod: "cross_chain_bridge_lifi",
+        attempted: false,
+        executed: false,
+      },
+    ],
+  });
+
+  assert.equal(slice.refill.blockedCount, 3);
+  assert.equal(slice.refill.unresolvedCount, 0);
+  assert.equal(slice.execution.noTxReason, "no_live_eligible_strategy");
+  assert.equal(slice.nextAction, "accrue_payback_until_minimum");
+});
+
+test("all-chain autopilot dashboard slice repairs stale signer failed refill blockers from step policy evidence", () => {
+  const slice = buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-13T19:03:55.668Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    phase: "completed",
+    summary: {
+      officialChainCount: 11,
+      refillJobCount: 1,
+      autoRefillJobCount: 1,
+      refillAttemptedCount: 1,
+      refillExecutedCount: 0,
+      canarySweep: { status: "completed", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        liveEligibleCount: 0,
+        missingExecutorCount: 0,
+      },
+      payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 585 },
+      portfolio: { status: "no_position_opened", allocator: { deployments: [] } },
+    },
+    refillExecutions: [
+      {
+        jobId: "policy-blocked-refill",
+        chain: "base",
+        asset: "wBTC.OFT",
+        executionBlockedReason: "signer_execution_failed",
+        selectedExecutionMethod: "same_chain_token_to_token_swap",
+        attempted: true,
+        executed: false,
+      },
+    ],
+    steps: [
+      {
+        name: "treasury_refill_execute:policy-blocked-refill",
+        json: {
+          execution: {
+            stepResults: [
+              {
+                id: "approve_input_token",
+                signerResult: {
+                  status: "rejected",
+                  policy: {
+                    decision: "BLOCK",
+                    blockers: ["expected_net_below_receipt_cost_p90_floor"],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    ],
+  });
+
+  assert.equal(slice.refill.blockers[0].reason, "expected_net_below_receipt_cost_p90_floor");
+  assert.equal(slice.refill.unresolvedCount, 0);
 });
 
 test("all-chain autopilot dashboard slice exposes scoped refill blocker recovery details", () => {
@@ -102,7 +228,14 @@ test("all-chain autopilot dashboard slice exposes scoped refill blocker recovery
       refillAttemptedCount: 0,
       refillExecutedCount: 0,
       canarySweep: { status: "completed", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
-      strategyDispatch: { batchStatus: "succeeded", selectedCount: 1, successCount: 1, failedCount: 0, liveEligibleCount: 1, missingExecutorCount: 0 },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 1,
+        successCount: 1,
+        failedCount: 0,
+        liveEligibleCount: 1,
+        missingExecutorCount: 0,
+      },
       payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
       portfolio: { status: "blocked", allocator: { deployments: [] } },
     },
@@ -196,7 +329,10 @@ test("all-chain autopilot dashboard slice surfaces payback reserve restoration w
   });
 
   assert.equal(slice.payback.nextAction, "restore_profit_reserve_wbtc_oft");
-  assert.equal(slice.topBlockers.some((item) => item.reason === "reserve_asset_missing"), true);
+  assert.equal(
+    slice.topBlockers.some((item) => item.reason === "reserve_asset_missing"),
+    true,
+  );
   assert.equal(slice.nextAction, "restore_payback_reserve");
 });
 
@@ -253,8 +389,16 @@ test("all-chain autopilot dashboard slice reports Merkl policy blocker after ref
   assert.equal(slice.execution.noTxReason, null);
   assert.equal(slice.execution.merklCanaryReadyCount, 4);
   assert.equal(slice.execution.merklCanaryBlockedReason, "same_chain_unprofitable:need_$5_on_base");
-  assert.equal(slice.topBlockers.some((item) => item.source === "merkl_canary" && item.reason === "same_chain_unprofitable:need_$5_on_base"), true);
-  assert.equal(slice.topBlockers.some((item) => item.reason === "no_live_eligible_strategy"), false);
+  assert.equal(
+    slice.topBlockers.some(
+      (item) => item.source === "merkl_canary" && item.reason === "same_chain_unprofitable:need_$5_on_base",
+    ),
+    true,
+  );
+  assert.equal(
+    slice.topBlockers.some((item) => item.reason === "no_live_eligible_strategy"),
+    false,
+  );
 });
 
 test("all-chain autopilot dashboard slice treats routing exhausted as manual backlog", () => {
@@ -269,8 +413,21 @@ test("all-chain autopilot dashboard slice treats routing exhausted as manual bac
       autoRefillJobCount: 1,
       refillAttemptedCount: 0,
       refillExecutedCount: 0,
-      canarySweep: { status: "completed", executedCount: 11, deliveredCount: 11, blockedCount: 0, chainsTouched: ["base"] },
-      strategyDispatch: { batchStatus: "succeeded", selectedCount: 10, successCount: 10, failedCount: 0, liveEligibleCount: 2, missingExecutorCount: 0 },
+      canarySweep: {
+        status: "completed",
+        executedCount: 11,
+        deliveredCount: 11,
+        blockedCount: 0,
+        chainsTouched: ["base"],
+      },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 10,
+        successCount: 10,
+        failedCount: 0,
+        liveEligibleCount: 2,
+        missingExecutorCount: 0,
+      },
       payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
       portfolio: { status: "blocked", allocator: { deployments: [] } },
     },
@@ -305,7 +462,14 @@ test("all-chain autopilot dashboard slice treats LiFi native gas shortfall as de
       refillAttemptedCount: 0,
       refillExecutedCount: 0,
       canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
-      strategyDispatch: { batchStatus: "preview", selectedCount: 0, successCount: 0, failedCount: 0, liveEligibleCount: 1, missingExecutorCount: 0 },
+      strategyDispatch: {
+        batchStatus: "preview",
+        selectedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        liveEligibleCount: 1,
+        missingExecutorCount: 0,
+      },
       payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
       portfolio: { status: "blocked", allocator: { deployments: [] } },
     },
@@ -341,7 +505,14 @@ test("all-chain autopilot dashboard slice treats route-ready planned refills as 
       refillAttemptedCount: 0,
       refillExecutedCount: 0,
       canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
-      strategyDispatch: { batchStatus: "succeeded", selectedCount: 8, successCount: 8, failedCount: 0, liveEligibleCount: 0, missingExecutorCount: 0 },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 8,
+        successCount: 8,
+        failedCount: 0,
+        liveEligibleCount: 0,
+        missingExecutorCount: 0,
+      },
       payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
       portfolio: { status: "blocked", allocator: { deployments: [] } },
     },
@@ -389,7 +560,14 @@ test("all-chain autopilot dashboard slice does not count preview-ready refill jo
       refillAttemptedCount: 0,
       refillExecutedCount: 0,
       canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
-      strategyDispatch: { batchStatus: "preview", selectedCount: 0, successCount: 0, failedCount: 0, liveEligibleCount: 0, missingExecutorCount: 0 },
+      strategyDispatch: {
+        batchStatus: "preview",
+        selectedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        liveEligibleCount: 0,
+        missingExecutorCount: 0,
+      },
       payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
       portfolio: { status: "blocked", allocator: { deployments: [] } },
     },
@@ -444,7 +622,14 @@ test("all-chain autopilot unresolved refill count prefers fresher fully auto-que
       refillAttemptedCount: 0,
       refillExecutedCount: 0,
       canarySweep: { status: "blocked", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
-      strategyDispatch: { batchStatus: "preview", selectedCount: 0, successCount: 0, failedCount: 0, liveEligibleCount: 0, missingExecutorCount: 0 },
+      strategyDispatch: {
+        batchStatus: "preview",
+        selectedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        liveEligibleCount: 0,
+        missingExecutorCount: 0,
+      },
       payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
       portfolio: { status: "blocked", allocator: { deployments: [] } },
     },
@@ -526,7 +711,14 @@ test("all-chain autopilot dashboard slice asks operator to wait while a run is a
       refillAttemptedCount: 1,
       refillExecutedCount: 1,
       canarySweep: { status: "running", executedCount: 1, deliveredCount: 1, blockedCount: 0, chainsTouched: ["base"] },
-      strategyDispatch: { batchStatus: "succeeded", selectedCount: 1, successCount: 1, failedCount: 0, liveEligibleCount: 1, missingExecutorCount: 0 },
+      strategyDispatch: {
+        batchStatus: "succeeded",
+        selectedCount: 1,
+        successCount: 1,
+        failedCount: 0,
+        liveEligibleCount: 1,
+        missingExecutorCount: 0,
+      },
       payback: { status: "carry", reason: "planned_payback_below_minimum", pendingCarrySats: 601 },
       portfolio: { status: "blocked", allocator: { deployments: [] } },
     },
@@ -673,7 +865,10 @@ test("treasury holdings slice normalizes latest inventory into dashboard balance
   assert.equal(slice.totalUsd, 17);
   assert.equal(slice.activeChainCount, 2);
   assert.equal(slice.refillRequiredCount, 3);
-  assert.deepEqual(slice.items.map((item) => item.sym), ["eth", "wbtc"]);
+  assert.deepEqual(
+    slice.items.map((item) => item.sym),
+    ["eth", "wbtc"],
+  );
 });
 
 test("treasury holdings slice does not use generatedAt as material source freshness", () => {
@@ -755,7 +950,10 @@ test("capital summary treats unmarked deployed Merkl positions as verified minim
   assert.equal(slice.assetHeadline, "Verified minimum assets");
   assert.equal(slice.reconciliationState, "needs_protocol_position_marks");
   assert.equal(slice.activePositionCount, 2);
-  assert.deepEqual(slice.positionItems.map((item) => item.protocol), ["yo", "euler"]);
+  assert.deepEqual(
+    slice.positionItems.map((item) => item.protocol),
+    ["yo", "euler"],
+  );
 });
 
 test("capital summary uses wallet plus marked protocol positions as current total", () => {
@@ -856,7 +1054,10 @@ test("capital summary surfaces trusted automation protocol tracking gaps without
   assert.equal(slice.trackingGapSource, "automation_estimate_minus_verified_assets");
   assert.equal(slice.reconciliationGapUsd, 40);
   assert.equal(slice.autoExecutionSafe, false);
-  assert.equal(slice.invariantViolations.some((item) => item.code === "reconciliation_gap"), true);
+  assert.equal(
+    slice.invariantViolations.some((item) => item.code === "reconciliation_gap"),
+    true,
+  );
   assert.equal(slice.assetClaimLabel, "Inferred");
 });
 
@@ -1050,8 +1251,14 @@ test("capital summary surfaces adapter gaps and recent signer settlement as reco
   assert.equal(slice.protocolMarkCoverageState, "needs_adapter");
   assert.equal(slice.protocolMarkIssueCount, 1);
   assert.equal(slice.latestProtocolMarkObservedAt, "2026-05-03T12:00:30.000Z");
-  assert.equal(slice.invariantViolations.some((item) => item.code === "adapter_coverage_gap"), true);
-  assert.equal(slice.invariantViolations.some((item) => item.code === "pending_signer_activity"), true);
+  assert.equal(
+    slice.invariantViolations.some((item) => item.code === "adapter_coverage_gap"),
+    true,
+  );
+  assert.equal(
+    slice.invariantViolations.some((item) => item.code === "pending_signer_activity"),
+    true,
+  );
 });
 
 test("capital summary ignores pending signer stages once a final stage exists for the same intent", () => {
@@ -1078,7 +1285,10 @@ test("capital summary ignores pending signer stages once a final stage exists fo
   });
 
   assert.equal(slice.pendingSignerActionCount, 0);
-  assert.equal(slice.invariantViolations.some((item) => item.code === "pending_signer_activity"), false);
+  assert.equal(
+    slice.invariantViolations.some((item) => item.code === "pending_signer_activity"),
+    false,
+  );
 });
 
 test("capital summary gives zero-value residual positions freshness metadata", () => {
@@ -1090,13 +1300,15 @@ test("capital summary gives zero-value residual positions freshness metadata", (
       items: [{ sym: "usdc", usd: 100 }],
     },
     merklActivePositions: {
-      items: [{
-        opportunityId: "a",
-        label: "Residual YO",
-        pair: ["usdc"],
-        valueUsd: 0,
-        lastObservedAt: "2026-05-03T12:00:00.000Z",
-      }],
+      items: [
+        {
+          opportunityId: "a",
+          label: "Residual YO",
+          pair: ["usdc"],
+          valueUsd: 0,
+          lastObservedAt: "2026-05-03T12:00:00.000Z",
+        },
+      ],
     },
     generatedAt: "2026-05-03T12:01:00.000Z",
   });
@@ -1196,7 +1408,10 @@ test("capital summary ignores stale external wallet references for live wallet a
   assert.equal(slice.trackingGapSource, null);
   assert.equal(slice.accountingWarning, null);
   assert.equal(slice.walletScanErrorCount, 1);
-  assert.deepEqual(slice.walletScanErrors.map((error) => error.provider || error.chain), ["ethereum"]);
+  assert.deepEqual(
+    slice.walletScanErrors.map((error) => error.provider || error.chain),
+    ["ethereum"],
+  );
 });
 
 test("capital summary marks current total as a verified minimum when reconciliation inputs disagree", () => {
@@ -1370,7 +1585,9 @@ test("flow dashboard slice exposes movement edges and policy rejection blockers"
   assert.deepEqual(rejected.blockers, ["strategy_per_tx_cap_exceeded"]);
 
   assert.ok(slice.recentMovements.length >= 1);
-  const movement = slice.recentMovements.find((item) => item.fromChainId === "soneium" && item.toChainId === "avalanche");
+  const movement = slice.recentMovements.find(
+    (item) => item.fromChainId === "soneium" && item.toChainId === "avalanche",
+  );
   assert.ok(movement, "expected Soneium -> Avalanche movement");
   assert.equal(movement.kind, "gateway_bridge");
   assert.equal(movement.routeProvider, "gateway");
@@ -1378,7 +1595,9 @@ test("flow dashboard slice exposes movement edges and policy rejection blockers"
   assert.equal(movement.assetId, "wbtc");
   assert.equal(movement.toAssetId, "wbtc");
   assert.equal(movement.amountUsd, 46);
-  const directMovement = slice.recentMovements.find((item) => item.fromChainId === "base" && item.toChainId === "optimism");
+  const directMovement = slice.recentMovements.find(
+    (item) => item.fromChainId === "base" && item.toChainId === "optimism",
+  );
   assert.ok(directMovement, "expected Base -> Optimism direct movement");
   assert.equal(directMovement.kind, "direct_bridge");
   assert.equal(directMovement.routeProvider, "lifi");
@@ -1522,7 +1741,8 @@ test("flow dashboard movement asset prefers delivered route output over refill t
         receiptIngest: {
           receiptRecord: {
             routeContext: {
-              routeKey: "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+              routeKey:
+                "bsc:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c->base:0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
               srcChain: "bsc",
               dstChain: "base",
               estimatedInputUsd: 20.8,

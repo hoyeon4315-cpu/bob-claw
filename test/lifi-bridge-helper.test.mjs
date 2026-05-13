@@ -104,6 +104,52 @@ test("LI.FI bridge approval cap-checks the transfer notional", async () => {
   assert.equal(plan.steps[0].intent.metadata.capCheckAmountUsd, 105);
 });
 
+test("LI.FI bridge plan carries refill system economics into signer intents", async () => {
+  const systemEconomics = {
+    effectiveSystemNetPnlUsd: 6.2,
+    routeInputUsd: 8.05,
+    tradeReadiness: "insufficient_data",
+  };
+  const plan = await buildLifiBridgePlan({
+    srcChain: "base",
+    dstChain: "optimism",
+    srcToken: WBTC_OFT_TOKEN,
+    dstToken: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+    amount: "4096",
+    senderAddress: ADDRESS,
+    now: "2026-05-13T11:30:00.000Z",
+    systemEconomics,
+    fetchImpl: lifiFetch({
+      id: "quote-refill",
+      tool: "across",
+      action: {
+        fromToken: { priceUSD: "80500", decimals: 8 },
+      },
+      estimate: {
+        approvalAddress: "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+        toAmountMin: "2900000",
+        toAmount: "3000000",
+        gasCosts: [{ amount: "30000000000000" }],
+      },
+      transactionRequest: {
+        to: "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+        data: "0x1234",
+        value: "0",
+        gasLimit: "300000",
+      },
+    }),
+    priceReader: async () => ({
+      tokenByKey: { btc: 80500, usd_stable: 1 },
+      nativeByChain: { base: 3_000, optimism: 3_000 },
+    }),
+    estimateGasImpl: async () => ({ gasUnits: 30_000 }),
+  });
+
+  assert.equal(plan.planStatus, "ready");
+  assert.deepEqual(plan.steps[0].intent.systemEconomics, systemEconomics);
+  assert.deepEqual(plan.steps[1].intent.systemEconomics, systemEconomics);
+});
+
 test("LI.FI bridge plan skips ERC20 approval for native source assets", async () => {
   const estimateCalls = [];
   const plan = await buildLifiBridgePlan({
@@ -142,7 +188,10 @@ test("LI.FI bridge plan skips ERC20 approval for native source assets", async ()
   });
 
   assert.equal(plan.planStatus, "ready");
-  assert.deepEqual(plan.steps.map((step) => step.id), ["lifi_bridge"]);
+  assert.deepEqual(
+    plan.steps.map((step) => step.id),
+    ["lifi_bridge"],
+  );
   assert.equal(estimateCalls.length, 0);
   assert.equal(plan.nativeSourceRequirementWei, "8274493443031136");
 });

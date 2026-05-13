@@ -1,10 +1,23 @@
-import { ETHEREUM_WBTC_TOKEN, isBtcLikeAsset, SOLVBTC_TOKEN, tokenAsset, UNI_BTC_TOKEN, WBTC_OFT_TOKEN } from "../../assets/tokens.mjs";
+import {
+  ETHEREUM_WBTC_TOKEN,
+  isBtcLikeAsset,
+  SOLVBTC_TOKEN,
+  tokenAsset,
+  UNI_BTC_TOKEN,
+  WBTC_OFT_TOKEN,
+} from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { readErc20Balance, readNativeBalance } from "../../evm/account-state.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { classifyGasEstimateError, estimateGas } from "../../gas/rpc-gas.mjs";
-import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock, routeKey } from "../../gateway/client.mjs";
+import {
+  GatewayClient,
+  GatewayError,
+  classifyGatewayBlockedReason,
+  isDeterministicGatewayBlock,
+  routeKey,
+} from "../../gateway/client.mjs";
 import { buildGatewayQuoteParams } from "../../gateway/quote-params.mjs";
 import { getCoinGeckoPricesUsd, priceForAssetUsd } from "../../market/prices.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
@@ -261,18 +274,21 @@ export async function buildGatewayBtcConsolidationPlan({
   let blockedReason = null;
   let gatewayQuoteLatencyMs = null;
   try {
-    const quoteResult = await client.getQuote(buildGatewayQuoteParams({
-      route,
-      amount: normalizedAmount,
-      sender: senderAddress,
-      recipient,
-      slippage: String(slippageBps),
-      gasRefill: normalizedGasRefill,
-    }));
+    const quoteResult = await client.getQuote(
+      buildGatewayQuoteParams({
+        route,
+        amount: normalizedAmount,
+        sender: senderAddress,
+        recipient,
+        slippage: String(slippageBps),
+        gasRefill: normalizedGasRefill,
+      }),
+    );
     gatewayQuoteLatencyMs = quoteResult.latencyMs;
     const quote = normalizeGatewayTransportQuoteBody(quoteResult.body);
     normalizedQuote = {
       observedAt: now,
+      maxAgeMs: strategyCaps.intentTtlMs,
       latencyMs: gatewayQuoteLatencyMs,
       quoteType: "layerZero",
       route,
@@ -359,6 +375,7 @@ export async function buildGatewayBtcConsolidationPlan({
         metadata: {
           skipAutoIngest: true,
           expectedTxTo: normalizedQuote.txTo,
+          quoteMaxAgeMs: strategyCaps.intentTtlMs,
           gatewayRouteKey: routeKey(route),
           gatewayGasRefill: normalizedGasRefill,
           gatewayQuoteLatencyMs,

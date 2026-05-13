@@ -23,11 +23,19 @@ function routeKey(intent = {}) {
 }
 
 function lifecycleStage(value = {}) {
-  return value.lifecycleStage || value.lifecycle?.stage || value.intent?.lifecycleStage || value.metadata?.lifecycleStage || null;
+  return (
+    value.lifecycleStage ||
+    value.lifecycle?.stage ||
+    value.intent?.lifecycleStage ||
+    value.metadata?.lifecycleStage ||
+    null
+  );
 }
 
 function actualGasUsd(record = {}) {
-  const parsed = Number(record.realized?.actualKnownCostUsd ?? record.execution?.actualKnownCostUsd ?? record.gasUsd ?? 0);
+  const parsed = Number(
+    record.realized?.actualKnownCostUsd ?? record.execution?.actualKnownCostUsd ?? record.gasUsd ?? 0,
+  );
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -65,7 +73,9 @@ export function evaluateGasBudgetController({
   const quoteObservedAt = intent.quote?.observedAt || intent.observedAt || null;
   if (quoteObservedAt) {
     const quoteAgeMs = hoursAgoMs(now, quoteObservedAt);
-    const configuredQuoteMaxAgeMs = finiteConfigNumber(intent.quote?.maxAgeMs ?? intent.metadata?.quoteMaxAgeMs);
+    const configuredQuoteMaxAgeMs = finiteConfigNumber(
+      intent.quote?.maxAgeMs ?? intent.metadata?.quoteMaxAgeMs ?? intent.strategyConfig?.intentTtlMs,
+    );
     const effectiveStaleQuoteThresholdMs = configuredQuoteMaxAgeMs ?? staleQuoteThresholdMs;
     if (isFiniteNumber(quoteAgeMs) && quoteAgeMs > effectiveStaleQuoteThresholdMs) {
       blockers.push("stale_quote_exceeded_30s");
@@ -73,9 +83,7 @@ export function evaluateGasBudgetController({
   }
 
   const last24hMs = 24 * 60 * 60 * 1000;
-  const recentRecords = auditRecords.filter(
-    (r) => hoursAgoMs(now, r.timestamp || r.observedAt || now) <= last24hMs,
-  );
+  const recentRecords = auditRecords.filter((r) => hoursAgoMs(now, r.timestamp || r.observedAt || now) <= last24hMs);
 
   const routeFailedGas = recentRecords
     .filter((r) => failedBroadcast(r) && routeKey(r.intent || r) === rKey)
@@ -83,16 +91,16 @@ export function evaluateGasBudgetController({
     .filter(isFiniteNumber)
     .reduce((sum, v) => sum + v, 0);
 
-  if (
-    isFiniteNumber(maxFailedGasCost24hUsd) &&
-    routeFailedGas >= maxFailedGasCost24hUsd
-  ) {
+  if (isFiniteNumber(maxFailedGasCost24hUsd) && routeFailedGas >= maxFailedGasCost24hUsd) {
     blockers.push("route_failed_gas_budget_24h_exceeded");
   }
 
   const routeBroadcasts = recentRecords
     .filter((r) => routeKey(r.intent || r) === rKey)
-    .sort((a, b) => hoursAgoMs(a.timestamp || a.observedAt || now, now) - hoursAgoMs(b.timestamp || b.observedAt || now, now));
+    .sort(
+      (a, b) =>
+        hoursAgoMs(a.timestamp || a.observedAt || now, now) - hoursAgoMs(b.timestamp || b.observedAt || now, now),
+    );
 
   let consecutiveReverts = 0;
   for (let i = routeBroadcasts.length - 1; i >= 0; i--) {
@@ -118,14 +126,13 @@ export function evaluateGasBudgetController({
     fractionCap !== null && fractionCap >= 0 && operatingCapital !== null && operatingCapital >= 0
       ? operatingCapital * fractionCap
       : null;
-  const maxDailyGasBudgetUsd = [absoluteDailyGasUsd, fractionDailyGasUsd]
-    .filter((value) => value !== null && value >= 0)
-    .sort((left, right) => left - right)[0] ?? null;
+  const maxDailyGasBudgetUsd =
+    [absoluteDailyGasUsd, fractionDailyGasUsd]
+      .filter((value) => value !== null && value >= 0)
+      .sort((left, right) => left - right)[0] ?? null;
   const estimatedGas = Number(estimatedGasUsd ?? intent.gasEstimateUsd ?? intent.metadata?.gasEstimateUsd ?? 0);
   const dailyGasBudgetApplies =
-    dailyBudget.enabled !== false &&
-    scopedStages.has(intentStage) &&
-    maxDailyGasBudgetUsd !== null;
+    dailyBudget.enabled !== false && scopedStages.has(intentStage) && maxDailyGasBudgetUsd !== null;
   const scopedDailyGasUsd = dailyGasBudgetApplies
     ? recentRecords
         .filter((record) => scopedStages.has(lifecycleStage(record)))
@@ -138,12 +145,8 @@ export function evaluateGasBudgetController({
   }
 
   if (positionState) {
-    const positionGas = isFiniteNumber(positionState.cumulativeGasUsd)
-      ? positionState.cumulativeGasUsd
-      : 0;
-    const positionReward = isFiniteNumber(positionState.realizedRewardUsd)
-      ? positionState.realizedRewardUsd
-      : 0;
+    const positionGas = isFiniteNumber(positionState.cumulativeGasUsd) ? positionState.cumulativeGasUsd : 0;
+    const positionReward = isFiniteNumber(positionState.realizedRewardUsd) ? positionState.realizedRewardUsd : 0;
 
     if (positionReward > 0) {
       const gasRewardRatio = positionGas / positionReward;
@@ -152,9 +155,7 @@ export function evaluateGasBudgetController({
       }
     }
 
-    const idleDays = isFiniteNumber(positionState.daysIdle)
-      ? positionState.daysIdle
-      : null;
+    const idleDays = isFiniteNumber(positionState.daysIdle) ? positionState.daysIdle : null;
     if (
       idleDays != null &&
       idleDays >= idlePositionExitDays &&
@@ -188,10 +189,11 @@ export function evaluateGasBudgetController({
       projectedDailyGasUsd,
       maxDailyGasBudgetUsd,
       dailyGasBudgetApplies,
-      quoteAgeMs: quoteObservedAt
-        ? hoursAgoMs(now, quoteObservedAt)
-        : null,
-      staleQuoteThresholdMs: finiteConfigNumber(intent.quote?.maxAgeMs ?? intent.metadata?.quoteMaxAgeMs) ?? staleQuoteThresholdMs,
+      quoteAgeMs: quoteObservedAt ? hoursAgoMs(now, quoteObservedAt) : null,
+      staleQuoteThresholdMs:
+        finiteConfigNumber(
+          intent.quote?.maxAgeMs ?? intent.metadata?.quoteMaxAgeMs ?? intent.strategyConfig?.intentTtlMs,
+        ) ?? staleQuoteThresholdMs,
     },
   };
 }

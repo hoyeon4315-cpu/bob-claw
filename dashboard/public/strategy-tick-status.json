@@ -1,12 +1,12 @@
 {
   "schemaVersion": 6,
-  "generatedAt": "2026-05-10T01:49:19.611Z",
-  "tickCountTotal": 292,
-  "latestTickAt": "2026-05-10T01:05:34.528Z",
+  "generatedAt": "2026-05-13T19:25:48.294Z",
+  "tickCountTotal": 302,
+  "latestTickAt": "2026-05-13T19:25:38.561Z",
   "strategies": [
     {
       "strategyId": "wrapped-btc-loop-base-moonwell",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -45,43 +45,43 @@
       "lastSignerAuditStageAt": "2026-05-08T05:18:34.621Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -144,7 +144,7 @@
     },
     {
       "strategyId": "recursive_wrapped_btc_lending_loop",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -183,43 +183,43 @@
       "lastSignerAuditStageAt": "2026-05-03T00:02:26.585Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -307,8 +307,8 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 10,
-      "receiptCountSignerBacked": 3,
+      "receiptCountTotal": 57,
+      "receiptCountSignerBacked": 11,
       "autoExecute": true,
       "operatorHold": false,
       "firstLiveBroadcastAt": "2026-04-16T10:22:10.810Z",
@@ -316,46 +316,46 @@
       "firstRealizedPnlSats": null,
       "paybackEffectiveMinReachedAt": null,
       "lastSignerAuditStage": "broadcasted",
-      "lastSignerAuditStageAt": "2026-04-26T05:25:28.171Z",
+      "lastSignerAuditStageAt": "2026-05-13T11:12:00.741Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-04-16T10:22:10.156Z",
+          "tickAt": "2026-05-11T03:34:35.507Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-04-16T10:22:10.810Z",
+          "tickAt": "2026-05-11T08:22:52.677Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-04-25T22:14:06.470Z",
+          "tickAt": "2026-05-11T08:22:53.586Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-04-25T22:14:07.151Z",
+          "tickAt": "2026-05-11T09:26:50.946Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-04-26T05:25:27.534Z",
+          "tickAt": "2026-05-11T09:26:51.673Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-04-26T05:25:28.171Z",
+          "tickAt": "2026-05-13T11:12:00.079Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-04-26T05:25:34.528Z",
+          "tickAt": "2026-05-13T11:12:00.741Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -386,14 +386,14 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 0
+        "signerBackedReceiptCount": 1
       },
       "scoredAllocation": null,
       "chainScoreSource": null,
       "chainScoreObservedAt": null,
       "regimeBreakdown": {
         "unknown": {
-          "receipts": 10,
+          "receipts": 57,
           "realizedNetBtc": 0
         }
       },
@@ -406,8 +406,8 @@
         "policyOk": false,
         "killSwitchSet": false,
         "consecutiveFailureLock": false,
-        "signerBackedReceiptCount": 3,
-        "receiptCountTotal": 10
+        "signerBackedReceiptCount": 11,
+        "receiptCountTotal": 57
       }
     },
     {
@@ -567,8 +567,8 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 6762,
-      "receiptCountSignerBacked": 237,
+      "receiptCountTotal": 8686,
+      "receiptCountSignerBacked": 254,
       "autoExecute": true,
       "operatorHold": false,
       "firstLiveBroadcastAt": "2026-04-16T00:55:21.427Z",
@@ -576,46 +576,46 @@
       "firstRealizedPnlSats": null,
       "paybackEffectiveMinReachedAt": null,
       "lastSignerAuditStage": "confirmed",
-      "lastSignerAuditStageAt": "2026-05-10T01:35:04.115Z",
+      "lastSignerAuditStageAt": "2026-05-13T13:50:37.093Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-08T02:44:59.758Z",
+          "tickAt": "2026-05-11T13:28:08.638Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:32:03.561Z",
+          "tickAt": "2026-05-11T13:28:13.115Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:32:03.641Z",
+          "tickAt": "2026-05-13T13:29:34.449Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:32:11.940Z",
+          "tickAt": "2026-05-13T13:29:34.651Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:34:55.771Z",
+          "tickAt": "2026-05-13T13:50:31.114Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:34:55.834Z",
+          "tickAt": "2026-05-13T13:50:32.469Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:35:04.115Z",
+          "tickAt": "2026-05-13T13:50:37.093Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -646,14 +646,14 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 4
+        "signerBackedReceiptCount": 3
       },
       "scoredAllocation": null,
       "chainScoreSource": null,
       "chainScoreObservedAt": null,
       "regimeBreakdown": {
         "unknown": {
-          "receipts": 6762,
+          "receipts": 8686,
           "realizedNetBtc": 0
         }
       },
@@ -666,8 +666,8 @@
         "policyOk": false,
         "killSwitchSet": false,
         "consecutiveFailureLock": false,
-        "signerBackedReceiptCount": 237,
-        "receiptCountTotal": 6762
+        "signerBackedReceiptCount": 254,
+        "receiptCountTotal": 8686
       }
     },
     {
@@ -779,8 +779,8 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 4742,
-      "receiptCountSignerBacked": 2913,
+      "receiptCountTotal": 4859,
+      "receiptCountSignerBacked": 2939,
       "autoExecute": true,
       "operatorHold": false,
       "firstLiveBroadcastAt": "2026-04-16T21:07:31.541Z",
@@ -788,46 +788,46 @@
       "firstRealizedPnlSats": 8,
       "paybackEffectiveMinReachedAt": null,
       "lastSignerAuditStage": "confirmed",
-      "lastSignerAuditStageAt": "2026-05-10T01:36:03.248Z",
+      "lastSignerAuditStageAt": "2026-05-13T11:10:40.213Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-10T01:34:53.990Z",
+          "tickAt": "2026-05-13T11:04:41.520Z",
           "realizedPnlSats": 15711,
           "paybackTargetSats": 3142,
           "progressRatio": 0.6284
         },
         {
-          "tickAt": "2026-05-10T01:35:37.410Z",
+          "tickAt": "2026-05-13T11:04:43.603Z",
           "realizedPnlSats": 15711,
           "paybackTargetSats": 3142,
           "progressRatio": 0.6284
         },
         {
-          "tickAt": "2026-05-10T01:35:38.971Z",
+          "tickAt": "2026-05-13T11:04:45.071Z",
           "realizedPnlSats": 15711,
           "paybackTargetSats": 3142,
           "progressRatio": 0.6284
         },
         {
-          "tickAt": "2026-05-10T01:35:52.218Z",
+          "tickAt": "2026-05-13T11:04:45.510Z",
           "realizedPnlSats": 15711,
           "paybackTargetSats": 3142,
           "progressRatio": 0.6284
         },
         {
-          "tickAt": "2026-05-10T01:35:53.199Z",
+          "tickAt": "2026-05-13T11:10:38.316Z",
           "realizedPnlSats": 15711,
           "paybackTargetSats": 3142,
           "progressRatio": 0.6284
         },
         {
-          "tickAt": "2026-05-10T01:35:54.200Z",
+          "tickAt": "2026-05-13T11:10:39.827Z",
           "realizedPnlSats": 15711,
           "paybackTargetSats": 3142,
           "progressRatio": 0.6284
         },
         {
-          "tickAt": "2026-05-10T01:36:03.248Z",
+          "tickAt": "2026-05-13T11:10:40.213Z",
           "realizedPnlSats": 15711,
           "paybackTargetSats": 3142,
           "progressRatio": 0.6284
@@ -858,14 +858,14 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 16
+        "signerBackedReceiptCount": 10
       },
       "scoredAllocation": null,
       "chainScoreSource": null,
       "chainScoreObservedAt": null,
       "regimeBreakdown": {
         "unknown": {
-          "receipts": 4742,
+          "receipts": 4859,
           "realizedNetBtc": 0.00015711
         }
       },
@@ -878,8 +878,8 @@
         "policyOk": false,
         "killSwitchSet": false,
         "consecutiveFailureLock": false,
-        "signerBackedReceiptCount": 2913,
-        "receiptCountTotal": 4742
+        "signerBackedReceiptCount": 2939,
+        "receiptCountTotal": 4859
       }
     },
     {
@@ -909,8 +909,8 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 3583,
-      "receiptCountSignerBacked": 2353,
+      "receiptCountTotal": 3587,
+      "receiptCountSignerBacked": 2355,
       "autoExecute": true,
       "operatorHold": false,
       "firstLiveBroadcastAt": "2026-04-16T06:05:37.794Z",
@@ -918,26 +918,8 @@
       "firstRealizedPnlSats": 1,
       "paybackEffectiveMinReachedAt": null,
       "lastSignerAuditStage": "confirmed",
-      "lastSignerAuditStageAt": "2026-05-08T01:52:09.764Z",
+      "lastSignerAuditStageAt": "2026-05-11T01:40:23.260Z",
       "paybackProgressTrajectory": [
-        {
-          "tickAt": "2026-05-08T01:51:56.762Z",
-          "realizedPnlSats": 663,
-          "paybackTargetSats": 132,
-          "progressRatio": 0.0264
-        },
-        {
-          "tickAt": "2026-05-08T01:51:57.943Z",
-          "realizedPnlSats": 663,
-          "paybackTargetSats": 132,
-          "progressRatio": 0.0264
-        },
-        {
-          "tickAt": "2026-05-08T01:51:58.422Z",
-          "realizedPnlSats": 663,
-          "paybackTargetSats": 132,
-          "progressRatio": 0.0264
-        },
         {
           "tickAt": "2026-05-08T01:52:03.344Z",
           "realizedPnlSats": 663,
@@ -958,6 +940,24 @@
         },
         {
           "tickAt": "2026-05-08T01:52:09.764Z",
+          "realizedPnlSats": 663,
+          "paybackTargetSats": 132,
+          "progressRatio": 0.0264
+        },
+        {
+          "tickAt": "2026-05-11T01:40:14.874Z",
+          "realizedPnlSats": 663,
+          "paybackTargetSats": 132,
+          "progressRatio": 0.0264
+        },
+        {
+          "tickAt": "2026-05-11T01:40:14.958Z",
+          "realizedPnlSats": 663,
+          "paybackTargetSats": 132,
+          "progressRatio": 0.0264
+        },
+        {
+          "tickAt": "2026-05-11T01:40:23.260Z",
           "realizedPnlSats": 663,
           "paybackTargetSats": 132,
           "progressRatio": 0.0264
@@ -995,7 +995,7 @@
       "chainScoreObservedAt": null,
       "regimeBreakdown": {
         "unknown": {
-          "receipts": 3583,
+          "receipts": 3587,
           "realizedNetBtc": 0.00000663
         }
       },
@@ -1008,8 +1008,8 @@
         "policyOk": false,
         "killSwitchSet": false,
         "consecutiveFailureLock": false,
-        "signerBackedReceiptCount": 2353,
-        "receiptCountTotal": 3583
+        "signerBackedReceiptCount": 2355,
+        "receiptCountTotal": 3587
       }
     },
     {
@@ -1039,8 +1039,8 @@
       "gasFloatConfiguredChainCount": 0,
       "gasFloatObservedChainCount": 0,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 83,
-      "receiptCountSignerBacked": 48,
+      "receiptCountTotal": 89,
+      "receiptCountSignerBacked": 52,
       "autoExecute": true,
       "operatorHold": false,
       "firstLiveBroadcastAt": "2026-04-20T08:38:19.675Z",
@@ -1048,46 +1048,46 @@
       "firstRealizedPnlSats": null,
       "paybackEffectiveMinReachedAt": null,
       "lastSignerAuditStage": "confirmed",
-      "lastSignerAuditStageAt": "2026-04-26T11:15:50.476Z",
+      "lastSignerAuditStageAt": "2026-05-11T13:19:44.339Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-04-26T10:52:46.101Z",
-          "realizedPnlSats": 0,
-          "paybackTargetSats": 0,
-          "progressRatio": 0
-        },
-        {
-          "tickAt": "2026-04-26T11:04:49.895Z",
-          "realizedPnlSats": 0,
-          "paybackTargetSats": 0,
-          "progressRatio": 0
-        },
-        {
-          "tickAt": "2026-04-26T11:04:50.010Z",
-          "realizedPnlSats": 0,
-          "paybackTargetSats": 0,
-          "progressRatio": 0
-        },
-        {
-          "tickAt": "2026-04-26T11:04:54.323Z",
-          "realizedPnlSats": 0,
-          "paybackTargetSats": 0,
-          "progressRatio": 0
-        },
-        {
-          "tickAt": "2026-04-26T11:15:46.072Z",
-          "realizedPnlSats": 0,
-          "paybackTargetSats": 0,
-          "progressRatio": 0
-        },
-        {
-          "tickAt": "2026-04-26T11:15:46.179Z",
-          "realizedPnlSats": 0,
-          "paybackTargetSats": 0,
-          "progressRatio": 0
-        },
-        {
           "tickAt": "2026-04-26T11:15:50.476Z",
+          "realizedPnlSats": 0,
+          "paybackTargetSats": 0,
+          "progressRatio": 0
+        },
+        {
+          "tickAt": "2026-05-10T05:23:13.893Z",
+          "realizedPnlSats": 0,
+          "paybackTargetSats": 0,
+          "progressRatio": 0
+        },
+        {
+          "tickAt": "2026-05-10T05:23:14.375Z",
+          "realizedPnlSats": 0,
+          "paybackTargetSats": 0,
+          "progressRatio": 0
+        },
+        {
+          "tickAt": "2026-05-10T05:23:19.241Z",
+          "realizedPnlSats": 0,
+          "paybackTargetSats": 0,
+          "progressRatio": 0
+        },
+        {
+          "tickAt": "2026-05-11T13:19:42.146Z",
+          "realizedPnlSats": 0,
+          "paybackTargetSats": 0,
+          "progressRatio": 0
+        },
+        {
+          "tickAt": "2026-05-11T13:19:44.087Z",
+          "realizedPnlSats": 0,
+          "paybackTargetSats": 0,
+          "progressRatio": 0
+        },
+        {
+          "tickAt": "2026-05-11T13:19:44.339Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -1125,7 +1125,7 @@
       "chainScoreObservedAt": null,
       "regimeBreakdown": {
         "unknown": {
-          "receipts": 83,
+          "receipts": 89,
           "realizedNetBtc": 0
         }
       },
@@ -1138,8 +1138,8 @@
         "policyOk": false,
         "killSwitchSet": false,
         "consecutiveFailureLock": false,
-        "signerBackedReceiptCount": 48,
-        "receiptCountTotal": 83
+        "signerBackedReceiptCount": 52,
+        "receiptCountTotal": 89
       }
     },
     {
@@ -1226,7 +1226,7 @@
     },
     {
       "strategyId": "beefy-folding-vault",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -1265,43 +1265,43 @@
       "lastSignerAuditStageAt": "2026-05-07T21:45:09.527Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -1358,7 +1358,7 @@
     },
     {
       "strategyId": "pendle-pt-lbtc-base",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -1397,43 +1397,43 @@
       "lastSignerAuditStageAt": null,
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -1485,7 +1485,7 @@
     },
     {
       "strategyId": "aerodrome-cl-base",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -1524,43 +1524,43 @@
       "lastSignerAuditStageAt": null,
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -1623,7 +1623,7 @@
     },
     {
       "strategyId": "pendle-pt-solvbtc-bbn-bsc",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -1662,43 +1662,43 @@
       "lastSignerAuditStageAt": null,
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -1750,7 +1750,7 @@
     },
     {
       "strategyId": "berachain-bend-bex-bgt",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -1789,43 +1789,43 @@
       "lastSignerAuditStageAt": null,
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -1877,7 +1877,7 @@
     },
     {
       "strategyId": "gmx-v2-perp-basis-avax",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -1916,43 +1916,43 @@
       "lastSignerAuditStageAt": null,
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -2256,7 +2256,7 @@
     },
     {
       "strategyId": "gateway_native_asset_conversion_sleeve",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -2285,8 +2285,8 @@
       "gasFloatConfiguredChainCount": 10,
       "gasFloatObservedChainCount": 10,
       "gasFloatMissingChains": [],
-      "receiptCountTotal": 4249,
-      "receiptCountSignerBacked": 2032,
+      "receiptCountTotal": 4497,
+      "receiptCountSignerBacked": 2116,
       "autoExecute": true,
       "operatorHold": false,
       "firstLiveBroadcastAt": "2026-04-23T13:37:56.701Z",
@@ -2294,46 +2294,46 @@
       "firstRealizedPnlSats": null,
       "paybackEffectiveMinReachedAt": null,
       "lastSignerAuditStage": "confirmed",
-      "lastSignerAuditStageAt": "2026-05-10T01:02:08.520Z",
+      "lastSignerAuditStageAt": "2026-05-13T19:02:25.340Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -2364,14 +2364,14 @@
       "demotion": {
         "demoted": false,
         "triggers": [],
-        "signerBackedReceiptCount": 16
+        "signerBackedReceiptCount": 46
       },
       "scoredAllocation": null,
       "chainScoreSource": null,
       "chainScoreObservedAt": null,
       "regimeBreakdown": {
         "unknown": {
-          "receipts": 4249,
+          "receipts": 4497,
           "realizedNetBtc": 0
         }
       },
@@ -2384,13 +2384,13 @@
         "policyOk": true,
         "killSwitchSet": false,
         "consecutiveFailureLock": false,
-        "signerBackedReceiptCount": 2032,
-        "receiptCountTotal": 4249
+        "signerBackedReceiptCount": 2116,
+        "receiptCountTotal": 4497
       }
     },
     {
       "strategyId": "recursive_stablecoin_lending_loop",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -2429,43 +2429,43 @@
       "lastSignerAuditStageAt": "2026-05-03T04:00:24.905Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -2528,7 +2528,7 @@
     },
     {
       "strategyId": "destination_wrapped_btc_rotation",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -2567,43 +2567,43 @@
       "lastSignerAuditStageAt": "2026-04-28T00:30:30.812Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -2666,7 +2666,7 @@
     },
     {
       "strategyId": "stablecoin_treasury_rotation",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -2705,43 +2705,43 @@
       "lastSignerAuditStageAt": "2026-05-05T22:12:08.037Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -2798,7 +2798,7 @@
     },
     {
       "strategyId": "gateway_proxy_spread_rebalance_recheck",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -2837,43 +2837,43 @@
       "lastSignerAuditStageAt": "2026-05-03T03:01:19.997Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -2936,7 +2936,7 @@
     },
     {
       "strategyId": "macro_asset_rotation",
-      "lastTickAt": "2026-05-10T01:05:34.528Z",
+      "lastTickAt": "2026-05-13T19:25:38.561Z",
       "lastTickMode": "live_candidate",
       "lastTickBlockers": [],
       "lastTickFilters": [],
@@ -2975,43 +2975,43 @@
       "lastSignerAuditStageAt": "2026-04-24T20:27:09.254Z",
       "paybackProgressTrajectory": [
         {
-          "tickAt": "2026-05-09T19:11:19.487Z",
+          "tickAt": "2026-05-10T04:09:43.112Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T20:20:29.123Z",
+          "tickAt": "2026-05-10T04:56:10.312Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T21:25:18.859Z",
+          "tickAt": "2026-05-10T05:42:27.761Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T22:32:52.869Z",
+          "tickAt": "2026-05-10T06:28:10.187Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-09T23:36:09.466Z",
+          "tickAt": "2026-05-10T07:13:57.123Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T00:20:09.455Z",
+          "tickAt": "2026-05-10T08:00:39.647Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
         },
         {
-          "tickAt": "2026-05-10T01:05:34.528Z",
+          "tickAt": "2026-05-13T19:25:38.561Z",
           "realizedPnlSats": 0,
           "paybackTargetSats": 0,
           "progressRatio": 0
@@ -3237,7 +3237,7 @@
     "strategiesMissingCaps": 0,
     "strategiesLiveEligible": 27,
     "strategiesOperatorHold": 0,
-    "totalSignerBackedReceipts": 11905,
+    "totalSignerBackedReceipts": 12046,
     "strategiesWithGeneratedIntents": 6,
     "totalGeneratedIntents": 8,
     "tickPassCount": 14,
@@ -3247,11 +3247,11 @@
     "surfaceAdviceBlockedCount": 0
   },
   "overall": {
-    "latestBroadcastAt": "2026-05-10T01:36:03.248Z",
+    "latestBroadcastAt": "2026-05-13T19:02:25.340Z",
     "satsSinceFirstBroadcast": 16374,
-    "daysSinceFirstBroadcast": 24.037479,
+    "daysSinceFirstBroadcast": 27.771144,
     "paybackEffectiveMinReachedAt": null,
-    "nextDeliveryCandidateEta": "2026-05-22T17:57:15.208Z"
+    "nextDeliveryCandidateEta": "2026-05-28T10:48:07.442Z"
   },
   "paybackProgressPolicy": {
     "effectiveMinPaybackSats": 5000,
@@ -3267,8 +3267,8 @@
     "surfaceAdviceBlockedCount": 0
   },
   "microCanary": {
-    "total": 18,
-    "notStartedCount": 9,
+    "total": 19,
+    "notStartedCount": 10,
     "readyCount": 0,
     "minimalLiveProofExistsCount": 0,
     "repeatableCount": 9,
@@ -3277,6 +3277,14 @@
         "microCanaryStatus": "micro_canary_repeatable",
         "signerBackedCount": 90,
         "passedCount": 90,
+        "mode": "live_candidate",
+        "lastFailureReason": null,
+        "realizedNetUsd": null
+      },
+      "defillama-yield-portfolio": {
+        "microCanaryStatus": "not_started",
+        "signerBackedCount": 0,
+        "passedCount": 0,
         "mode": "live_candidate",
         "lastFailureReason": null,
         "realizedNetUsd": null
@@ -3347,8 +3355,8 @@
       },
       "gateway_native_asset_conversion_sleeve": {
         "microCanaryStatus": "micro_canary_repeatable",
-        "signerBackedCount": 2032,
-        "passedCount": 2032,
+        "signerBackedCount": 2116,
+        "passedCount": 2116,
         "mode": "live",
         "lastFailureReason": null,
         "realizedNetUsd": null
@@ -3418,13 +3426,13 @@
         "realizedNetUsd": null
       }
     },
-    "generatedAt": "2026-05-10T01:49:19.688Z"
+    "generatedAt": "2026-05-13T19:25:48.362Z"
   },
   "strategyStage": {
-    "total": 18,
+    "total": 19,
     "blockedCount": 0,
     "shadowReadyCount": 0,
-    "liveCandidateCount": 8,
+    "liveCandidateCount": 9,
     "liveReadyCount": 8,
     "byStrategy": {
       "beefy-folding-vault": {
@@ -3436,6 +3444,17 @@
         "topBlocker": null,
         "projectedNetUsd": 25,
         "policyReady": true,
+        "demotionTriggers": []
+      },
+      "defillama-yield-portfolio": {
+        "mode": "live_candidate",
+        "readinessVerdict": "live_candidate",
+        "shadowReady": true,
+        "liveReady": true,
+        "blockerCount": 0,
+        "topBlocker": null,
+        "projectedNetUsd": 25,
+        "policyReady": null,
         "demotionTriggers": []
       },
       "pendle-pt-lbtc-base": {
@@ -3626,6 +3645,6 @@
         "demotionTriggers": []
       }
     },
-    "generatedAt": "2026-05-10T01:49:19.689Z"
+    "generatedAt": "2026-05-13T19:25:48.362Z"
   }
 }

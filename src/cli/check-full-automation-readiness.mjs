@@ -62,17 +62,9 @@ export function runJsonCli(scriptPath, args = [], { timeoutMs = readinessChildTi
       error: stderr.trim() || stdout.trim() || `exit ${result.status ?? 1}`,
     };
   }
+  let parsed = null;
   try {
-    const parsed = JSON.parse(stdout);
-    return {
-      ok: true,
-      status: 0,
-      signal: null,
-      stdout,
-      stderr,
-      json: parsed,
-      error: null,
-    };
+    parsed = JSON.parse(stdout);
   } catch (error) {
     return {
       ok: false,
@@ -84,6 +76,15 @@ export function runJsonCli(scriptPath, args = [], { timeoutMs = readinessChildTi
       error: `invalid_json:${error.message}`,
     };
   }
+  return {
+    ok: true,
+    status: 0,
+    signal: null,
+    stdout,
+    stderr,
+    json: parsed,
+    error: null,
+  };
 }
 
 function classifyRefillIssue(reason = null) {
@@ -178,24 +179,30 @@ export function buildFullAutomationReadiness({
   const merklCanaryStatus = autopilot?.merklCanary?.status || null;
   const merklCanaryLiveLaneReady =
     merklCanaryReadyCount > 0 && !["failed", "invalid", "error"].includes(String(merklCanaryStatus || ""));
-  const dispatchReady =
-    (liveEligibleCount > 0 || merklCanaryLiveLaneReady) &&
-    dispatchBatchStatus !== "failed" &&
-    dispatchBatchStatus !== "invalid";
-  const paybackStatus = payback?.payback?.scheduler?.status || null;
-  const paybackReason = payback?.payback?.scheduler?.reason || null;
-  const paybackIsolationReady = ingressIsolationReady;
   const liveAutomationObserved = autopilot?.present === true;
   const activeLiveAutomationRun = autopilot?.activeRun === true;
   const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || []);
   const refillIssueCounts = countByCategory(refillBlockers);
-  const liveAdmissionBlockers = strategyLiveAdmissionBlockers(strategyDispatch);
   const unresolvedRefillRoutes =
     liveAutomationObserved &&
     !activeLiveAutomationRun &&
     (refillBlockers.length > 0
       ? refillBlockers.some((item) => refillNeedsLiveRemediation(item))
       : (autopilot?.refill?.blockedCount ?? 0) > 0);
+  const liveWatchReady =
+    liveAutomationObserved &&
+    !activeLiveAutomationRun &&
+    !unresolvedRefillRoutes &&
+    autopilot?.nextAction === "continue_live_watch" &&
+    !["failed", "invalid", "error"].includes(String(autopilot?.status || ""));
+  const dispatchReady =
+    (liveEligibleCount > 0 || merklCanaryLiveLaneReady || liveWatchReady) &&
+    dispatchBatchStatus !== "failed" &&
+    dispatchBatchStatus !== "invalid";
+  const paybackStatus = payback?.payback?.scheduler?.status || null;
+  const paybackReason = payback?.payback?.scheduler?.reason || null;
+  const paybackIsolationReady = ingressIsolationReady;
+  const liveAdmissionBlockers = strategyLiveAdmissionBlockers(strategyDispatch);
   const capitalAutomationReady =
     capitalPlanDecision === "BALANCED" ||
     capitalPlanDecision === "READY" ||

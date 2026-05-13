@@ -42,21 +42,21 @@ test("treasury refill executor builds same-chain token-to-native refill preview"
     buildTokenDexPlanImpl: async (input) => {
       capturedInput = input;
       return {
-      schemaVersion: 1,
-      observedAt: "2026-04-19T00:00:00.000Z",
-      planStatus: "ready",
-      strategyId: input.strategyId,
-      chain: input.chain,
-      senderAddress: input.senderAddress,
-      inputToken: input.inputToken,
-      outputToken: ZERO_TOKEN,
-      outputAsset: { ticker: "ETH" },
-      amount: input.amount,
-      amountUsd: 2.42,
-      minimumOutputAmount: "1100000000000000",
-      quote: { outputAmount: "1110000000000000" },
-      steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }, { id: "unwrap_wrapped_native" }],
-    };
+        schemaVersion: 1,
+        observedAt: "2026-04-19T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: input.strategyId,
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: ZERO_TOKEN,
+        outputAsset: { ticker: "ETH" },
+        amount: input.amount,
+        amountUsd: 2.42,
+        minimumOutputAmount: "1100000000000000",
+        quote: { outputAmount: "1110000000000000" },
+        steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }, { id: "unwrap_wrapped_native" }],
+      };
     },
   });
 
@@ -95,6 +95,11 @@ test("treasury refill executor builds same-chain token-to-token refill preview",
           estimatedUsd: 38.66,
         },
       },
+      systemEconomics: {
+        effectiveSystemNetPnlUsd: 0.31,
+        estimatedNetPnlUsd: 0.31,
+        routeKey: "base:cbbtc->usdc",
+      },
     },
     senderAddress: ADDRESS,
     buildTokenDexPlanImpl: async (input) => {
@@ -122,7 +127,69 @@ test("treasury refill executor builds same-chain token-to-token refill preview",
   assert.equal(capturedInput.inputToken, baseCbbtc);
   assert.equal(capturedInput.outputToken, baseUsdc);
   assert.equal(capturedInput.strategyId, "token-dex-experiment");
+  assert.deepEqual(capturedInput.systemEconomics, {
+    effectiveSystemNetPnlUsd: 0.31,
+    estimatedNetPnlUsd: 0.31,
+    routeKey: "base:cbbtc->usdc",
+  });
   assert.equal(preparation.coverage.coversTarget, true);
+});
+
+test("treasury refill executor caps token-to-token refill input at token dex per-tx limit", async () => {
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const baseWbtc = "0x0555e30da8f98308edb960aa94c0db47230d2b9c";
+  let capturedInput = null;
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-base-wbtc-usdc-cap",
+      type: "refill_token",
+      chain: "base",
+      asset: "USDC",
+      token: baseUsdc,
+      targetAmount: "66781169",
+      targetAmountDecimal: 66.781169,
+      estimatedAssetValueUsd: 66.781169,
+      executionMethod: "same_chain_token_to_token_swap",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: baseWbtc,
+          ticker: "wBTC.OFT",
+          actual: "340731",
+          actualDecimal: 0.00340731,
+          estimatedUsd: 275.36528421585,
+        },
+      },
+      systemEconomics: {
+        effectiveSystemNetPnlUsd: 7.05,
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-13T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: input.strategyId,
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: input.outputToken,
+        amount: input.amount,
+        minimumOutputAmount: "49631394",
+        quote: { outputAmount: "49880798" },
+        steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(preparation.coverage.coversTarget, false);
+  assert.equal(preparation.coverage.partialRefill, true);
+  assert.equal(preparation.coverage.partialRefillReason, "strategy_per_tx_cap_limited");
+  assert.equal(capturedInput.strategyId, "token-dex-experiment");
+  assert.ok(Number(capturedInput.amount) < 70_000);
 });
 
 test("treasury refill executor estimates unknown source-token input from observed raw and decimal balances", async () => {
@@ -173,7 +240,7 @@ test("treasury refill executor estimates unknown source-token input from observe
   assert.equal(preparation.status, "ready");
   assert.equal(capturedInput.inputToken, yoUsd);
   assert.equal(capturedInput.outputToken, baseUsdc);
-  assert.equal(capturedInput.amount, "63710787");
+  assert.equal(capturedInput.amount, "47732151");
 });
 
 test("treasury refill executor blocks same-chain token-to-native refill when native gas bootstrap is insufficient", async () => {
@@ -259,11 +326,14 @@ test("treasury refill executor maps cross-chain BTC-family native refill to Gate
     },
   });
 
-  assert.equal(refillExecutorForJob({
-    executionMethod: "cross_chain_bridge_or_swap",
-    type: "refill_native",
-    fundingSource: { source: { chain: "base", token: WBTC_OFT_TOKEN } },
-  }), "gateway_btc_consolidation");
+  assert.equal(
+    refillExecutorForJob({
+      executionMethod: "cross_chain_bridge_or_swap",
+      type: "refill_native",
+      fundingSource: { source: { chain: "base", token: WBTC_OFT_TOKEN } },
+    }),
+    "gateway_btc_consolidation",
+  );
   assert.equal(preparation.status, "ready");
   assert.equal(preparation.executor, "gateway_btc_consolidation");
   assert.equal(capturedInput.dstToken, WBTC_OFT_TOKEN);
@@ -293,27 +363,30 @@ test("treasury refill executor maps bitcoin-funded native refill to Gateway onra
     buildGatewayBtcOnrampPlanImpl: async (input) => {
       capturedInput = input;
       return {
-      schemaVersion: 1,
-      observedAt: "2026-04-20T00:00:00.000Z",
-      planStatus: "ready",
-      strategyId: "gateway-btc-onramp",
-      senderAddress: input.senderAddress,
-      recipient: input.recipient,
-      dstChain: input.dstChain,
-      dstToken: input.dstToken,
-      amountSats: input.amountSats,
-      gasRefill: input.gasRefill,
-      quote: { outputAmount: { amount: "1000" } },
-      intent: { strategyId: "gateway-btc-onramp" },
+        schemaVersion: 1,
+        observedAt: "2026-04-20T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: "gateway-btc-onramp",
+        senderAddress: input.senderAddress,
+        recipient: input.recipient,
+        dstChain: input.dstChain,
+        dstToken: input.dstToken,
+        amountSats: input.amountSats,
+        gasRefill: input.gasRefill,
+        quote: { outputAmount: { amount: "1000" } },
+        intent: { strategyId: "gateway-btc-onramp" },
       };
     },
   });
 
-  assert.equal(refillExecutorForJob({
-    executionMethod: "cross_chain_bridge_or_swap",
-    type: "refill_native",
-    fundingSource: { source: { chain: "bitcoin" } },
-  }), "gateway_btc_onramp");
+  assert.equal(
+    refillExecutorForJob({
+      executionMethod: "cross_chain_bridge_or_swap",
+      type: "refill_native",
+      fundingSource: { source: { chain: "bitcoin" } },
+    }),
+    "gateway_btc_onramp",
+  );
   assert.equal(preparation.status, "ready");
   assert.equal(preparation.executor, "gateway_btc_onramp");
   assert.equal(preparation.plan.senderAddress, "bc1qsource000000000000000000000000000000000");
@@ -369,11 +442,14 @@ test("treasury refill executor maps bitcoin-funded token refill to Gateway onram
     },
   });
 
-  assert.equal(refillExecutorForJob({
-    executionMethod: "cross_chain_bridge_or_swap",
-    type: "refill_token",
-    fundingSource: { source: { chain: "bitcoin" } },
-  }), "gateway_btc_onramp");
+  assert.equal(
+    refillExecutorForJob({
+      executionMethod: "cross_chain_bridge_or_swap",
+      type: "refill_token",
+      fundingSource: { source: { chain: "bitcoin" } },
+    }),
+    "gateway_btc_onramp",
+  );
   assert.equal(preparation.status, "ready");
   assert.equal(preparation.executor, "gateway_btc_onramp");
   assert.equal(capturedInput.dstToken, WBTC_OFT_TOKEN);
@@ -714,9 +790,12 @@ test("treasury refill executor blocks unsupported Across source before builder",
 });
 
 test("treasury refill executor maps cross-chain intermediate swap to composite plan", async () => {
-  assert.equal(refillExecutorForJob({
-    executionMethod: "cross_chain_swap_via_btc_intermediate",
-  }), "cross_chain_btc_intermediate");
+  assert.equal(
+    refillExecutorForJob({
+      executionMethod: "cross_chain_swap_via_btc_intermediate",
+    }),
+    "cross_chain_btc_intermediate",
+  );
 
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {
@@ -1324,6 +1403,11 @@ test("treasury refill executor dispatches LI.FI fallback preparations", async ()
 
 test("treasury refill executor can prepare direct LI.FI refill candidates", async () => {
   const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  const systemEconomics = {
+    effectiveSystemNetPnlUsd: 6.2,
+    routeInputUsd: 8,
+  };
+  let lifiInput = null;
   const preparation = await buildTreasuryRefillExecutionPlan({
     job: {
       jobId: "job-direct-lifi",
@@ -1335,6 +1419,7 @@ test("treasury refill executor can prepare direct LI.FI refill candidates", asyn
       targetAmountDecimal: 0.00009,
       estimatedAssetValueUsd: 7,
       executionMethod: "cross_chain_bridge_lifi",
+      systemEconomics,
       fundingSource: {
         source: {
           chain: "base",
@@ -1346,18 +1431,21 @@ test("treasury refill executor can prepare direct LI.FI refill candidates", asyn
       },
     },
     senderAddress: ADDRESS,
-    buildLifiBridgePlanImpl: async (input) => ({
-      schemaVersion: 1,
-      observedAt: "2026-04-25T00:00:00.000Z",
-      planStatus: "ready",
-      srcChain: input.srcChain,
-      dstChain: input.dstChain,
-      srcToken: input.srcToken,
-      dstToken: input.dstToken,
-      amount: input.amount,
-      minimumOutputAmount: "9100",
-      steps: [{ id: "lifi_bridge" }],
-    }),
+    buildLifiBridgePlanImpl: async (input) => {
+      lifiInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-04-25T00:00:00.000Z",
+        planStatus: "ready",
+        srcChain: input.srcChain,
+        dstChain: input.dstChain,
+        srcToken: input.srcToken,
+        dstToken: input.dstToken,
+        amount: input.amount,
+        minimumOutputAmount: "9100",
+        steps: [{ id: "lifi_bridge" }],
+      };
+    },
   });
 
   assert.equal(preparation.status, "ready");
@@ -1365,6 +1453,7 @@ test("treasury refill executor can prepare direct LI.FI refill candidates", asyn
   assert.equal(preparation.plan.srcToken, baseCbbtc);
   assert.equal(preparation.plan.dstToken, WBTC_OFT_TOKEN);
   assert.equal(preparation.coverage.coversTarget, true);
+  assert.deepEqual(lifiInput.systemEconomics, systemEconomics);
 });
 
 test("treasury refill executor allows high-coverage partial LI.FI refills", async () => {

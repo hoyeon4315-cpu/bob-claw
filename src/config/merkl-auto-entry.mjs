@@ -11,6 +11,7 @@ export const MERKL_AUTO_ENTRY_POLICY = Object.freeze({
   ]),
   whitelistedEntrySymbols: Object.freeze([
     "BTC",
+    "APXUSD",
     "CBTC",
     "CBBTC",
     "DAI",
@@ -34,7 +35,9 @@ function finite(value) {
 }
 
 function normalizedSymbol(value) {
-  return String(value || "").trim().toUpperCase();
+  return String(value || "")
+    .trim()
+    .toUpperCase();
 }
 
 function entrySymbolsWhitelisted(queueItem = {}, policy = MERKL_AUTO_ENTRY_POLICY) {
@@ -65,10 +68,7 @@ export function merklAutoEntryPolicy(overrides = {}) {
   };
 }
 
-export function evaluateMerklAutoEntry(queueItem = {}, {
-  policy: policyInput = {},
-  bindingSupported = false,
-} = {}) {
+export function evaluateMerklAutoEntry(queueItem = {}, { policy: policyInput = {}, bindingSupported = false } = {}) {
   const policy = merklAutoEntryPolicy(policyInput);
   const blockers = [];
   if (!policy.enabled) blockers.push("merkl_auto_entry_disabled");

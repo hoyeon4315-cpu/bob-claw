@@ -34,12 +34,14 @@ export function parseArgs(argv) {
     print: flags.has("--print"),
     write: flags.has("--write"),
     install: flags.has("--install"),
+    stop: flags.has("--stop"),
+    start: flags.has("--start"),
     status: flags.has("--status"),
     rootDir: options["root-dir"] || process.cwd(),
     nodePath: options["node-path"] || resolveNodeExecutable(),
     launchAgentsDir: options["launch-agents-dir"],
     logDir: options["log-dir"],
-    uid: options.uid ? Number(options.uid) : (typeof process.getuid === "function" ? process.getuid() : null),
+    uid: options.uid ? Number(options.uid) : typeof process.getuid === "function" ? process.getuid() : null,
   };
 }
 
@@ -54,6 +56,8 @@ function launchctl(args) {
 }
 
 function actionFromArgs(args) {
+  if (args.stop) return "stop";
+  if (args.start) return "start";
   if (args.install) return "install";
   if (args.status) return "status";
   if (args.print) return "print";
@@ -69,8 +73,8 @@ export function retryableBootstrapFailure(output = "") {
   return /Bootstrap failed:\s*5|Input\/output error/i.test(output);
 }
 
-function runLaunchctlOrThrow(args, { tolerateNotLoaded = false } = {}) {
-  const result = launchctl(args);
+function runLaunchctlOrThrow(args, { tolerateNotLoaded = false, launchctlRunner = launchctl } = {}) {
+  const result = launchctlRunner(args);
   if (result.error) throw result.error;
   const combined = [result.stdout, result.stderr].filter(Boolean).join("\n");
   if (result.status !== 0 && !(tolerateNotLoaded && toleratedBootoutFailure(combined))) {
@@ -82,25 +86,29 @@ function runLaunchctlOrThrow(args, { tolerateNotLoaded = false } = {}) {
   };
 }
 
-async function collectStatus(specs, uid) {
+async function collectStatus(
+  specs,
+  uid,
+  { launchctlRunner = defaultLaunchctlRunner, statusReader = readLaunchAgentStatus } = {},
+) {
   return Promise.all(
     specs.map((spec) =>
-      readLaunchAgentStatus(spec, {
+      statusReader(spec, {
         uid,
-        launchctlRunner: defaultLaunchctlRunner,
+        launchctlRunner,
       }),
     ),
   );
 }
 
-async function bootstrapSpecWithRetry(spec, uid, { maxAttempts = 5 } = {}) {
+async function bootstrapSpecWithRetry(spec, uid, { maxAttempts = 5, launchctlRunner = launchctl } = {}) {
   let lastError = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       return {
         id: spec.id,
         step: attempt === 1 ? "bootstrap" : `bootstrap_retry_${attempt}`,
-        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath]),
+        ...runLaunchctlOrThrow(["bootstrap", `gui/${uid}`, spec.plistPath], { launchctlRunner }),
       };
     } catch (error) {
       lastError = error;
@@ -111,7 +119,7 @@ async function bootstrapSpecWithRetry(spec, uid, { maxAttempts = 5 } = {}) {
   throw lastError;
 }
 
-async function installSpecs(specs, uid) {
+async function installSpecs(specs, uid, { launchctlRunner = launchctl } = {}) {
   if (!Number.isInteger(uid)) {
     throw new Error("launchd install requires a numeric macOS user id");
   }
@@ -120,21 +128,50 @@ async function installSpecs(specs, uid) {
     operations.push({
       id: spec.id,
       step: "bootout",
-      ...runLaunchctlOrThrow(["bootout", `gui/${uid}/${spec.label}`], { tolerateNotLoaded: true }),
+      ...runLaunchctlOrThrow(["bootout", `gui/${uid}/${spec.label}`], { tolerateNotLoaded: true, launchctlRunner }),
     });
     await delay(1000);
-    operations.push(await bootstrapSpecWithRetry(spec, uid));
+    operations.push(await bootstrapSpecWithRetry(spec, uid, { launchctlRunner }));
     operations.push({
       id: spec.id,
       step: "kickstart",
-      ...runLaunchctlOrThrow(["kickstart", "-k", `gui/${uid}/${spec.label}`]),
+      ...runLaunchctlOrThrow(["kickstart", "-k", `gui/${uid}/${spec.label}`], { launchctlRunner }),
     });
   }
   return operations;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+async function stopSpecs(specs, uid, { launchctlRunner = launchctl } = {}) {
+  if (!Number.isInteger(uid)) {
+    throw new Error("launchd stop requires a numeric macOS user id");
+  }
+  return specs.map((spec) => ({
+    id: spec.id,
+    step: "bootout",
+    ...runLaunchctlOrThrow(["bootout", `gui/${uid}/${spec.label}`], { tolerateNotLoaded: true, launchctlRunner }),
+  }));
+}
+
+async function startSpecs(specs, uid, { launchctlRunner = launchctl } = {}) {
+  if (!Number.isInteger(uid)) {
+    throw new Error("launchd start requires a numeric macOS user id");
+  }
+  const operations = [];
+  for (const spec of specs) {
+    operations.push(await bootstrapSpecWithRetry(spec, uid, { launchctlRunner }));
+    operations.push({
+      id: spec.id,
+      step: "kickstart",
+      ...runLaunchctlOrThrow(["kickstart", "-k", `gui/${uid}/${spec.label}`], { launchctlRunner }),
+    });
+  }
+  return operations;
+}
+
+export async function runLiveAutomationLaunchdAction(
+  args,
+  { launchctlRunner = launchctl, statusReader = readLaunchAgentStatus } = {},
+) {
   const action = actionFromArgs(args);
   const specOptions = {
     rootDir: args.rootDir,
@@ -152,14 +189,13 @@ async function main() {
       plist: renderLaunchAgentPlist(spec),
     }));
     if (args.json) {
-      console.log(JSON.stringify(payload, null, 2));
-      return;
+      return payload;
     }
     for (const item of payload) {
       console.log(`### ${item.id} (${item.label}) -> ${item.plistPath}`);
       process.stdout.write(item.plist);
     }
-    return;
+    return payload;
   }
 
   let writeResult = null;
@@ -169,33 +205,60 @@ async function main() {
 
   let installOperations = null;
   if (action === "install") {
-    installOperations = await installSpecs(specs, args.uid);
+    installOperations = await installSpecs(specs, args.uid, { launchctlRunner });
   }
 
-  const statuses = action === "status" || action === "install"
-    ? await collectStatus(specs, args.uid)
-    : null;
+  let stopOperations = null;
+  if (action === "stop") {
+    stopOperations = await stopSpecs(specs, args.uid, { launchctlRunner });
+  }
 
-  const payload = {
+  let startOperations = null;
+  if (action === "start") {
+    startOperations = await startSpecs(specs, args.uid, { launchctlRunner });
+  }
+
+  const statuses =
+    action === "status" || action === "install" || action === "stop" || action === "start"
+      ? await collectStatus(specs, args.uid, { launchctlRunner, statusReader })
+      : null;
+
+  return {
     action,
     writes: writeResult?.writes || [],
     installOperations,
+    stopOperations,
+    startOperations,
     statuses,
   };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const payload = await runLiveAutomationLaunchdAction(args);
   if (args.json) {
     console.log(JSON.stringify(payload, null, 2));
     return;
   }
+  if (payload.action === "print") return;
 
-  console.log(`action=${action}`);
+  console.log(`action=${payload.action}`);
   for (const write of payload.writes) {
     console.log(`write:${write.id}=changed:${write.changed} plist:${write.plistPath}`);
   }
   for (const operation of payload.installOperations || []) {
     console.log(`install:${operation.id}:${operation.step}=exit:${operation.status}`);
   }
+  for (const operation of payload.stopOperations || []) {
+    console.log(`stop:${operation.id}:${operation.step}=exit:${operation.status}`);
+  }
+  for (const operation of payload.startOperations || []) {
+    console.log(`start:${operation.id}:${operation.step}=exit:${operation.status}`);
+  }
   for (const status of payload.statuses || []) {
-    console.log(`status:${status.id}=state:${status.status} loaded:${status.loaded} running:${status.running} pid:${status.pid ?? "n/a"} plist:${status.plistPresent}`);
+    console.log(
+      `status:${status.id}=state:${status.status} loaded:${status.loaded} running:${status.running} pid:${status.pid ?? "n/a"} plist:${status.plistPresent}`,
+    );
   }
 }
 

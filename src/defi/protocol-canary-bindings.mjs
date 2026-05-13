@@ -160,7 +160,9 @@ const PROTOCOL_BINDINGS = Object.freeze({
 });
 
 function normalize(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function missingFields(binding = {}, fields = []) {
@@ -211,9 +213,24 @@ export function buildProtocolCanaryBindingPlan({ opportunity = {}, binding = nul
   const missing = missingBindingFields(template, binding || {});
   const pendleYt = template.protocolId === "pendle" && binding?.instrument === "yt";
   const bindingKind = pendleYt ? "pendle_yt_buy_sell_redeem" : template.bindingKind;
-  const requiredBindingFields = pendleYt ? ["marketAddress", "ytTokenAddress", "assetAddress"] : template.requiredBindingFields;
+  const requiredBindingFields = pendleYt
+    ? ["marketAddress", "ytTokenAddress", "assetAddress"]
+    : template.requiredBindingFields;
   const optionalBindingFields = pendleYt
-    ? ["shareTokenAddress", "ytTokenSymbol", "assetSymbol", "assetDecimals", "maturity", "ytExpiry", "exitQuote", "entryQuote", "impliedAprPct"]
+    ? [
+        "shareTokenAddress",
+        "ytTokenSymbol",
+        "assetSymbol",
+        "assetDecimals",
+        "maturity",
+        "ytExpiry",
+        "exitQuote",
+        "entryQuote",
+        "impliedAprPct",
+        "entryTokenAddresses",
+        "sdkInputTokenAddresses",
+        "syInputTokenAddresses",
+      ]
     : template.optionalBindingFields;
   const resolvedBinding = {
     ...pickBindingFields(binding || {}, requiredBindingFields),

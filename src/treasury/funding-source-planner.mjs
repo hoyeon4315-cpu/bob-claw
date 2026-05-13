@@ -1,9 +1,6 @@
 import { WBTC_OFT_TOKEN, WRAPPED_NATIVE_TOKENS, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../assets/tokens.mjs";
 import { acrossSupportsPair } from "../config/across.mjs";
-import {
-  BRIDGE_PROVIDERS,
-  fallbackProvidersWhenGatewayPaused,
-} from "../config/bridge-providers.mjs";
+import { BRIDGE_PROVIDERS, fallbackProvidersWhenGatewayPaused } from "../config/bridge-providers.mjs";
 import { GAS_ZIP_DEFAULT_POLICY, gasZipAcceptsAction, gasZipInboundChain } from "../config/gas-zip.mjs";
 import { isGatewayMethod } from "../config/gateway.mjs";
 import { dexProvidersForChain } from "../dex/providers.mjs";
@@ -135,7 +132,8 @@ function isStablecoinTicker(value) {
 }
 
 function resourceKeyForRefillAction(action) {
-  const baseKey = action.type === "refill_native" ? `${action.chain}:native` : `${action.chain}:${normalized(action.token)}`;
+  const baseKey =
+    action.type === "refill_native" ? `${action.chain}:native` : `${action.chain}:${normalized(action.token)}`;
   if (!action?.sourceHint?.chain) return baseKey;
   return `${baseKey}:from:${action.sourceHint.chain}:${normalized(action.sourceHint.token || ZERO_TOKEN)}`;
 }
@@ -175,7 +173,8 @@ function mergeInventoryEntries(primaryEntries = [], supplementalEntries = [], ki
     const normalizedEntry = normalizeInventoryEntry(entry, kind);
     if (!normalizedEntry.chain) return;
     if (kind === "token" && !normalizedEntry.token) return;
-    const key = kind === "native" ? normalizedEntry.chain : `${normalizedEntry.chain}:${normalized(normalizedEntry.token)}`;
+    const key =
+      kind === "native" ? normalizedEntry.chain : `${normalizedEntry.chain}:${normalized(normalizedEntry.token)}`;
     const existing = merged.get(key);
     if (!existing) {
       merged.set(key, { ...normalizedEntry, priority });
@@ -185,12 +184,11 @@ function mergeInventoryEntries(primaryEntries = [], supplementalEntries = [], ki
     const nextActual = Number(normalizedEntry.actual || 0);
     const existingUsd = Number.isFinite(existing.estimatedUsd) ? existing.estimatedUsd : -1;
     const nextUsd = Number.isFinite(normalizedEntry.estimatedUsd) ? normalizedEntry.estimatedUsd : -1;
-    const nextHasMoreObservedInventory = nextActual > existingActual || (nextActual === existingActual && nextUsd > existingUsd);
-    const nextPriorityDoesNotHideInventory = priority < existing.priority && nextActual >= existingActual && nextUsd >= existingUsd;
-    if (
-      nextPriorityDoesNotHideInventory ||
-      nextHasMoreObservedInventory
-    ) {
+    const nextHasMoreObservedInventory =
+      nextActual > existingActual || (nextActual === existingActual && nextUsd > existingUsd);
+    const nextPriorityDoesNotHideInventory =
+      priority < existing.priority && nextActual >= existingActual && nextUsd >= existingUsd;
+    if (nextPriorityDoesNotHideInventory || nextHasMoreObservedInventory) {
       merged.set(key, { ...normalizedEntry, priority: Math.min(priority, existing.priority) });
     }
   };
@@ -231,7 +229,12 @@ function sortByEstimatedUsd(items) {
 
 function estimateMethodCostUsd(method, assetValueUsd) {
   const profile = METHOD_PROFILES[method];
-  if (!profile || !Number.isFinite(profile.fixedCostUsd) || !Number.isFinite(profile.variableCostBps) || !Number.isFinite(assetValueUsd)) {
+  if (
+    !profile ||
+    !Number.isFinite(profile.fixedCostUsd) ||
+    !Number.isFinite(profile.variableCostBps) ||
+    !Number.isFinite(assetValueUsd)
+  ) {
     return null;
   }
   return profile.fixedCostUsd + assetValueUsd * (profile.variableCostBps / 10_000);
@@ -311,7 +314,8 @@ function candidateRecord({
 }) {
   const profile = METHOD_PROFILES[method];
   const expectedExecutionRefillCostUsd = estimateMethodCostUsd(method, action.refillEstimatedUsd);
-  const resolvedRequiresReserveState = typeof requiresReserveState === "boolean" ? requiresReserveState : profile.requiresReserveState;
+  const resolvedRequiresReserveState =
+    typeof requiresReserveState === "boolean" ? requiresReserveState : profile.requiresReserveState;
   const resolvedReserveReplenishmentKnown =
     typeof reserveReplenishmentKnown === "boolean" ? reserveReplenishmentKnown : profile.reserveReplenishmentKnown;
   return {
@@ -344,7 +348,9 @@ function nativeSwapCandidate(action, plan, preferred) {
     chainInventory.tokens.filter((item) => Number(item.actual || 0) > 0 && spendableFundingSource(item)),
   );
   const wrappedNativeToken = normalized(WRAPPED_NATIVE_TOKENS[action.chain]);
-  const wrappedNativeSource = tokenSources.find((item) => normalized(item.token) === wrappedNativeToken && sourceInventoryCoversTargetValue(action, item));
+  const wrappedNativeSource = tokenSources.find(
+    (item) => normalized(item.token) === wrappedNativeToken && sourceInventoryCoversTargetValue(action, item),
+  );
   const tokenSource = wrappedNativeSource || tokenSources[0] || null;
   if (!tokenSource) {
     return candidateRecord({
@@ -388,10 +394,10 @@ function nativeSwapCandidate(action, plan, preferred) {
     notes: !dexSupported
       ? "Same-chain token inventory exists, but no deterministic DEX executor is configured for this chain."
       : !coversTargetValue
-      ? "Same-chain token inventory exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required."
-      : bootstrapNativeSatisfied
-      ? "Use same-chain token inventory to rebuild native gas when some bootstrap native gas still exists."
-      : "Same-chain token inventory is already present but stranded because native gas is zero; first bootstrap native gas, then swap local tokens into the chain native asset.",
+        ? "Same-chain token inventory exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required."
+        : bootstrapNativeSatisfied
+          ? "Use same-chain token inventory to rebuild native gas when some bootstrap native gas still exists."
+          : "Same-chain token inventory is already present but stranded because native gas is zero; first bootstrap native gas, then swap local tokens into the chain native asset.",
   });
 }
 
@@ -417,8 +423,8 @@ function tokenSwapCandidate(action, plan, preferred) {
     notes: !dexSupported
       ? "Same-chain native inventory exists, but no deterministic DEX executor is configured for this chain."
       : coversTargetValue
-      ? "Use same-chain native balance to acquire the route token inventory."
-      : "Same-chain native balance exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required.",
+        ? "Use same-chain native balance to acquire the route token inventory."
+        : "Same-chain native balance exists, but its observed value is below the refill target so cross-chain funding or a smaller target is still required.",
   });
 }
 
@@ -430,9 +436,7 @@ function actionablePartialRefillUsd(action, source, policy) {
   }
   const minPartialUsd = Math.min(
     targetUsd,
-    finite(action?.strategyPolicy?.minPartialRefillUsd) ??
-      finite(policy?.capital?.canaryStartUsdMin) ??
-      10,
+    finite(action?.strategyPolicy?.minPartialRefillUsd) ?? finite(policy?.capital?.canaryStartUsdMin) ?? 10,
   );
   const inputBuffer = 1.1;
   const partialUsd = Math.min(targetUsd, sourceUsd / inputBuffer);
@@ -444,16 +448,21 @@ function tokenToTokenSwapCandidate(action, plan, policy, preferred) {
   const native = chainInventory.native;
   const bootstrapNativeSatisfied = Number(native?.actualDecimal || 0) > 0;
   const dexSupported = dexProvidersForChain(action.chain).length > 0;
+  const targetAsset = tokenAsset(action.chain, action.token);
   const tokenSources = chainInventory.tokens
-    .filter((item) =>
-      Number(item.actual || 0) > 0 &&
-      normalized(item.token) !== normalized(action.token) &&
-      spendableFundingSource(item)
+    .filter(
+      (item) =>
+        Number(item.actual || 0) > 0 &&
+        normalized(item.token) !== normalized(action.token) &&
+        spendableFundingSource(item),
     )
     .sort((left, right) => {
       const leftCovers = sourceInventoryCoversTargetValue(action, left);
       const rightCovers = sourceInventoryCoversTargetValue(action, right);
       if (leftCovers !== rightCovers) return leftCovers ? -1 : 1;
+      const leftSameFamily = left.family && targetAsset?.family && left.family === targetAsset.family;
+      const rightSameFamily = right.family && targetAsset?.family && right.family === targetAsset.family;
+      if (leftSameFamily !== rightSameFamily) return leftSameFamily ? -1 : 1;
       const leftPartial = actionablePartialRefillUsd(action, left, policy) ?? 0;
       const rightPartial = actionablePartialRefillUsd(action, right, policy) ?? 0;
       if (leftPartial !== rightPartial) return rightPartial - leftPartial;
@@ -512,18 +521,21 @@ function reserveTransferCandidate(action, preferred) {
     availability: "conditional",
     preferred,
     missingInputs: ["reserve_state_unmodelled"],
-    notes: "Preferred in dual-wallet mode, but the repo does not yet model reserve balances or reserve replenishment state.",
+    notes:
+      "Preferred in dual-wallet mode, but the repo does not yet model reserve balances or reserve replenishment state.",
   });
 }
 
 function crossChainRoutePreference(source, action, routeContext = null) {
   if (!routeContext || action.type !== "refill_native") return 5;
   if (routeContext.dstChain && routeContext.dstChain !== action.chain) return 5;
-  if (source.chain === routeContext.srcChain && normalized(source.token) === normalized(routeContext.srcToken)) return 1;
+  if (source.chain === routeContext.srcChain && normalized(source.token) === normalized(routeContext.srcToken))
+    return 1;
   const sourceAsset = source.chain && source.token ? tokenAsset(source.chain, source.token) : null;
   const routeSourceAsset =
     routeContext.srcChain && routeContext.srcToken ? tokenAsset(routeContext.srcChain, routeContext.srcToken) : null;
-  if (source.chain === routeContext.srcChain && sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 2;
+  if (source.chain === routeContext.srcChain && sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family)
+    return 2;
   if (sourceAsset?.family && sourceAsset.family === routeSourceAsset?.family) return 3;
   if (source.chain === "bitcoin" && normalized(source.token) === normalized(ZERO_TOKEN)) return 4;
   if (source.sourceKind === "token") return 5;
@@ -560,8 +572,8 @@ function selectCrossChainSource(action, plan, routeContext = null) {
       actualDecimal: item.actualDecimal ?? null,
       sourceKind: "token",
     }));
-  return [...nativeSources, ...tokenSources]
-    .sort((left, right) => {
+  return (
+    [...nativeSources, ...tokenSources].sort((left, right) => {
       const hintDelta = preferredSourceRank(left, action) - preferredSourceRank(right, action);
       if (hintDelta !== 0) return hintDelta;
       const leftCoversTarget = sourceInventoryCoversTargetValue(action, left);
@@ -569,16 +581,18 @@ function selectCrossChainSource(action, plan, routeContext = null) {
       if (leftCoversTarget !== rightCoversTarget) return leftCoversTarget ? -1 : 1;
       const leftSupport = crossChainExecutorSupport(action, left);
       const rightSupport = crossChainExecutorSupport(action, right);
-      const leftSupportRank = !leftSupport.supported ? 2 : (leftSupport.intermediateSwapRequired ? 1 : 0);
-      const rightSupportRank = !rightSupport.supported ? 2 : (rightSupport.intermediateSwapRequired ? 1 : 0);
+      const leftSupportRank = !leftSupport.supported ? 2 : leftSupport.intermediateSwapRequired ? 1 : 0;
+      const rightSupportRank = !rightSupport.supported ? 2 : rightSupport.intermediateSwapRequired ? 1 : 0;
       if (leftSupportRank !== rightSupportRank) return leftSupportRank - rightSupportRank;
-      const preferenceDelta = crossChainRoutePreference(left, action, routeContext) - crossChainRoutePreference(right, action, routeContext);
+      const preferenceDelta =
+        crossChainRoutePreference(left, action, routeContext) - crossChainRoutePreference(right, action, routeContext);
       if (preferenceDelta !== 0) return preferenceDelta;
       const leftUsd = Number.isFinite(left.estimatedUsd) ? left.estimatedUsd : -1;
       const rightUsd = Number.isFinite(right.estimatedUsd) ? right.estimatedUsd : -1;
       if (leftUsd !== rightUsd) return rightUsd - leftUsd;
       return String(left.chain).localeCompare(String(right.chain));
-    })[0] || null;
+    })[0] || null
+  );
 }
 
 function crossChainExecutorSupport(action, selectedSource) {
@@ -586,7 +600,8 @@ function crossChainExecutorSupport(action, selectedSource) {
     return {
       supported: false,
       missingInputs: ["cross_chain_source_selection_missing"],
-      notes: "Cross-chain funding has no observed source inventory yet, so the planner cannot promote it beyond a conditional source-selection stub.",
+      notes:
+        "Cross-chain funding has no observed source inventory yet, so the planner cannot promote it beyond a conditional source-selection stub.",
     };
   }
 
@@ -598,7 +613,8 @@ function crossChainExecutorSupport(action, selectedSource) {
     return {
       supported: true,
       missingInputs: [],
-      notes: "Gateway BTC onramp can bootstrap destination native gas from native BTC inventory using a gas-refill quote path.",
+      notes:
+        "Gateway BTC onramp can bootstrap destination native gas from native BTC inventory using a gas-refill quote path.",
     };
   }
 
@@ -608,7 +624,8 @@ function crossChainExecutorSupport(action, selectedSource) {
       return {
         supported: true,
         missingInputs: [],
-        notes: "Gateway BTC-family transport can move wrapped BTC inventory into the destination chain while bundling destination native gas through gas-refill.",
+        notes:
+          "Gateway BTC-family transport can move wrapped BTC inventory into the destination chain while bundling destination native gas through gas-refill.",
       };
     }
     if (dexProvidersForChain(selectedSource.chain).length > 0) {
@@ -616,7 +633,8 @@ function crossChainExecutorSupport(action, selectedSource) {
         supported: true,
         intermediateSwapRequired: true,
         missingInputs: [],
-        notes: "Source token is not BTC-family but source chain has DEX liquidity; swap source token to wBTC.OFT then bridge via Gateway with gasRefill for destination native gas.",
+        notes:
+          "Source token is not BTC-family but source chain has DEX liquidity; swap source token to wBTC.OFT then bridge via Gateway with gasRefill for destination native gas.",
       };
     }
   }
@@ -624,21 +642,27 @@ function crossChainExecutorSupport(action, selectedSource) {
   if (action.type === "refill_token") {
     const sourceAsset = tokenAsset(selectedSource.chain, selectedSource.token);
     const targetAsset = tokenAsset(action.chain, action.token);
-    const targetIsStablecoin = targetAsset?.family === "stablecoin" || isStablecoinTicker(action.ticker || targetAsset?.ticker);
+    const targetIsStablecoin =
+      targetAsset?.family === "stablecoin" || isStablecoinTicker(action.ticker || targetAsset?.ticker);
     const destinationDexSupported = targetIsStablecoin && dexProvidersForChain(action.chain).length > 0;
     if (isBtcLikeAsset(sourceAsset) && isBtcLikeAsset(targetAsset)) {
-      if (normalized(selectedSource.token) !== normalized(WBTC_OFT_TOKEN) && dexProvidersForChain(selectedSource.chain).length > 0) {
+      if (
+        normalized(selectedSource.token) !== normalized(WBTC_OFT_TOKEN) &&
+        dexProvidersForChain(selectedSource.chain).length > 0
+      ) {
         return {
           supported: true,
           intermediateSwapRequired: true,
           missingInputs: [],
-          notes: "Source token is BTC-family but not wBTC.OFT; swap it into wBTC.OFT on the source chain, then bridge through Gateway into the destination BTC-family inventory.",
+          notes:
+            "Source token is BTC-family but not wBTC.OFT; swap it into wBTC.OFT on the source chain, then bridge through Gateway into the destination BTC-family inventory.",
         };
       }
       return {
         supported: true,
         missingInputs: [],
-        notes: "Gateway BTC-family consolidation can bridge the observed source token into the target-chain token inventory.",
+        notes:
+          "Gateway BTC-family consolidation can bridge the observed source token into the target-chain token inventory.",
       };
     }
     if (isBtcLikeAsset(sourceAsset) && targetIsStablecoin) {
@@ -646,21 +670,28 @@ function crossChainExecutorSupport(action, selectedSource) {
         return {
           supported: false,
           missingInputs: ["destination_dex_executor_missing"],
-          notes: "The wrapped-BTC source is sufficient, but the destination chain has no supported DEX executor to finish the stablecoin conversion when Gateway cannot quote the stable token directly.",
+          notes:
+            "The wrapped-BTC source is sufficient, but the destination chain has no supported DEX executor to finish the stablecoin conversion when Gateway cannot quote the stable token directly.",
         };
       }
       return {
         supported: true,
         missingInputs: [],
-        notes: "Gateway BTC-family transport can bridge observed wrapped-BTC inventory directly, and a destination-chain DEX swap can finish the stablecoin refill when the direct stable route is unavailable.",
+        notes:
+          "Gateway BTC-family transport can bridge observed wrapped-BTC inventory directly, and a destination-chain DEX swap can finish the stablecoin refill when the direct stable route is unavailable.",
       };
     }
-    if (!isBtcLikeAsset(sourceAsset) && isBtcLikeAsset(targetAsset) && dexProvidersForChain(selectedSource.chain).length > 0) {
+    if (
+      !isBtcLikeAsset(sourceAsset) &&
+      isBtcLikeAsset(targetAsset) &&
+      dexProvidersForChain(selectedSource.chain).length > 0
+    ) {
       return {
         supported: true,
         intermediateSwapRequired: true,
         missingInputs: [],
-        notes: "Source token is not BTC-family but target is; swap source token to wBTC.OFT on source chain then bridge via Gateway consolidation.",
+        notes:
+          "Source token is not BTC-family but target is; swap source token to wBTC.OFT on source chain then bridge via Gateway consolidation.",
       };
     }
     if (!isBtcLikeAsset(sourceAsset) && targetIsStablecoin && dexProvidersForChain(selectedSource.chain).length > 0) {
@@ -668,27 +699,31 @@ function crossChainExecutorSupport(action, selectedSource) {
         return {
           supported: false,
           missingInputs: ["destination_dex_executor_missing"],
-          notes: "The source chain can swap into wrapped BTC, but the destination chain has no supported DEX executor to finish the stablecoin conversion when Gateway cannot quote the stable token directly.",
+          notes:
+            "The source chain can swap into wrapped BTC, but the destination chain has no supported DEX executor to finish the stablecoin conversion when Gateway cannot quote the stable token directly.",
         };
       }
       return {
         supported: true,
         intermediateSwapRequired: true,
         missingInputs: [],
-        notes: "Source token is not BTC-family; swap it to wBTC.OFT on the source chain, then use Gateway to request target-chain stablecoin inventory.",
+        notes:
+          "Source token is not BTC-family; swap it to wBTC.OFT on the source chain, then use Gateway to request target-chain stablecoin inventory.",
       };
     }
     return {
       supported: false,
       missingInputs: ["cross_chain_token_refill_executor_missing"],
-      notes: "Observed cross-chain inventory exists, but the repo only has a direct executor for BTC-family Gateway token refills.",
+      notes:
+        "Observed cross-chain inventory exists, but the repo only has a direct executor for BTC-family Gateway token refills.",
     };
   }
 
   return {
     supported: false,
     missingInputs: ["cross_chain_native_refill_executor_missing"],
-    notes: "Observed cross-chain inventory exists, but native-gas refill still needs a same-chain swap or a dedicated bridge-to-native executor before it can run unattended.",
+    notes:
+      "Observed cross-chain inventory exists, but native-gas refill still needs a same-chain swap or a dedicated bridge-to-native executor before it can run unattended.",
   };
 }
 
@@ -744,17 +779,12 @@ function crossChainCandidate(action, plan, policy, routeContext = null, gatewayA
       actualDecimal: selectedSource.actualDecimal,
       sourceKind: selectedSource.sourceKind,
     }),
-    availability: executableDirectInventory
-      ? (suppressPreference ? "conditional" : "ready")
-      : "conditional",
+    availability: executableDirectInventory ? (suppressPreference ? "conditional" : "ready") : "conditional",
     preferred: executableDirectInventory && !suppressPreference,
     requiresReserveState: !directInventoryMode,
     reserveReplenishmentKnown: directInventoryMode,
     missingInputs: directInventoryMode
-      ? [
-          ...executorSupport.missingInputs,
-          ...(coversTarget ? [] : ["source_inventory_below_target_amount"]),
-        ]
+      ? [...executorSupport.missingInputs, ...(coversTarget ? [] : ["source_inventory_below_target_amount"])]
       : ["reserve_state_unmodelled"],
     notes: executableDirectInventory
       ? executorSupport.notes
@@ -762,20 +792,23 @@ function crossChainCandidate(action, plan, policy, routeContext = null, gatewayA
         ? coversTarget
           ? executorSupport.notes
           : "Cross-chain source inventory is observed, but the selected source cannot cover the refill target amount yet."
-      : "Cross-chain funding source is selected from observed inventory, but reserve replenishment and route execution remain under-modelled.",
+        : "Cross-chain funding source is selected from observed inventory, but reserve replenishment and route execution remain under-modelled.",
   });
 }
 
 function selectGasZipSource(action, plan, policy) {
   const vendorPolicy = policy?.gasZipPolicy || GAS_ZIP_DEFAULT_POLICY;
-  return sortByEstimatedUsd(
-    (plan.inventory?.native || []).filter((item) =>
-      item.chain &&
-      item.chain !== action.chain &&
-      Number(item.actual || 0) > 0 &&
-      gasZipInboundChain(item.chain, vendorPolicy),
-    ),
-  )[0] || null;
+  return (
+    sortByEstimatedUsd(
+      (plan.inventory?.native || []).filter(
+        (item) =>
+          item.chain &&
+          item.chain !== action.chain &&
+          Number(item.actual || 0) > 0 &&
+          gasZipInboundChain(item.chain, vendorPolicy),
+      ),
+    )[0] || null
+  );
 }
 
 function gasRefuelCandidate(action, plan, policy) {
@@ -835,17 +868,18 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
   if (action?.type !== "refill_token" && action?.type !== "refill_native") return [];
   const selectedSource = selectCrossChainSource(action, plan, routeContext);
   if (!selectedSource) return [];
-  const targetAsset = action.type === "refill_token"
-    ? tokenAsset(action.chain, action.token)
-    : null;
+  const targetAsset = action.type === "refill_token" ? tokenAsset(action.chain, action.token) : null;
   const targetTicker = String(action.ticker || targetAsset?.ticker || "").toLowerCase();
-  const rawFamily = targetTicker === "usdc" || targetTicker === "usdt" || targetTicker === "dai"
-    ? "stablecoin"
-    : targetAsset?.family || null;
+  const rawFamily =
+    targetTicker === "usdc" || targetTicker === "usdt" || targetTicker === "dai"
+      ? "stablecoin"
+      : targetAsset?.family || null;
   const assetFamily = rawFamily
-    ? (rawFamily === "wrapped_btc" || rawFamily === "native_btc" ? "btc"
-      : rawFamily === "usd" || rawFamily === "stablecoin" ? "stable"
-      : rawFamily)
+    ? rawFamily === "wrapped_btc" || rawFamily === "native_btc"
+      ? "btc"
+      : rawFamily === "usd" || rawFamily === "stablecoin"
+        ? "stable"
+        : rawFamily
     : null;
   const fallbackProviders = fallbackProvidersWhenGatewayPaused({
     srcChain: selectedSource.chain,
@@ -864,9 +898,7 @@ function alternateBridgeCandidates(action, plan, { gatewayAvailable, routeContex
   return fallbackProviders.map((provider) => {
     const method = provider.methodIds[0];
     const isLive = provider.status === "live";
-    const missingInputs = isLive
-      ? []
-      : [`bridge_provider_executor_missing:${provider.id}`];
+    const missingInputs = isLive ? [] : [`bridge_provider_executor_missing:${provider.id}`];
     const coversTarget = sourceInventoryCoversTarget(action, selectedSource);
     if (!coversTarget) missingInputs.push("source_inventory_below_target_amount");
     // For Across specifically, also check the token/chain pair matches
@@ -958,8 +990,12 @@ function chooseCandidate(candidates, action = null) {
     const leftBootstrapBlocked = left.requiresBootstrapNative && !left.bootstrapNativeSatisfied;
     const rightBootstrapBlocked = right.requiresBootstrapNative && !right.bootstrapNativeSatisfied;
     if (leftBootstrapBlocked !== rightBootstrapBlocked) return leftBootstrapBlocked ? 1 : -1;
-    const leftCost = Number.isFinite(left.expectedExecutionRefillCostUsd) ? left.expectedExecutionRefillCostUsd : Number.POSITIVE_INFINITY;
-    const rightCost = Number.isFinite(right.expectedExecutionRefillCostUsd) ? right.expectedExecutionRefillCostUsd : Number.POSITIVE_INFINITY;
+    const leftCost = Number.isFinite(left.expectedExecutionRefillCostUsd)
+      ? left.expectedExecutionRefillCostUsd
+      : Number.POSITIVE_INFINITY;
+    const rightCost = Number.isFinite(right.expectedExecutionRefillCostUsd)
+      ? right.expectedExecutionRefillCostUsd
+      : Number.POSITIVE_INFINITY;
     if (leftCost !== rightCost) return leftCost - rightCost;
     return String(left.method).localeCompare(String(right.method));
   })[0];
@@ -1013,7 +1049,9 @@ export function buildFundingSourceCandidates(action, plan, policy, routeContext 
     if (action.type === "refill_native") {
       candidates.push(nativeSwapCandidate(action, plan, policy.walletMode !== "dual_wallet" && !sourcePinned));
     } else if (action.type === "refill_token") {
-      candidates.push(tokenToTokenSwapCandidate(action, plan, policy, policy.walletMode !== "dual_wallet" && !sourcePinned));
+      candidates.push(
+        tokenToTokenSwapCandidate(action, plan, policy, policy.walletMode !== "dual_wallet" && !sourcePinned),
+      );
       candidates.push(tokenSwapCandidate(action, plan, policy.walletMode !== "dual_wallet" && !sourcePinned));
     }
   }
@@ -1085,16 +1123,11 @@ export function buildFundingSourcePlan({
     ? reserveCosts.reduce((sum, value) => sum + value, 0)
     : null;
   const canModelSystemCosts = reserveReplenishmentKnown || selections.length === 0;
-  const {
-    fragmentedCapitalUsd,
-    strandedCapitalUsd,
-    capitalFragmentationDragUsd,
-  } = routeContext
+  const { fragmentedCapitalUsd, strandedCapitalUsd, capitalFragmentationDragUsd } = routeContext
     ? estimateCapitalFragmentationDrag({ selections, routeContext, policy })
     : { fragmentedCapitalUsd: null, strandedCapitalUsd: null, capitalFragmentationDragUsd: null };
-  const expectedFailureCostUsd = routeContext && canModelSystemCosts
-    ? estimateExpectedFailureCostUsd({ routeContext, summary })
-    : null;
+  const expectedFailureCostUsd =
+    routeContext && canModelSystemCosts ? estimateExpectedFailureCostUsd({ routeContext, summary }) : null;
   summary.fragmentedCapitalUsd = fragmentedCapitalUsd;
   summary.strandedCapitalUsd = strandedCapitalUsd;
   summary.expectedFailureCostUsd = expectedFailureCostUsd;
@@ -1104,7 +1137,8 @@ export function buildFundingSourcePlan({
   if (selections.some((item) => item.requiresReserveState)) reasons.push("reserve_state_unmodelled");
   if (!reserveReplenishmentKnown && selections.length > 0) reasons.push("reserve_replenishment_unmodelled");
   if (selections.some((item) => item.requiresManualFunding)) reasons.push("manual_funding_dependency");
-  if (selections.some((item) => item.missingInputs.includes("bootstrap_native_required"))) reasons.push("bootstrap_native_required");
+  if (selections.some((item) => item.missingInputs.includes("bootstrap_native_required")))
+    reasons.push("bootstrap_native_required");
   if (gatewayAvailability && gatewayAvailability.available === false) {
     reasons.push(gatewayAvailability.reason || "gateway_operator_paused");
   }

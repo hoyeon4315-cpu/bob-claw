@@ -13,6 +13,8 @@ const REFILL_MANUAL_DEFERRAL_REASONS = new Set([
   "cross_chain_token_refill_executor_missing",
   "cross_chain_native_refill_executor_missing",
   "insufficient_native_balance_for_lifi_gas",
+  "expected_net_below_receipt_cost_p90_floor",
+  "strategy_per_day_cap_exceeded",
 ]);
 
 function isTransientLatestError(report = null) {
@@ -59,11 +61,19 @@ function canaryLadderSummary(policy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduati
 }
 
 export function refillNeedsLiveRemediation(item = {}) {
-  return Boolean(item.reason) && !REFILL_MANUAL_DEFERRAL_REASONS.has(item.reason);
+  if (!item.reason) return false;
+  const reasons = String(item.reason)
+    .split(",")
+    .map((reason) => reason.trim())
+    .filter(Boolean);
+  if (reasons.length === 0) return false;
+  return reasons.some((reason) => !REFILL_MANUAL_DEFERRAL_REASONS.has(reason));
 }
 
-function refillReason(item = {}) {
+function refillReason(item = {}, policyBlockerByJobId = new Map()) {
+  const policyBlocker = item.jobId ? policyBlockerByJobId.get(item.jobId) : null;
   return (
+    policyBlocker ||
     compactReason(item.executionBlockedReason) ||
     compactReason(item.previewBlockedReason) ||
     (compactReason(item.previewStatus) === "ready" ? null : compactReason(item.previewStatus)) ||
@@ -71,7 +81,32 @@ function refillReason(item = {}) {
   );
 }
 
-function refillBlockers(refillExecutions = []) {
+function signerPolicyBlockerMapFromSteps(steps = []) {
+  const map = new Map();
+  if (!Array.isArray(steps)) return map;
+  for (const step of steps) {
+    const match = String(step?.name || "").match(/^treasury_refill_execute:([^:]+)/u);
+    const jobId = match?.[1] || step?.json?.outcomeEvent?.jobId || step?.json?.execution?.jobId || null;
+    if (!jobId || map.has(jobId)) continue;
+    const stepResults = step?.json?.execution?.stepResults;
+    if (!Array.isArray(stepResults)) continue;
+    for (const result of stepResults) {
+      const signerResult = result?.signerResult || {};
+      if (signerResult.status !== "rejected" && signerResult.policy?.decision !== "BLOCK") continue;
+      const blockers = [
+        ...(Array.isArray(signerResult.policy?.blockers) ? signerResult.policy.blockers : []),
+        ...(Array.isArray(signerResult.lifecycle?.blockers) ? signerResult.lifecycle.blockers : []),
+      ].filter(Boolean);
+      if (blockers.length > 0) {
+        map.set(jobId, blockers.join(","));
+        break;
+      }
+    }
+  }
+  return map;
+}
+
+function refillBlockers(refillExecutions = [], { policyBlockerByJobId = new Map() } = {}) {
   return refillExecutions
     .filter((item) => !item.executed)
     .map((item) => ({
@@ -82,7 +117,7 @@ function refillBlockers(refillExecutions = []) {
       targetAsset: item.targetAsset || item.asset || null,
       sourceChain: item.sourceChain || null,
       sourceAsset: item.sourceAsset || null,
-      reason: refillReason(item),
+      reason: refillReason(item, policyBlockerByJobId),
       selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
       executorFamily: item.executorFamily || null,
       routeFamily: item.routeFamily || null,
@@ -371,7 +406,9 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
   }
 
   const summary = report.summary || {};
-  const refill = refillBlockers(report.refillExecutions || []);
+  const refill = refillBlockers(report.refillExecutions || [], {
+    policyBlockerByJobId: signerPolicyBlockerMapFromSteps(report.steps || []),
+  });
   const refillScopes = refillScopeSummary(refill);
   const merklCanary = summary.merklCanary || {};
   const strategyDispatch = summary.strategyDispatch || {};

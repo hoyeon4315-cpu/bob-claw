@@ -12,10 +12,7 @@ import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { safeJsonStringify } from "../lib/json-safe.mjs";
 import { SMALL_CAPITAL_CAMPAIGN_MODE } from "../config/small-capital-campaign-mode.mjs";
-import {
-  computeTinyCanaryMinProfitablePositionUsd,
-  resolveTinyCanaryExpectedHoldDays,
-} from "../config/sizing.mjs";
+import { computeTinyCanaryMinProfitablePositionUsd, resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
 import { preflightLiveCanarySweep } from "./live-canary-sweep.mjs";
 import { readErc20Balance, readNativeBalance } from "../evm/account-state.mjs";
 import {
@@ -30,7 +27,6 @@ import {
 } from "./protocol-binding-registry.mjs";
 import { evaluateOpportunityPolicy } from "./policy/opportunity-policy.mjs";
 import { splitCandidateBlockers } from "./policy/blocker-codes.mjs";
-
 
 const DEFAULT_MIN_ETHEREUM_NOTIONAL_USD = 0;
 
@@ -78,11 +74,7 @@ function bindingKind(queueItem = {}) {
 
 function displayedAprPct(queueItem = {}) {
   return finite(
-    queueItem.effectiveAprPct ??
-      queueItem.displayedAprPct ??
-      queueItem.aprPct ??
-      queueItem.apr ??
-      queueItem.apy,
+    queueItem.effectiveAprPct ?? queueItem.displayedAprPct ?? queueItem.aprPct ?? queueItem.apr ?? queueItem.apy,
   );
 }
 
@@ -90,7 +82,8 @@ function evLimitingFactor({ queueItem = {}, sizing = {}, neededUsd = null } = {}
   const inventoryUsd = finite(queueItem.executionReadiness?.matchedToken?.estimatedUsd);
   const capUsd = finite(sizing.capUsd);
   const currentUsd = finite(sizing.amountUsd);
-  if (inventoryUsd !== null && currentUsd !== null && Math.abs(inventoryUsd - currentUsd) < 0.000001) return "inventory";
+  if (inventoryUsd !== null && currentUsd !== null && Math.abs(inventoryUsd - currentUsd) < 0.000001)
+    return "inventory";
   if (inventoryUsd !== null && neededUsd !== null && inventoryUsd < neededUsd) return "inventory";
   if (capUsd !== null && neededUsd !== null && capUsd < neededUsd) return "cap";
   return "unknown";
@@ -135,24 +128,29 @@ function tinyCanaryEvGate(queueItem = {}, sizing = {}, { now = new Date().toISOS
   };
 }
 
-export function sizeMerklCanaryAmount(queueItem = {}, {
-  maxUsd = null,
-  minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
-  allowInefficientEthereum = false,
-  useTinyLiveCap = true,
-  useGraduationCap = useTinyLiveCap,
-  canaryExecutions = [],
-  canaryGraduationPolicy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation,
-  auditRecords = [],
-  protocolPositionMarks = [],
-  receiptReconciliations = [],
-  now = new Date().toISOString(),
-} = {}) {
+export function sizeMerklCanaryAmount(
+  queueItem = {},
+  {
+    maxUsd = null,
+    minEthereumNotionalUsd = DEFAULT_MIN_ETHEREUM_NOTIONAL_USD,
+    allowInefficientEthereum = false,
+    useTinyLiveCap = true,
+    useGraduationCap = useTinyLiveCap,
+    canaryExecutions = [],
+    canaryGraduationPolicy = SMALL_CAPITAL_CAMPAIGN_MODE.canaryGraduation,
+    auditRecords = [],
+    protocolPositionMarks = [],
+    receiptReconciliations = [],
+    now = new Date().toISOString(),
+  } = {},
+) {
   const readiness = queueItem.executionReadiness || {};
   const matchedToken = readiness.matchedToken || null;
   const strategyId = queueItem.mappedStrategyId;
   const strategyCaps = getStrategyCaps(strategyId);
-  const validation = strategyCaps ? validateStrategyCapsConfig(strategyCaps) : { ok: false, errors: ["missing_strategy_caps"] };
+  const validation = strategyCaps
+    ? validateStrategyCapsConfig(strategyCaps)
+    : { ok: false, errors: ["missing_strategy_caps"] };
   if (!strategyCaps || !validation.ok) {
     return {
       status: "blocked",
@@ -324,13 +322,15 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
       return opportunityId === opportunityFilter || `merkl:${opportunityId}` === opportunityFilter;
     })
     .map((queueItem) => {
-      const refreshedItem = options.inventorySnapshot || options.canaryExecutions
-        ? applyMerklCanaryExecutionReadiness(queueItem, {
-            inventorySnapshot: options.inventorySnapshot,
-            canaryExecutions: options.canaryExecutions,
-            now: options.now || new Date().toISOString(),
-          })
-        : queueItem;
+      const refreshedItem =
+        options.inventorySnapshot || options.canaryExecutions || options.positionRecords
+          ? applyMerklCanaryExecutionReadiness(queueItem, {
+              inventorySnapshot: options.inventorySnapshot,
+              canaryExecutions: options.canaryExecutions,
+              positionRecords: options.positionRecords,
+              now: options.now || new Date().toISOString(),
+            })
+          : queueItem;
       const graduationRequest = matchingPortfolioGraduationRequest(refreshedItem, portfolioGraduationRequests);
       const hintedItem = graduationRequest
         ? {
@@ -369,7 +369,8 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const ready = candidates
     .filter((item) => item.sizing.status === "ready")
     .sort((left, right) => {
-      const graduationDelta = portfolioGraduationPriority(right.queueItem) - portfolioGraduationPriority(left.queueItem);
+      const graduationDelta =
+        portfolioGraduationPriority(right.queueItem) - portfolioGraduationPriority(left.queueItem);
       if (graduationDelta !== 0) return graduationDelta;
       if ((right.queueItem.priorityScore ?? 0) !== (left.queueItem.priorityScore ?? 0)) {
         return (right.queueItem.priorityScore ?? 0) - (left.queueItem.priorityScore ?? 0);
@@ -385,7 +386,8 @@ export function selectMerklCanaryAutopilotCandidates(queue = {}, options = {}) {
   const chainOrder = [...byChain.keys()].sort((left, right) => {
     const leftTop = byChain.get(left)?.[0];
     const rightTop = byChain.get(right)?.[0];
-    const graduationDelta = portfolioGraduationPriority(rightTop?.queueItem) - portfolioGraduationPriority(leftTop?.queueItem);
+    const graduationDelta =
+      portfolioGraduationPriority(rightTop?.queueItem) - portfolioGraduationPriority(leftTop?.queueItem);
     if (graduationDelta !== 0) return graduationDelta;
     return (rightTop?.queueItem.priorityScore ?? 0) - (leftTop?.queueItem.priorityScore ?? 0);
   });
@@ -513,11 +515,15 @@ export function summarizeMerklAutopilotResults(results = []) {
     }
   }
   const previewReadyCount = results.filter((item) => item.status === "preview_ready").length;
-  const deliveredCount = results.filter((item) => item.execution?.settlementStatus === "delivered").length;
+  const deliveredCount = results.filter(
+    (item) => item.execution?.settlementStatus === "delivered" || item.execution?.positionProof?.status === "delivered",
+  ).length;
   const topBlocker = topCountKey(blockerCounts);
   const evGateForTopBlocker =
-    results.find((item) => item.opportunityPolicy?.evGate?.status === "blocked" && item.opportunityPolicy.evGate.blocker === topBlocker)
-      ?.opportunityPolicy?.evGate || null;
+    results.find(
+      (item) =>
+        item.opportunityPolicy?.evGate?.status === "blocked" && item.opportunityPolicy.evGate.blocker === topBlocker,
+    )?.opportunityPolicy?.evGate || null;
   return {
     selectedCount: results.length,
     executionReadyCount: results.length - blockedCount - filteredCount,
@@ -540,14 +546,19 @@ function scaledUsdEstimate({ priorUnits, priorUsd, liveUnits }) {
   return Number((liveAmount * decimalUsdToMicros(priorEstimate)) / priorAmount) / 1_000_000;
 }
 
-export function buildMerklCanaryOpportunityIntent({ queueItem = {}, sizing = {}, now = new Date().toISOString() } = {}) {
+export function buildMerklCanaryOpportunityIntent({
+  queueItem = {},
+  sizing = {},
+  now = new Date().toISOString(),
+} = {}) {
   const intentType = resolveIntentType(bindingKind(queueItem)) || "erc4626_deposit";
-  const displayedApr = queueItem.effectiveAprPct
-    ?? queueItem.displayedAprPct
-    ?? queueItem.aprPct
-    ?? queueItem.apr
-    ?? queueItem.apy
-    ?? null;
+  const displayedApr =
+    queueItem.effectiveAprPct ??
+    queueItem.displayedAprPct ??
+    queueItem.aprPct ??
+    queueItem.apr ??
+    queueItem.apy ??
+    null;
   return {
     strategyId: queueItem.mappedStrategyId || null,
     chain: queueItem.chain || null,
@@ -634,12 +645,15 @@ function opportunityPolicyBlockedResult(candidate = {}, opportunityPolicy = {}) 
   };
 }
 
-export async function selectMerklCanaryOpportunityPolicyReadyCandidates(selection = {}, {
-  auditRecords = [],
-  now = new Date().toISOString(),
-  maxCandidates = 1,
-  evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
-} = {}) {
+export async function selectMerklCanaryOpportunityPolicyReadyCandidates(
+  selection = {},
+  {
+    auditRecords = [],
+    now = new Date().toISOString(),
+    maxCandidates = 1,
+    evaluateOpportunityPolicyImpl = evaluateOpportunityPolicy,
+  } = {},
+) {
   const limit = Math.max(1, Number.isInteger(maxCandidates) ? maxCandidates : 1);
   const selected = [];
   const deferred = [];
@@ -674,10 +688,12 @@ export async function buildLiveMerklInventorySnapshot({
   if (!queueItem) throw new Error("queueItem is required");
   if (!senderAddress) throw new Error("senderAddress is required");
   const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
-  const tokenBalance = await readErc20BalanceImpl(queueItem.chain, binding.assetAddress, senderAddress);
-  const nativeBalance = await readNativeBalanceImpl(queueItem.chain, senderAddress);
   const priorToken = queueItem.executionReadiness?.matchedToken || null;
   const priorNative = queueItem.executionReadiness?.matchedNative || null;
+  const liveTokenAddress = priorToken?.token || binding.assetAddress;
+  const tokenBalance = await readErc20BalanceImpl(queueItem.chain, liveTokenAddress, senderAddress);
+  const nativeBalance = await readNativeBalanceImpl(queueItem.chain, senderAddress);
+  const liveTokenAsset = tokenAsset(queueItem.chain, liveTokenAddress);
   return {
     address: senderAddress,
     observedAt: new Date().toISOString(),
@@ -699,8 +715,8 @@ export async function buildLiveMerklInventorySnapshot({
     tokens: [
       {
         chain: queueItem.chain,
-        token: binding.assetAddress,
-        ticker: priorToken?.ticker || tokenAsset(queueItem.chain, binding.assetAddress).ticker,
+        token: liveTokenAddress,
+        ticker: priorToken?.ticker || liveTokenAsset.ticker,
         actual: tokenBalance.balance.toString(),
         actualDecimal: priorToken?.actualDecimal ?? null,
         estimatedUsd: scaledUsdEstimate({
@@ -718,6 +734,7 @@ export async function refreshMerklAutopilotSelectionForExecute({
   selected,
   senderAddress,
   canaryExecutions = [],
+  positionRecords = [],
   now = new Date().toISOString(),
   readErc20BalanceImpl = readErc20Balance,
   readNativeBalanceImpl = readNativeBalance,
@@ -733,6 +750,7 @@ export async function refreshMerklAutopilotSelectionForExecute({
   const queueItem = applyMerklCanaryExecutionReadiness(selected.queueItem, {
     inventorySnapshot,
     canaryExecutions,
+    positionRecords,
     now,
   });
   const sizing = sizeMerklCanaryAmount(queueItem, {
@@ -760,7 +778,8 @@ export function merklExecutionErrorReport({
   let blockedReason = null;
   if (/Insufficient asset balance:/iu.test(message)) blockedReason = "insufficient_live_asset_balance";
   if (/insufficient_native_balance_for_gas/iu.test(message)) blockedReason = "insufficient_native_gas_balance";
-  if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message)) blockedReason = "receipt_confirmation_timeout";
+  if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message))
+    blockedReason = "receipt_confirmation_timeout";
   if (/All RPC endpoints failed for chain:/iu.test(message)) blockedReason = "live_inventory_refresh_failed";
   if (/Signer did not complete/iu.test(message)) blockedReason = "signer_execution_failed";
   if (/EvmReceiptReverted|Transaction reverted after broadcast|execution reverted|\\brevert\\b/iu.test(message)) {
@@ -848,30 +867,40 @@ export async function runMerklCanaryAutopilot({
   }
 
   const queue = await readJson(queuePath);
-  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, protocolPositionMarks, receiptReconciliations] = await Promise.all([
+  const [
+    inventoryRecords,
+    protocolCanaryExecutions,
+    autopilotExecutions,
+    protocolPositionMarks,
+    receiptReconciliations,
+    positionRecords,
+  ] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
     readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
     readJsonl(config.dataDir, "protocol-position-marks").catch(() => []),
     readJsonl(config.dataDir, "receipt-reconciliations").catch(() => []),
+    readJsonl(config.dataDir, "merkl-portfolio-positions").catch(() => []),
   ]);
   const canaryExecutions = [...protocolCanaryExecutions, ...autopilotExecutions];
   const auditRecords = await readJsonl("logs", "signer-audit").catch(() => []);
   const runtimeRiskContext = await loadRuntimeRiskContextImpl({ now: new Date().toISOString() }).catch(() => null);
   const assetCoverage = runtimeRiskContext?.assetCoverage || null;
   const inventorySnapshot = latestTreasuryInventoryForAddress(inventoryRecords, preflight.senderAddress);
-  const [portfolioOrchestratorReport, portfolioAllocatorReport] = graduationCanaryRequests == null
-    ? await Promise.all([
-        portfolioOrchestratorReportPath ? readJsonIfExists(portfolioOrchestratorReportPath) : null,
-        portfolioAllocatorReportPath ? readJsonIfExists(portfolioAllocatorReportPath) : null,
-      ])
-    : [null, null];
-  const portfolioGraduationRequests = graduationCanaryRequests == null
-    ? dedupeGraduationRequests([
-        ...portfolioGraduationRequestsFromReport(portfolioOrchestratorReport),
-        ...portfolioGraduationRequestsFromReport(portfolioAllocatorReport),
-      ])
-    : graduationCanaryRequests;
+  const [portfolioOrchestratorReport, portfolioAllocatorReport] =
+    graduationCanaryRequests == null
+      ? await Promise.all([
+          portfolioOrchestratorReportPath ? readJsonIfExists(portfolioOrchestratorReportPath) : null,
+          portfolioAllocatorReportPath ? readJsonIfExists(portfolioAllocatorReportPath) : null,
+        ])
+      : [null, null];
+  const portfolioGraduationRequests =
+    graduationCanaryRequests == null
+      ? dedupeGraduationRequests([
+          ...portfolioGraduationRequestsFromReport(portfolioOrchestratorReport),
+          ...portfolioGraduationRequestsFromReport(portfolioAllocatorReport),
+        ])
+      : graduationCanaryRequests;
   const requestedMaxCandidates = Math.max(1, Number.isInteger(maxCandidates) ? maxCandidates : 6);
   const selectionMaxCandidates = execute
     ? Math.max(requestedMaxCandidates * 6, requestedMaxCandidates + 5)
@@ -886,6 +915,7 @@ export async function runMerklCanaryAutopilot({
     allowInefficientEthereum,
     inventorySnapshot,
     canaryExecutions,
+    positionRecords,
     auditRecords,
     protocolPositionMarks,
     receiptReconciliations,
@@ -948,6 +978,7 @@ export async function runMerklCanaryAutopilot({
           selected,
           senderAddress: preflight.senderAddress,
           canaryExecutions,
+          positionRecords,
           now: new Date().toISOString(),
           sizingOptions: {
             maxUsd,
@@ -1025,6 +1056,16 @@ export async function runMerklCanaryAutopilot({
         amount: sizing.amount,
         assetCoverage,
       });
+      if (plan?.planStatus && plan.planStatus !== "ready") {
+        results.push({
+          status: "blocked",
+          blockedReason: plan.blockedReason || "plan_builder_blocked",
+          queueItem,
+          sizing,
+          plan,
+        });
+        continue;
+      }
       const execution = execute
         ? await executePlan({
             plan,
@@ -1130,7 +1171,10 @@ export async function runMerklCanaryAutopilot({
 }
 
 async function writeAutopilotReport(report) {
-  await writeTextIfChanged(join(config.dataDir, "merkl-canary-autopilot-latest.json"), `${safeJsonStringify(report, 2)}\n`);
+  await writeTextIfChanged(
+    join(config.dataDir, "merkl-canary-autopilot-latest.json"),
+    `${safeJsonStringify(report, 2)}\n`,
+  );
   await new JsonlStore(config.dataDir).append("merkl-canary-autopilot-runs", JSON.parse(safeJsonStringify(report)));
 }
 

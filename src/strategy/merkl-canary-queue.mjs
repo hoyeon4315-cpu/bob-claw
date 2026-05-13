@@ -78,13 +78,13 @@ function capabilityGapCounts(queue = []) {
 }
 
 function latestAutopilotReport(reports = []) {
-  return [...(reports || [])]
-    .filter(Boolean)
-    .sort((left, right) => {
+  return (
+    [...(reports || [])].filter(Boolean).sort((left, right) => {
       const leftTs = new Date(left.observedAt || left.generatedAt || 0).getTime();
       const rightTs = new Date(right.observedAt || right.generatedAt || 0).getTime();
       return rightTs - leftTs;
-    })[0] || null;
+    })[0] || null
+  );
 }
 
 function compactEvGate(evGate = null) {
@@ -172,7 +172,8 @@ function selectCandidatesWithChainQuota(candidates = [], { limit = null, chainQu
     if (currentCount >= required) continue;
     const replacements = candidates.filter((item) => item.chain === chain && !selectedIds.has(item.opportunityId));
     for (const replacement of replacements.slice(0, required - currentCount)) {
-      const replaceIndex = [...selected].map((item, index) => ({ item, index }))
+      const replaceIndex = [...selected]
+        .map((item, index) => ({ item, index }))
         .reverse()
         .find(({ item }) => !Object.keys(chainQuota).includes(item.chain))?.index;
       if (replaceIndex == null) break;
@@ -196,7 +197,8 @@ function selectCandidatesWithChainQuota(candidates = [], { limit = null, chainQu
 
 function entryAssets(item = {}) {
   const symbols = item.entryTokenSymbols?.length ? item.entryTokenSymbols : item.tokenSymbols || [];
-  if (item.hasStableExposure) return symbols.filter((symbol) => /^usd|dai|gho|eurc|usdt|usdc|pyusd|usde|usds/i.test(symbol));
+  if (item.hasStableExposure)
+    return symbols.filter((symbol) => /usd|dai|gho|eurc|usdt|usdc|pyusd|usde|usds/i.test(symbol));
   if (item.hasEthExposure) return symbols.filter((symbol) => /eth/i.test(symbol));
   if (item.hasBtcExposure) return symbols.filter((symbol) => /btc/i.test(symbol));
   if (item.hasGoldExposure) return symbols.filter((symbol) => /xaut|paxg|xau/i.test(symbol));
@@ -242,7 +244,12 @@ function buildPreflightSteps(item = {}) {
   return steps;
 }
 
-function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY, { pendleMarkets = [], now = Date.now() } = {}) {
+function buildQueueItem(
+  item = {},
+  index = 0,
+  policy = MERKL_OPPORTUNITY_POLICY,
+  { pendleMarkets = [], now = Date.now() } = {},
+) {
   const template = EXECUTION_TEMPLATES[item.executionSurface] || {
     canaryKind: "enter_exit_tiny_generic_position",
     nextAction: "build_generic_protocol_canary",
@@ -250,9 +257,8 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY,
   let bindingSource = item.protocolBinding;
   let pendleJoined = false;
   if (String(item.protocolId || "").toLowerCase() === "pendle") {
-    const needsEnrichment = !bindingSource
-      || !(bindingSource.maturity || bindingSource.ytExpiry)
-      || !bindingSource.ytTokenAddress;
+    const needsEnrichment =
+      !bindingSource || !(bindingSource.maturity || bindingSource.ytExpiry) || !bindingSource.ytTokenAddress;
     if (needsEnrichment) {
       const joined = resolvePendleMerklBinding({ opportunity: item, markets: pendleMarkets, now });
       if (joined) {
@@ -312,10 +318,12 @@ function buildQueueItem(item = {}, index = 0, policy = MERKL_OPPORTUNITY_POLICY,
     capabilityGaps: capabilityGaps(item, protocolBindingPlan),
     preflightSteps: buildPreflightSteps(item),
     protocolBindingPlan,
-    pendleYt: isPendleYtQueueItem({ ...item, protocolBindingPlan }) ? {
-      family: "pendle_yt",
-      ev: pendleYtEv,
-    } : null,
+    pendleYt: isPendleYtQueueItem({ ...item, protocolBindingPlan })
+      ? {
+          family: "pendle_yt",
+          ev: pendleYtEv,
+        }
+      : null,
   };
 }
 
@@ -353,12 +361,17 @@ export function buildMerklCanaryQueue({
     .sort(compareQueue);
   const selectedCandidates = selectCandidatesWithChainQuota(candidates, { limit, chainQuota });
   const queue = selectedCandidates.candidates
-    .map((item, index) => buildQueueItem(item, index, resolvedPolicy, { pendleMarkets, now: now ? new Date(now).getTime() : Date.now() }))
-    .map((item) => applyMerklCanaryExecutionReadiness(item, {
-      inventorySnapshot,
-      canaryExecutions,
-      now: now || new Date().toISOString(),
-    }))
+    .map((item, index) =>
+      buildQueueItem(item, index, resolvedPolicy, { pendleMarkets, now: now ? new Date(now).getTime() : Date.now() }),
+    )
+    .map((item) =>
+      applyMerklCanaryExecutionReadiness(item, {
+        inventorySnapshot,
+        canaryExecutions,
+        positionRecords,
+        now: now || new Date().toISOString(),
+      }),
+    )
     .map(attachAutoEntry);
 
   const executableQueue = queue.filter((item) => item.executionReadiness?.status === "inventory_ready");
@@ -411,11 +424,17 @@ export function buildMerklCanaryQueue({
       byExecutionSurface: countBy(queue, (item) => item.executionSurface),
       highOverfitRiskCount: queue.filter((item) => item.overfitRisk === "high").length,
       protocolBindingReadyCount: queue.filter((item) => item.protocolBindingPlan?.status === "binding_ready").length,
-      protocolBindingRequiredCount: queue.filter((item) => item.capabilityGaps.includes("protocol_position_binding_required")).length,
-      unsupportedProtocolBindingCount: queue.filter((item) => item.protocolBindingPlan?.status === "unsupported_protocol_binding").length,
+      protocolBindingRequiredCount: queue.filter((item) =>
+        item.capabilityGaps.includes("protocol_position_binding_required"),
+      ).length,
+      unsupportedProtocolBindingCount: queue.filter(
+        (item) => item.protocolBindingPlan?.status === "unsupported_protocol_binding",
+      ).length,
       pendleYtCount: queue.filter((item) => item.pendleYt).length,
       pendleYtCanaryReadyCount: queue.filter((item) => item.pendleYt?.ev?.canaryReady === true).length,
-      chainRouteGapCount: queue.filter((item) => item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output")).length,
+      chainRouteGapCount: queue.filter((item) =>
+        item.capabilityGaps.includes("chain_live_dex_route_unproven_or_missing_stable_output"),
+      ).length,
       inventoryReadyCount: executableQueue.length,
       autoEntryReadyCount: autoExecutableQueue.length,
       queueAutoEntryReadyCount: autoExecutableQueue.length,
