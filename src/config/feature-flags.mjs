@@ -7,6 +7,10 @@ export const ALLOWED_FEATURE_FLAG_SCOPES = Object.freeze(
   new Set(["dev", "report", "dashboard", "scaffold", "non_live_rollout"]),
 );
 
+export const ALLOWED_FEATURE_FLAG_PROFILES = Object.freeze(
+  new Set(["ci", "dashboard_preview", "local_dev", "non_live_rollout", "report_snapshot", "scaffold_review"]),
+);
+
 export const FORBIDDEN_FEATURE_FLAG_AUTHORITY = Object.freeze([
   "autoExecute",
   "capital",
@@ -21,6 +25,10 @@ export const FORBIDDEN_FEATURE_FLAG_AUTHORITY = Object.freeze([
 
 const FEATURE_FLAG_SCHEMA_VERSION = 1;
 
+function freezeProfileOverrides(profileOverrides = {}) {
+  return Object.freeze({ ...profileOverrides });
+}
+
 function freezeDefinition(flagId, definition) {
   return Object.freeze({
     id: flagId,
@@ -31,6 +39,7 @@ function freezeDefinition(flagId, definition) {
     safetyBoundary: definition.safetyBoundary,
     createdAt: definition.createdAt || null,
     reviewCadence: definition.reviewCadence || null,
+    profileOverrides: freezeProfileOverrides(definition.profileOverrides),
   });
 }
 
@@ -50,6 +59,27 @@ function assertNonEmptyString(value, label, flagId) {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Feature flag ${flagId} missing ${label}`);
   }
+}
+
+function validateProfileOverrides(flagId, profileOverrides) {
+  if (profileOverrides === undefined) {
+    return {};
+  }
+  if (!profileOverrides || typeof profileOverrides !== "object" || Array.isArray(profileOverrides)) {
+    throw new Error(`Feature flag ${flagId} profileOverrides must be an object`);
+  }
+  const validated = {};
+  for (const [profile, enabled] of Object.entries(profileOverrides)) {
+    assertNonEmptyString(profile, "profile override id", flagId);
+    if (!ALLOWED_FEATURE_FLAG_PROFILES.has(profile)) {
+      throw new Error(`Feature flag ${flagId} profile ${profile} is not allowed`);
+    }
+    if (typeof enabled !== "boolean") {
+      throw new Error(`Feature flag ${flagId} profile override ${profile} must be boolean`);
+    }
+    validated[profile] = enabled;
+  }
+  return validated;
 }
 
 export function validateFeatureFlagManifest(manifest = FEATURE_FLAGS) {
@@ -78,7 +108,10 @@ export function validateFeatureFlagManifest(manifest = FEATURE_FLAGS) {
       throw new Error(`Feature flag ${flagId} id mismatch: ${definition.id}`);
     }
 
-    validated[flagId] = freezeDefinition(flagId, definition);
+    validated[flagId] = freezeDefinition(flagId, {
+      ...definition,
+      profileOverrides: validateProfileOverrides(flagId, definition.profileOverrides),
+    });
   }
 
   return Object.freeze(validated);
@@ -86,8 +119,23 @@ export function validateFeatureFlagManifest(manifest = FEATURE_FLAGS) {
 
 const VALIDATED_FEATURE_FLAGS = validateFeatureFlagManifest(FEATURE_FLAGS);
 
+function validateFeatureFlagProfile(profile) {
+  if (profile === undefined || profile === null) {
+    return null;
+  }
+  assertNonEmptyString(profile, "requested profile", "<lookup>");
+  if (!ALLOWED_FEATURE_FLAG_PROFILES.has(profile)) {
+    throw new Error(`Unknown feature flag profile: ${profile}`);
+  }
+  return profile;
+}
+
+function getValidatedManifest(manifest) {
+  return manifest === VALIDATED_FEATURE_FLAGS ? manifest : validateFeatureFlagManifest(manifest);
+}
+
 export function getFeatureFlagDefinition(flagId, { manifest = VALIDATED_FEATURE_FLAGS } = {}) {
-  const validated = manifest === VALIDATED_FEATURE_FLAGS ? manifest : validateFeatureFlagManifest(manifest);
+  const validated = getValidatedManifest(manifest);
   const definition = validated[flagId];
   if (!definition) {
     throw new Error(`Unknown feature flag: ${flagId}`);
@@ -95,35 +143,70 @@ export function getFeatureFlagDefinition(flagId, { manifest = VALIDATED_FEATURE_
   return definition;
 }
 
-export function isFeatureEnabled(flagId, options = {}) {
-  return getFeatureFlagDefinition(flagId, options).defaultEnabled;
+export function resolveFeatureFlagState(flagId, { manifest = VALIDATED_FEATURE_FLAGS, profile = null } = {}) {
+  const definition = getFeatureFlagDefinition(flagId, { manifest });
+  const requestedProfile = validateFeatureFlagProfile(profile);
+  const hasProfileOverride = requestedProfile !== null && Object.hasOwn(definition.profileOverrides, requestedProfile);
+  return Object.freeze({
+    id: flagId,
+    enabled: hasProfileOverride ? definition.profileOverrides[requestedProfile] : definition.defaultEnabled,
+    source: hasProfileOverride ? "profile_override" : "default",
+    profile: requestedProfile,
+    defaultEnabled: definition.defaultEnabled,
+  });
 }
 
-export function buildFeatureFlagCatalogSummary({ manifest = VALIDATED_FEATURE_FLAGS, includeFlags = true } = {}) {
-  const validated = manifest === VALIDATED_FEATURE_FLAGS ? manifest : validateFeatureFlagManifest(manifest);
+export function isFeatureEnabled(flagId, options = {}) {
+  return resolveFeatureFlagState(flagId, options).enabled;
+}
+
+export function buildFeatureFlagCatalogSummary({
+  manifest = VALIDATED_FEATURE_FLAGS,
+  includeFlags = true,
+  profile = null,
+} = {}) {
+  const validated = getValidatedManifest(manifest);
+  const requestedProfile = validateFeatureFlagProfile(profile);
   const flags = Object.values(validated).sort((a, b) => a.id.localeCompare(b.id));
+  const resolvedFlags = flags.map((flag) =>
+    Object.freeze({
+      ...flag,
+      ...resolveFeatureFlagState(flag.id, {
+        manifest: validated,
+        profile: requestedProfile,
+      }),
+    }),
+  );
   return Object.freeze({
     schemaVersion: FEATURE_FLAG_SCHEMA_VERSION,
     configured: true,
     runtimeOverrideSupported: false,
+    profileOverrideSupported: true,
     allowedScopes: [...ALLOWED_FEATURE_FLAG_SCOPES].sort(),
+    allowedProfiles: [...ALLOWED_FEATURE_FLAG_PROFILES].sort(),
+    requestedProfile,
     forbiddenAuthority: [...FORBIDDEN_FEATURE_FLAG_AUTHORITY],
     flagCount: flags.length,
-    enabledFlagCount: flags.filter((flag) => flag.defaultEnabled === true).length,
+    enabledFlagCount: resolvedFlags.filter((flag) => flag.enabled === true).length,
+    profileOverrideCount: resolvedFlags.filter((flag) => flag.source === "profile_override").length,
     scopes: flags.reduce((acc, flag) => {
       acc[flag.scope] = (acc[flag.scope] || 0) + 1;
       return acc;
     }, {}),
     flags: includeFlags
-      ? flags.map((flag) => ({
+      ? resolvedFlags.map((flag) => ({
           id: flag.id,
           owner: flag.owner,
           scope: flag.scope,
           defaultEnabled: flag.defaultEnabled,
+          enabled: flag.enabled,
+          source: flag.source,
+          profile: flag.profile,
           description: flag.description,
           safetyBoundary: flag.safetyBoundary,
           createdAt: flag.createdAt,
           reviewCadence: flag.reviewCadence,
+          profileOverrides: { ...flag.profileOverrides },
         }))
       : [],
   });

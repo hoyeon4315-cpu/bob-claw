@@ -3,9 +3,11 @@ import { test } from "node:test";
 
 import {
   ALLOWED_FEATURE_FLAG_SCOPES,
+  ALLOWED_FEATURE_FLAG_PROFILES,
   buildFeatureFlagCatalogSummary,
   getFeatureFlagDefinition,
   isFeatureEnabled,
+  resolveFeatureFlagState,
   validateFeatureFlagManifest,
 } from "../src/config/feature-flags.mjs";
 import { buildFeatureFlagCatalogSlice } from "../src/status/feature-flag-catalog-slice.mjs";
@@ -93,4 +95,75 @@ test("manifest validation rejects missing owner, invalid defaults, and live scop
       }),
     /scope policy is not allowed/,
   );
+});
+
+test("committed profile overrides resolve only for allowed non-live profiles", () => {
+  assert.deepEqual([...ALLOWED_FEATURE_FLAG_PROFILES].sort(), [
+    "ci",
+    "dashboard_preview",
+    "local_dev",
+    "non_live_rollout",
+    "report_snapshot",
+    "scaffold_review",
+  ]);
+
+  const manifest = {
+    "report.fixture_profile_override": {
+      owner: "ops-harness",
+      scope: "report",
+      defaultEnabled: false,
+      description: "Fixture for committed non-live profile overrides.",
+      safetyBoundary: "report-only metadata",
+      profileOverrides: {
+        ci: true,
+        report_snapshot: true,
+      },
+    },
+  };
+
+  const defaultState = resolveFeatureFlagState("report.fixture_profile_override", { manifest });
+  assert.equal(defaultState.enabled, false);
+  assert.equal(defaultState.source, "default");
+  assert.equal(defaultState.profile, null);
+
+  const ciState = resolveFeatureFlagState("report.fixture_profile_override", {
+    manifest,
+    profile: "ci",
+  });
+  assert.equal(ciState.enabled, true);
+  assert.equal(ciState.source, "profile_override");
+  assert.equal(ciState.profile, "ci");
+
+  assert.throws(
+    () =>
+      resolveFeatureFlagState("report.fixture_profile_override", {
+        manifest,
+        profile: "prod_live",
+      }),
+    /Unknown feature flag profile: prod_live/,
+  );
+});
+
+test("report-only catalog slice can evaluate a committed profile override", () => {
+  const manifest = {
+    "report.feature_flag_catalog_slice": {
+      owner: "ops-harness",
+      scope: "report",
+      defaultEnabled: false,
+      description: "Fixture for profile-aware report catalog rollout.",
+      safetyBoundary: "report-only metadata",
+      profileOverrides: {
+        report_snapshot: true,
+      },
+    },
+  };
+
+  const slice = buildFeatureFlagCatalogSlice({
+    manifest,
+    profile: "report_snapshot",
+  });
+  assert.equal(slice.catalogIncluded, true);
+  assert.equal(slice.requestedProfile, "report_snapshot");
+  assert.equal(slice.profileOverrideSupported, true);
+  assert.equal(slice.runtimeAuthority, "none");
 });

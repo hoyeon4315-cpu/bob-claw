@@ -1,13 +1,15 @@
 import { buildFeatureFlagCatalogSummary, isFeatureEnabled } from "../config/feature-flags.mjs";
 
-export function buildFeatureFlagCatalogSlice({ manifest = undefined } = {}) {
+export function buildFeatureFlagCatalogSlice({ manifest = undefined, profile = null } = {}) {
   const catalogIncluded = isFeatureEnabled("report.feature_flag_catalog_slice", {
     manifest,
+    profile,
   });
   return Object.freeze({
     ...buildFeatureFlagCatalogSummary({
       manifest,
       includeFlags: catalogIncluded,
+      profile,
     }),
     readOnly: true,
     catalogIncluded,
