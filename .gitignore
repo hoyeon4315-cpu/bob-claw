@@ -9,6 +9,7 @@ dashboard/public/money-loop-status.json
 dist/
 coverage/
 artifacts/build-performance/
+artifacts/profiling/
 *.log
 logs/
 state/
