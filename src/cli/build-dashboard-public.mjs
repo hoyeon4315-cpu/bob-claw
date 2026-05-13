@@ -14,6 +14,7 @@ export const DASHBOARD_PUBLIC_BUILD_ENTRIES = Object.freeze([
   Object.freeze({ source: "data.jsx", output: "data.js" }),
   Object.freeze({ source: "ios-frame.jsx", output: "ios-frame.js" }),
   Object.freeze({ source: "mindmap.jsx", output: "mindmap.js" }),
+  Object.freeze({ source: "analytics.jsx", output: "analytics.js" }),
   Object.freeze({ source: "app.jsx", output: "app.js" }),
 ]);
 

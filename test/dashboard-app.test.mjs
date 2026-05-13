@@ -5,31 +5,34 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const APP_SOURCE = readFileSync(
-  join(HERE, "..", "dashboard", "public", "app.jsx"),
-  "utf8"
-);
-const DATA_SOURCE = readFileSync(
-  join(HERE, "..", "dashboard", "public", "data.jsx"),
-  "utf8"
-);
-const MINDMAP_SOURCE = readFileSync(
-  join(HERE, "..", "dashboard", "public", "mindmap.jsx"),
-  "utf8"
-);
-const LOGOS_SOURCE = readFileSync(
-  join(HERE, "..", "dashboard", "public", "logos.jsx"),
-  "utf8"
-);
-const INDEX_HTML = readFileSync(
-  join(HERE, "..", "dashboard", "public", "index.html"),
-  "utf8"
-);
+const APP_SOURCE = readFileSync(join(HERE, "..", "dashboard", "public", "app.jsx"), "utf8");
+const DATA_SOURCE = readFileSync(join(HERE, "..", "dashboard", "public", "data.jsx"), "utf8");
+const MINDMAP_SOURCE = readFileSync(join(HERE, "..", "dashboard", "public", "mindmap.jsx"), "utf8");
+const LOGOS_SOURCE = readFileSync(join(HERE, "..", "dashboard", "public", "logos.jsx"), "utf8");
+const INDEX_HTML = readFileSync(join(HERE, "..", "dashboard", "public", "index.html"), "utf8");
 
-function extractSection(startMarker, endMarker, source = APP_SOURCE) {
+function normalizeGuardSource(source) {
+  return source
+    .replaceAll('"', "'")
+    .replace(/\s+/g, " ")
+    .replace(/\.filter\(\s+/g, ".filter(")
+    .replace(/,\s*\)\.length/g, ").length")
+    .replaceAll(" />", "/>");
+}
+
+const NORMALIZED_APP_SOURCE = normalizeGuardSource(APP_SOURCE);
+
+function extractSection(startMarker, endMarker, source = NORMALIZED_APP_SOURCE) {
   const start = source.indexOf(startMarker);
   assert.notEqual(start, -1, `missing start marker: ${startMarker}`);
-  const end = endMarker ? source.indexOf(endMarker, start) : source.length;
+  let end = endMarker ? source.indexOf(endMarker, start) : source.length;
+  if (end === -1 && endMarker) {
+    const normalizedEndMarker = normalizeGuardSource(endMarker);
+    end = source.indexOf(normalizedEndMarker, start);
+    if (end === -1) {
+      end = source.indexOf(normalizedEndMarker.trim(), start);
+    }
+  }
   assert.notEqual(end, -1, `missing end marker: ${endMarker}`);
   return source.slice(start, end);
 }
@@ -38,7 +41,7 @@ describe("dashboard home renewal source guard", () => {
   test("dashboard shell loads prebuilt public scripts without browser Babel", () => {
     assert.doesNotMatch(INDEX_HTML, /text\/babel/);
     assert.doesNotMatch(INDEX_HTML, /@babel\/standalone/);
-    for (const asset of ["./logos.js", "./data.js", "./ios-frame.js", "./mindmap.js", "./app.js"]) {
+    for (const asset of ["./logos.js", "./data.js", "./ios-frame.js", "./mindmap.js", "./analytics.js", "./app.js"]) {
       assert.match(INDEX_HTML, new RegExp(asset.replace(".", "\\.")));
     }
   });
@@ -53,13 +56,18 @@ describe("dashboard home renewal source guard", () => {
     assert.match(metricStrip, /cards\.map/);
 
     const flowPane = extractSection("function FlowPane", "function KpiCard");
+    const assetSummary = extractSection("function summarizeDashboardAssets", "function AssetsPane");
     assert.match(flowPane, /const HOLDINGS = window\.HOLDINGS \|\| globalThis\.HOLDINGS/);
     assert.match(flowPane, /const STRATEGIES = window\.STRATEGIES \|\| globalThis\.STRATEGIES \|\| \[\]/);
+    assert.match(flowPane, /summarizeDashboardAssets\(HOLDINGS, items, positions\)/);
     const labels = ["Open APR", "Paid back", "Payback", "Est. yield"];
     for (const label of labels) {
       assert.match(flowPane, new RegExp(`label:\\s*'${label.replace(" ", "\\s+")}'`));
     }
-    assert.match(flowPane, /const totalApr = Number\.isFinite\(liveYieldAprPct\) && liveYieldAprPositionCount > 0 \? liveYieldAprPct : null/);
+    assert.match(
+      flowPane,
+      /const totalApr = Number\.isFinite\(liveYieldAprPct\) && liveYieldAprPositionCount > 0 \? liveYieldAprPct : null/,
+    );
     assert.match(flowPane, /candidate \$\{fmtPct\(candidateAprPct\)\} · not open/);
     assert.match(flowPane, /const strategyYieldUsd = STRATEGIES\.reduce/);
     assert.match(flowPane, /const liveYieldSats = flow\?\.metrics\?\.liveEstimatedYieldSats/);
@@ -69,19 +77,37 @@ describe("dashboard home renewal source guard", () => {
     assert.match(flowPane, /estimated, not realized/);
     assert.match(flowPane, /\$\{fmtUsdCompact\(carryUsd\)\} pending/);
     assert.doesNotMatch(flowPane, /wallet only · 0 open positions/);
-    assert.match(flowPane, /const currentWalletUsd = Number\.isFinite\(HOLDINGS\?\.currentWalletUsd\)/);
-    assert.match(flowPane, /const protocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.protocolDeployedUsd\)/);
-    assert.match(flowPane, /const currentTotalUsd = Number\.isFinite\(HOLDINGS\?\.currentTotalUsd\)/);
-    assert.match(flowPane, /const estimatedProtocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.estimatedProtocolDeployedUsd\)/);
-    assert.match(flowPane, /const estimatedCurrentTotalUsd = Number\.isFinite\(HOLDINGS\?\.estimatedCurrentTotalUsd\)/);
-    assert.match(flowPane, /const verifiedMinimumUsd = Number\.isFinite\(HOLDINGS\?\.verifiedMinimumUsd\)/);
-    assert.match(flowPane, /const displayAssetUsd = assetEstimateAvailable \? estimatedCurrentTotalUsd : currentTotalUsd/);
-    assert.match(flowPane, /const protocolTrackingGapUsd = Number\.isFinite\(HOLDINGS\?\.protocolTrackingGapUsd\)/);
+    assert.match(assetSummary, /const currentWalletUsd = Number\.isFinite\(HOLDINGS\?\.currentWalletUsd\)/);
+    assert.match(assetSummary, /const protocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.protocolDeployedUsd\)/);
+    assert.match(assetSummary, /const currentTotalUsd = Number\.isFinite\(HOLDINGS\?\.currentTotalUsd\)/);
+    assert.match(
+      assetSummary,
+      /const estimatedProtocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.estimatedProtocolDeployedUsd\)/,
+    );
+    assert.match(
+      assetSummary,
+      /const estimatedCurrentTotalUsd = Number\.isFinite\(HOLDINGS\?\.estimatedCurrentTotalUsd\)/,
+    );
+    assert.match(assetSummary, /const verifiedMinimumUsd = Number\.isFinite\(HOLDINGS\?\.verifiedMinimumUsd\)/);
+    assert.match(
+      assetSummary,
+      /const displayAssetUsd = assetEstimateAvailable \? estimatedCurrentTotalUsd : currentTotalUsd/,
+    );
+    assert.match(assetSummary, /const protocolTrackingGapUsd = Number\.isFinite\(HOLDINGS\?\.protocolTrackingGapUsd\)/);
     assert.match(flowPane, /const protocolTrackingGapSub = protocolTrackingGapUsd > 1/);
-    assert.match(flowPane, /`\$\{fmtUsdCompact\(currentWalletUsd\)\} free \+ \$\{fmtUsdCompact\(estimatedProtocolDeployedUsd\)\} est\. protocols = \$\{fmtUsdCompact\(estimatedCurrentTotalUsd\)\} est\. · verified floor \$\{fmtUsdCompact\(verifiedMinimumUsd\)\}`/);
-    assert.match(flowPane, /const assetHasReconciliationGap = protocolTrackingGapUsd > 1 \|\| Boolean\(HOLDINGS\?\.accountingWarning\)/);
+    assert.match(
+      flowPane,
+      /`\$\{fmtUsdCompact\(currentWalletUsd\)\} free \+ \$\{fmtUsdCompact\(estimatedProtocolDeployedUsd\)\} est\. protocols = \$\{fmtUsdCompact\(estimatedCurrentTotalUsd\)\} est\. · verified floor \$\{fmtUsdCompact\(verifiedMinimumUsd\)\}`/,
+    );
+    assert.match(
+      flowPane,
+      /const assetHasReconciliationGap = protocolTrackingGapUsd > 1 \|\| Boolean\(HOLDINGS\?\.accountingWarning\)/,
+    );
     assert.match(flowPane, /const assetIsVerifiedFloor = HOLDINGS\?\.assetConfidence === 'verified_minimum'/);
-    assert.match(flowPane, /const assetMetricLabel = assetEstimateAvailable \? 'Assets' : assetHasReconciliationGap \? 'Observed' : 'Total'/);
+    assert.match(
+      flowPane,
+      /const assetMetricLabel = assetEstimateAvailable \? 'Assets' : assetHasReconciliationGap \? 'Observed' : 'Total'/,
+    );
     assert.match(flowPane, /const assetMain = pending \? '—' : fmtUsd\(displayAssetUsd \|\| 0\)/);
     assert.match(flowPane, /unreconciled protocol estimate/);
     assert.doesNotMatch(flowPane, /assetIsVerifiedFloor \? '\\\+' : ''/);
@@ -160,11 +186,26 @@ describe("dashboard home renewal source guard", () => {
     const opsStrip = extractSection("function OpsStrip", "function FlowPane");
     assert.match(opsStrip, /History/);
     assert.match(opsStrip, /function OpsStrip\(\{ fill = false, onExpandedChange = null \}\)/);
-    assert.match(opsStrip, /const txActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'transaction'\)/);
-    assert.match(opsStrip, /const positionActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'position'\)/);
-    assert.match(opsStrip, /const paybackActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'payback'\)/);
-    assert.match(opsStrip, /const inFlightTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'signed' \|\| activity\?\.status === 'broadcasted'\)\.length/);
-    assert.match(opsStrip, /const confirmedTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'confirmed'\)\.length/);
+    assert.match(
+      opsStrip,
+      /const txActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'transaction'\)/,
+    );
+    assert.match(
+      opsStrip,
+      /const positionActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'position'\)/,
+    );
+    assert.match(
+      opsStrip,
+      /const paybackActivities = activities\.filter\(\(activity\) => activity\?\.kind === 'payback'\)/,
+    );
+    assert.match(
+      opsStrip,
+      /const inFlightTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'signed' \|\| activity\?\.status === 'broadcasted'\)\.length/,
+    );
+    assert.match(
+      opsStrip,
+      /const confirmedTxCount = txActivities\.filter\(\(activity\) => activity\?\.status === 'confirmed'\)\.length/,
+    );
     assert.match(opsStrip, /const scrollInsideCard = fill && expanded/);
     assert.match(opsStrip, /const \[filter, setFilter\] = useState\(\(\) => readPersistedHistoryFilter\(\)\)/);
     assert.match(opsStrip, /const filteredActivities = activities\.filter\(\(activity\) => \{/);
@@ -193,10 +234,13 @@ describe("dashboard home renewal source guard", () => {
     const flowPane = extractSection("function FlowPane", "function KpiCard");
     assert.match(flowPane, /zIndex: historyExpanded \? 1 : 4/);
     assert.match(flowPane, /zIndex: historyExpanded \? 6 : 1/);
-    assert.match(flowPane, /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(overlayActive \? 'none' : 'auto'\)/);
-    assert.match(flowPane, /opacity: historyExpanded \? 1 : \(overlayActive \? 0\.28 : 1\)/);
+    assert.match(
+      flowPane,
+      /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(?overlayActive \? 'none' : 'auto'\)?/,
+    );
+    assert.match(flowPane, /opacity: historyExpanded \? 1 : \(?overlayActive \? 0\.28 : 1\)?/);
     assert.match(flowPane, /pointerEvents: historyExpanded \? 'none' : 'auto'/);
-    assert.match(flowPane, /\{!historyExpanded && <FlowMetricGrid cards=\{\[/);
+    assert.match(flowPane, /\{!historyExpanded && \(? <FlowMetricGrid cards=\{\[/);
     assert.match(flowPane, /\{!historyExpanded && aprOpen && \(/);
     assert.match(flowPane, /<OpsStrip fill=\{historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
   });
@@ -205,7 +249,21 @@ describe("dashboard home renewal source guard", () => {
 describe("dashboard defi renewal source guard", () => {
   test("defi rows stay compact and English-first", () => {
     const strategyKind = extractSection("function strategyKind", "function strategyMechanics");
-    for (const label of ["Loop", "Fold", "PT", "CL LP", "LP", "Basis", "Bridge", "Payback", "Arb", "Swap", "Canary", "Reserve", "Refuel"]) {
+    for (const label of [
+      "Loop",
+      "Fold",
+      "PT",
+      "CL LP",
+      "LP",
+      "Basis",
+      "Bridge",
+      "Payback",
+      "Arb",
+      "Swap",
+      "Canary",
+      "Reserve",
+      "Refuel",
+    ]) {
       assert.match(strategyKind, new RegExp(`return '${label.replace(" ", "\\s+")}'`));
     }
     assert.doesNotMatch(strategyKind, /[가-힣]/);
@@ -234,16 +292,27 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(scanErrorBrief, /chain.*RPC/);
 
     const assetsPane = extractSection("function AssetsPane", "function App");
+    const assetSummary = extractSection("function summarizeDashboardAssets", "function AssetsPane");
     assert.match(assetsPane, /const HOLDINGS = window\.HOLDINGS \|\| globalThis\.HOLDINGS/);
     assert.match(assetsPane, /const STRATEGIES = window\.STRATEGIES \|\| globalThis\.STRATEGIES \|\| \[\]/);
+    assert.match(assetsPane, /summarizeDashboardAssets\(HOLDINGS, items, positions\)/);
     assert.match(assetsPane, /Current total assets/);
     assert.match(assetsPane, /Observed assets/);
     assert.match(assetsPane, /Estimated total assets/);
     assert.match(assetsPane, /const assetIsVerifiedFloor = HOLDINGS\?\.assetConfidence === 'verified_minimum'/);
-    assert.match(assetsPane, /const assetHasReconciliationGap = protocolTrackingGapUsd > 1 \|\| Boolean\(HOLDINGS\?\.accountingWarning\)/);
-    assert.match(assetsPane, /const estimatedProtocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.estimatedProtocolDeployedUsd\)/);
-    assert.match(assetsPane, /const estimatedCurrentTotalUsd = Number\.isFinite\(HOLDINGS\?\.estimatedCurrentTotalUsd\)/);
-    assert.match(assetsPane, /const verifiedMinimumUsd = Number\.isFinite\(HOLDINGS\?\.verifiedMinimumUsd\)/);
+    assert.match(
+      assetsPane,
+      /const assetHasReconciliationGap = protocolTrackingGapUsd > 1 \|\| Boolean\(HOLDINGS\?\.accountingWarning\)/,
+    );
+    assert.match(
+      assetSummary,
+      /const estimatedProtocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.estimatedProtocolDeployedUsd\)/,
+    );
+    assert.match(
+      assetSummary,
+      /const estimatedCurrentTotalUsd = Number\.isFinite\(HOLDINGS\?\.estimatedCurrentTotalUsd\)/,
+    );
+    assert.match(assetSummary, /const verifiedMinimumUsd = Number\.isFinite\(HOLDINGS\?\.verifiedMinimumUsd\)/);
     assert.match(assetsPane, /const assetHeadline = tracking && !Number\.isFinite\(trackingExactTotalUsd\)/);
     assert.match(assetsPane, /const assetMain = pending \? '—' : fmtUsd\(displayAssetUsd\)/);
     assert.match(assetsPane, /const assetEquationTotalLabel = tracking && !Number\.isFinite\(trackingExactTotalUsd\)/);
@@ -253,32 +322,47 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(assetsPane, /capital refill target/);
     assert.match(assetsPane, /not wallet assets/);
     assert.match(assetsPane, /open positions \{positions\.length\}/);
-    assert.match(assetsPane, /const currentWalletUsd = Number\.isFinite\(HOLDINGS\?\.currentWalletUsd\)/);
-    assert.match(assetsPane, /const protocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.protocolDeployedUsd\)/);
-    assert.match(assetsPane, /const currentTotalUsd = Number\.isFinite\(HOLDINGS\?\.currentTotalUsd\)/);
-    assert.match(assetsPane, /const protocolTrackingGapUsd = Number\.isFinite\(HOLDINGS\?\.protocolTrackingGapUsd\)/);
+    assert.match(assetSummary, /const currentWalletUsd = Number\.isFinite\(HOLDINGS\?\.currentWalletUsd\)/);
+    assert.match(assetSummary, /const protocolDeployedUsd = Number\.isFinite\(HOLDINGS\?\.protocolDeployedUsd\)/);
+    assert.match(assetSummary, /const currentTotalUsd = Number\.isFinite\(HOLDINGS\?\.currentTotalUsd\)/);
+    assert.match(assetSummary, /const protocolTrackingGapUsd = Number\.isFinite\(HOLDINGS\?\.protocolTrackingGapUsd\)/);
     assert.match(assetsPane, /estimated live/);
-    assert.match(assetsPane, /remaining \{fmtUsd\(currentWalletUsd\)\} \+ \{assetEstimateAvailable \? 'estimated' : 'tracked'\} protocols/);
-    assert.match(assetsPane, /= \{assetEquationTotalLabel\} \{fmtUsd\(displayAssetUsd\)\}/);
+    assert.match(
+      assetsPane,
+      /remaining(?:\{' '\}\s*)?\{fmtUsd\(currentWalletUsd\)\} \+ \{assetEstimateAvailable \? 'estimated' : 'tracked'\} protocols/,
+    );
+    assert.match(assetsPane, /=\s*(?:\{' '\}\s*)?\{assetEquationTotalLabel\} \{fmtUsd\(displayAssetUsd\)\}/);
     assert.match(assetsPane, /unreconciled protocol estimate \{fmtUsd\(protocolTrackingGapUsd\)\}/);
     assert.match(assetsPane, /protocol tracking gap \{fmtUsd\(protocolTrackingGapUsd\)\}/);
     assert.match(assetsPane, /live supported \{fmtUsd\(HOLDINGS\?\.walletUsd\)\}/);
     assert.doesNotMatch(assetsPane, /cached full \$\{fmtUsd\(HOLDINGS\.fullWalletUsd\)\}/);
     assert.match(assetsPane, /const walletScanErrorDetails = \(HOLDINGS\?\.walletScanErrors \|\| \[\]\)/);
     assert.match(assetsPane, /scan errors \$\{HOLDINGS\.walletScanErrorCount\}\$\{walletScanErrorDetails\.length/);
-    assert.match(assetsPane, /capital refill target \$\{fmtUsd\(HOLDINGS\.capitalPlanRefillRequiredUsd\)\} · not wallet assets/);
-    assert.match(assetsPane, /plan need above verified \$\{HOLDINGS\.executorEstimateDeltaUsd > 0 \? '\+' : ''\}\$\{fmtUsd\(HOLDINGS\.executorEstimateDeltaUsd\)\}/);
+    assert.match(
+      assetsPane,
+      /capital refill target \$\{fmtUsd\(HOLDINGS\.capitalPlanRefillRequiredUsd\)\} · not wallet assets/,
+    );
+    assert.match(
+      assetsPane,
+      /plan need above verified \$\{HOLDINGS\.executorEstimateDeltaUsd > 0 \? '\+' : ''\}\$\{fmtUsd\(HOLDINGS\.executorEstimateDeltaUsd\)\}/,
+    );
     assert.match(assetsPane, /system confidence \$\{HOLDINGS\.systemConfidence\}/);
     assert.match(assetsPane, /audit alerts \$\{HOLDINGS\.invariantViolationCount\}/);
     assert.match(assetsPane, /audit clean/);
-    assert.match(assetsPane, /protocol marks current \$\{HOLDINGS\?\.currentProtocolMarkCount \|\| 0\} · issues \$\{HOLDINGS\?\.protocolMarkIssueCount \|\| 0\}/);
+    assert.match(
+      assetsPane,
+      /protocol marks current \$\{HOLDINGS\?\.currentProtocolMarkCount \|\| 0\} · issues \$\{HOLDINGS\?\.protocolMarkIssueCount \|\| 0\}/,
+    );
     assert.match(assetsPane, /needs adapter \$\{HOLDINGS\.adapterCoverageGapCount\}/);
     assert.match(assetsPane, /signer settling \$\{HOLDINGS\.pendingSignerActionCount\}/);
     assert.match(assetsPane, /HOLDINGS\?\.accountingWarning \? '#FFF6E8'/);
     assert.doesNotMatch(assetsPane, /full wallet live/);
     assert.match(assetsPane, /supported-assets live/);
     assert.match(assetsPane, /policy inventory/);
-    assert.match(assetsPane, /wallet observed \$\{formatStatusAge\(HOLDINGS\.walletObservedAt\) \|\| fmtWhen\(HOLDINGS\.walletObservedAt\)\}/);
+    assert.match(
+      assetsPane,
+      /wallet observed \$\{formatStatusAge\(HOLDINGS\.walletObservedAt\) \|\| fmtWhen\(HOLDINGS\.walletObservedAt\)\}/,
+    );
     assert.match(assetsPane, /scan errors \$\{HOLDINGS\.walletScanErrorCount\}/);
     assert.match(assetsPane, /scan clean/);
     assert.doesNotMatch(assetsPane, /external address scan inactive/);
@@ -300,10 +384,19 @@ describe("dashboard defi renewal source guard", () => {
   test("flow pane expands the map above lower cards during focus mode", () => {
     const flowPane = extractSection("function FlowPane", "function KpiCard");
     assert.match(flowPane, /const \[mindmapFocus, setMindmapFocus\] = useState\(\{ layer: 'root' \}\)/);
-    assert.match(flowPane, /const \[historyExpanded, setHistoryExpanded\] = useState\(\(\) => readPersistedHistoryExpanded\(\)\)/);
+    assert.match(
+      flowPane,
+      /const \[historyExpanded, setHistoryExpanded\] = useState\(\(\) => readPersistedHistoryExpanded\(\)\)/,
+    );
     assert.match(flowPane, /const flowMapBaseHeight = 'calc\(52% - 4px\)'/);
-    assert.match(flowPane, /historyExpanded \? flowMapBaseHeight : overlayActive \? 'calc\(100% - 12px\)' : flowMapBaseHeight/);
-    assert.match(flowPane, /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/);
+    assert.match(
+      flowPane,
+      /historyExpanded \? flowMapBaseHeight : overlayActive \? 'calc\(100% - 12px\)' : flowMapBaseHeight/,
+    );
+    assert.match(
+      flowPane,
+      /<Mindmap motionSpeed=\{1\.4\} refreshTick=\{refreshTick\} onFocusChange=\{setMindmapFocus\}/,
+    );
     assert.match(flowPane, /position: 'absolute'/);
     assert.match(flowPane, /overflowY: 'hidden'/);
     assert.match(flowPane, /position: 'absolute'/);
@@ -312,10 +405,19 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(flowPane, /bottom: 0/);
     assert.match(flowPane, /const lowerPaneExpandedOffset = 'calc\(52% \+ 10px\)'/);
     assert.match(flowPane, /paddingTop: historyExpanded \? 0 : undefined/);
-    assert.match(flowPane, /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(overlayActive \? 'none' : 'auto'\)/);
-    assert.match(flowPane, /transform: historyExpanded \? 'translateY\(0\) scale\(1\)' : overlayActive \? 'translateY\(18px\) scale\(0\.985\)' : 'translateY\(0\) scale\(1\)'/);
+    assert.match(
+      flowPane,
+      /const lowerPanePointerEvents = historyExpanded \? 'auto' : \(?overlayActive \? 'none' : 'auto'\)?/,
+    );
+    assert.match(
+      flowPane,
+      /transform: historyExpanded \? 'translateY\(0\) scale\(1\)' : \(?overlayActive \? 'translateY\(18px\) scale\(0\.985\)' : 'translateY\(0\) scale\(1\)'\)?/,
+    );
     assert.match(flowPane, /<OpsStrip fill=\{historyExpanded\} onExpandedChange=\{setHistoryExpanded\}\/>/);
-    assert.match(flowPane, /const totalApr = Number\.isFinite\(liveYieldAprPct\) && liveYieldAprPositionCount > 0 \? liveYieldAprPct : null/);
+    assert.match(
+      flowPane,
+      /const totalApr = Number\.isFinite\(liveYieldAprPct\) && liveYieldAprPositionCount > 0 \? liveYieldAprPct : null/,
+    );
     assert.match(flowPane, /open APR estimate only/);
     assert.match(flowPane, /not realized PnL or payback/);
   });
@@ -324,22 +426,33 @@ describe("dashboard defi renewal source guard", () => {
     const utilitySection = extractSection("function fmtWhen", "function normalizeUiStrategyId");
     assert.match(utilitySection, /function formatStatusAge/);
     const appSection = extractSection("function App", "\n\n(() => {");
-    assert.match(appSection, /<div className="title">BOB CLAW🦞<\/div>/);
+    assert.match(appSection, /<div className=['"]title['"]>BOB CLAW🦞<\/div>/);
     assert.doesNotMatch(appSection, /sourceLabel/);
     assert.doesNotMatch(appSection, /public live/);
     assert.doesNotMatch(appSection, /local live/);
   });
 
   test("data adapter prefers live transport before static snapshots", () => {
-    const dataSelection = extractSection("function selectPreferredStatusPayload", "async function fetchEndpointStatus", DATA_SOURCE);
-    assert.match(dataSelection, /const sourceDiff = statusSourceRank\(right\.source\) - statusSourceRank\(left\.source\)/);
+    const dataSelection = extractSection(
+      "function selectPreferredStatusPayload",
+      "async function fetchEndpointStatus",
+      DATA_SOURCE,
+    );
+    assert.match(
+      dataSelection,
+      /const sourceDiff = statusSourceRank\(right\.source\) - statusSourceRank\(left\.source\)/,
+    );
     assert.match(dataSelection, /if \(sourceDiff !== 0\) return sourceDiff/);
     assert.ok(
       dataSelection.indexOf("sourceDiff") < dataSelection.indexOf("generatedAtDiff"),
       "live source rank must be evaluated before generatedAt so static snapshots cannot beat a live endpoint",
     );
 
-    const bootstrap = extractSection("async function bootstrapDashboardData", "function setupDashboardRefreshHooks", DATA_SOURCE);
+    const bootstrap = extractSection(
+      "async function bootstrapDashboardData",
+      "function setupDashboardRefreshHooks",
+      DATA_SOURCE,
+    );
     assert.match(bootstrap, /const initialSnapshot = await fetchStatusPayload\(\)/);
     assert.doesNotMatch(bootstrap, /fetchStaticStatusPayload\(\)/);
 
@@ -349,7 +462,11 @@ describe("dashboard defi renewal source guard", () => {
   });
 
   test("data adapter treats stale full-wallet scans as reference, not primary display value", () => {
-    const adapter = extractSection("const liveApr = holdings?.protocolApr || {};", "  const STRATEGIES = Array.from", DATA_SOURCE);
+    const adapter = extractSection(
+      "const liveApr = holdings?.protocolApr || {};",
+      "  const STRATEGIES = Array.from",
+      DATA_SOURCE,
+    );
     assert.match(adapter, /const assetTracking = status\?\.assetTracking \|\| null;/);
     assert.match(adapter, /const summaryDisplayWalletUsd = Number\.isFinite\(capitalSummary\?\.walletUsd\)/);
     assert.match(adapter, /displayWalletUsd: summaryDisplayWalletUsd/);
@@ -362,48 +479,108 @@ describe("dashboard defi renewal source guard", () => {
     assert.match(adapter, /verifiedMinimumUsd: summaryVerifiedMinimumUsd/);
     assert.match(adapter, /estimatedUntrackedProtocolUsd: summaryEstimatedUntrackedProtocolUsd/);
     assert.match(adapter, /estimatedTotalUsdSource: capitalSummary\.estimatedTotalUsdSource \|\| null/);
-    assert.match(adapter, /capitalPlanRefillRequiredUsd: Number\.isFinite\(capitalSummary\.capitalPlanRefillRequiredUsd\)/);
-    assert.match(adapter, /assetFormula: capitalSummary\.assetFormula \|\| 'current_wallet_plus_tracked_protocol_positions'/);
+    assert.match(
+      adapter,
+      /capitalPlanRefillRequiredUsd: Number\.isFinite\(capitalSummary\.capitalPlanRefillRequiredUsd\)/,
+    );
+    assert.match(
+      adapter,
+      /assetFormula: capitalSummary\.assetFormula \|\| 'current_wallet_plus_tracked_protocol_positions'/,
+    );
     assert.match(adapter, /assetClaimLabel: capitalSummary\.assetClaimLabel \|\| null/);
     assert.match(adapter, /const summaryNeedsReconciliation =/);
-    assert.match(adapter, /const summaryAssetConfidence = capitalSummary\?\.assetConfidence \|\| \(summaryNeedsReconciliation \? 'verified_minimum' : 'verified_current'\)/);
+    assert.match(
+      adapter,
+      /const summaryAssetConfidence = capitalSummary\?\.assetConfidence \|\| \(summaryNeedsReconciliation \? 'verified_minimum' : 'verified_current'\)/,
+    );
     assert.match(DATA_SOURCE, /function hasDashboardCapital\(status = null\)/);
     assert.match(DATA_SOURCE, /Number\.isFinite\(status\.capitalSummary\.currentTotalUsd\)/);
     assert.match(DATA_SOURCE, /status\.capitalSummary\.assetConfidence/);
-    assert.match(DATA_SOURCE, /const complete = available\.filter\(\(candidate\) => hasDashboardCapital\(candidate\.status\)\)/);
+    assert.match(
+      DATA_SOURCE,
+      /const complete = available\.filter\(\(candidate\) => hasDashboardCapital\(candidate\.status\)\)/,
+    );
     assert.match(adapter, /referenceFullWalletGapUsd: summaryReferenceFullWalletGapUsd/);
     assert.match(adapter, /planGapUsd: summaryPlanGapUsd/);
     assert.match(adapter, /protocolTrackingGapUsd: summaryProtocolTrackingGapUsd/);
     assert.match(adapter, /trackingGapUsd: summaryProtocolTrackingGapUsd/);
-    assert.match(adapter, /reconciliationGapUsd: Number\.isFinite\(capitalSummary\.reconciliationGapUsd\) \? capitalSummary\.reconciliationGapUsd : null/);
+    assert.match(
+      adapter,
+      /reconciliationGapUsd: Number\.isFinite\(capitalSummary\.reconciliationGapUsd\) \? capitalSummary\.reconciliationGapUsd : null/,
+    );
     assert.match(adapter, /assetTracking: assetTracking \? \{/);
-    assert.match(adapter, /exactTotalUsd: Number\.isFinite\(assetTracking\.exactTotalUsd\) \? assetTracking\.exactTotalUsd : null/);
-    assert.match(adapter, /riskUsableUsd: Number\.isFinite\(assetTracking\.riskUsableUsd\) \? assetTracking\.riskUsableUsd : null/);
-    assert.match(adapter, /pendingWhitelistCount: Number\.isFinite\(assetTracking\.pendingWhitelistCount\) \? assetTracking\.pendingWhitelistCount : 0/);
-    assert.match(adapter, /pendingWhitelistSample: Array\.isArray\(assetTracking\.pendingWhitelistSample\) \? assetTracking\.pendingWhitelistSample : \[\]/);
-    assert.match(adapter, /systemConfidence: capitalSummary\.systemConfidence \|\| \(summaryAssetConfidence === 'verified_current' \? 'high' : 'medium'\)/);
+    assert.match(
+      adapter,
+      /exactTotalUsd: Number\.isFinite\(assetTracking\.exactTotalUsd\) \? assetTracking\.exactTotalUsd : null/,
+    );
+    assert.match(
+      adapter,
+      /riskUsableUsd: Number\.isFinite\(assetTracking\.riskUsableUsd\) \? assetTracking\.riskUsableUsd : null/,
+    );
+    assert.match(
+      adapter,
+      /pendingWhitelistCount: Number\.isFinite\(assetTracking\.pendingWhitelistCount\) \? assetTracking\.pendingWhitelistCount : 0/,
+    );
+    assert.match(
+      adapter,
+      /pendingWhitelistSample: Array\.isArray\(assetTracking\.pendingWhitelistSample\) \? assetTracking\.pendingWhitelistSample : \[\]/,
+    );
+    assert.match(
+      adapter,
+      /systemConfidence: capitalSummary\.systemConfidence \|\| \(summaryAssetConfidence === 'verified_current' \? 'high' : 'medium'\)/,
+    );
     assert.match(adapter, /autoExecutionSafe: capitalSummary\.autoExecutionSafe === true/);
-    assert.match(adapter, /invariantViolations: Array\.isArray\(capitalSummary\.invariantViolations\) \? capitalSummary\.invariantViolations : \[\]/);
-    assert.match(adapter, /adapterCoverageGapCount: Number\.isFinite\(capitalSummary\.adapterCoverageGapCount\) \? capitalSummary\.adapterCoverageGapCount : 0/);
-    assert.match(adapter, /currentProtocolMarkCount: Number\.isFinite\(capitalSummary\.currentProtocolMarkCount\) \? capitalSummary\.currentProtocolMarkCount : 0/);
-    assert.match(adapter, /protocolMarkIssueCount: Number\.isFinite\(capitalSummary\.protocolMarkIssueCount\) \? capitalSummary\.protocolMarkIssueCount : 0/);
+    assert.match(
+      adapter,
+      /invariantViolations: Array\.isArray\(capitalSummary\.invariantViolations\) \? capitalSummary\.invariantViolations : \[\]/,
+    );
+    assert.match(
+      adapter,
+      /adapterCoverageGapCount: Number\.isFinite\(capitalSummary\.adapterCoverageGapCount\) \? capitalSummary\.adapterCoverageGapCount : 0/,
+    );
+    assert.match(
+      adapter,
+      /currentProtocolMarkCount: Number\.isFinite\(capitalSummary\.currentProtocolMarkCount\) \? capitalSummary\.currentProtocolMarkCount : 0/,
+    );
+    assert.match(
+      adapter,
+      /protocolMarkIssueCount: Number\.isFinite\(capitalSummary\.protocolMarkIssueCount\) \? capitalSummary\.protocolMarkIssueCount : 0/,
+    );
     assert.match(adapter, /supported_wallet_plus_positions_cached_external_reference/);
-    assert.match(adapter, /const fallbackDisplayWalletUsd = Number\.isFinite\(holdings\?\.totalUsd\) \? holdings\.totalUsd : null/);
+    assert.match(
+      adapter,
+      /const fallbackDisplayWalletUsd = Number\.isFinite\(holdings\?\.totalUsd\) \? holdings\.totalUsd : null/,
+    );
     assert.doesNotMatch(adapter, /hasFreshFullWalletSummary/);
     assert.doesNotMatch(adapter, /hasFreshFullWalletFallback/);
-    assert.doesNotMatch(adapter, /displayWalletUsd: Number\.isFinite\(capitalSummary\.displayWalletUsd\) \? capitalSummary\.displayWalletUsd : null/);
-    assert.match(DATA_SOURCE, /movementSummary: flow\?\.movementSummary \|\| \{ totalCount: 0, pendingCount: 0, blockedCount: 0, rejectedCount: 0, deliveredCount: 0, byStatus: \[\], byReason: \[\] \}/);
+    assert.doesNotMatch(
+      adapter,
+      /displayWalletUsd: Number\.isFinite\(capitalSummary\.displayWalletUsd\) \? capitalSummary\.displayWalletUsd : null/,
+    );
+    assert.match(
+      DATA_SOURCE,
+      /movementSummary: flow\?\.movementSummary \|\| \{ totalCount: 0, pendingCount: 0, blockedCount: 0, rejectedCount: 0, deliveredCount: 0, byStatus: \[\], byReason: \[\] \}/,
+    );
     assert.match(DATA_SOURCE, /EXECUTION_TRUTH: status\?\.overall\?\.executionTruth \|\| null/);
   });
 
   test("asset pane surfaces exact tracking blockers instead of implying total certainty", () => {
     const assetsPane = extractSection("function AssetsPane", "function App");
     assert.match(assetsPane, /const tracking = HOLDINGS\?\.assetTracking \|\| null/);
-    assert.match(assetsPane, /const trackingExactTotalUsd = Number\.isFinite\(tracking\?\.exactTotalUsd\) \? tracking\.exactTotalUsd : null/);
-    assert.match(assetsPane, /const trackingRiskUsableUsd = Number\.isFinite\(tracking\?\.riskUsableUsd\) \? tracking\.riskUsableUsd : null/);
+    assert.match(
+      assetsPane,
+      /const trackingExactTotalUsd = Number\.isFinite\(tracking\?\.exactTotalUsd\) \? tracking\.exactTotalUsd : null/,
+    );
+    assert.match(
+      assetsPane,
+      /const trackingRiskUsableUsd = Number\.isFinite\(tracking\?\.riskUsableUsd\) \? tracking\.riskUsableUsd : null/,
+    );
     assert.match(assetsPane, /trackingRiskReady \? 'risk-ready exact' : 'not exact for sizing'/);
     assert.match(assetsPane, /trackingBlockers\.slice\(0, 3\)\.map/);
-    assert.match(assetsPane, /const pendingWhitelistCount = Number\.isFinite\(tracking\?\.pendingWhitelistCount\) \? tracking\.pendingWhitelistCount : 0/);
+    assert.match(
+      assetsPane,
+      /const pendingWhitelistCount = Number\.isFinite\(tracking\?\.pendingWhitelistCount\) \? tracking\.pendingWhitelistCount : 0/,
+    );
     assert.match(assetsPane, /pending whitelist \{pendingWhitelistCount\}/);
   });
 
@@ -455,11 +632,18 @@ describe("dashboard defi renewal source guard", () => {
   });
 
   test("data refresh exposes RAW_STATUS through window.STATUS for live UI cards", () => {
-    const assignSection = extractSection("Object.assign(window, {", "});\n  window._DASHBOARD_LIVE_AVAILABLE", DATA_SOURCE);
+    const assignSection = extractSection(
+      "Object.assign(window, {",
+      "});\n  window._DASHBOARD_LIVE_AVAILABLE",
+      DATA_SOURCE,
+    );
     assert.match(assignSection, /STATUS: status/);
     assert.match(assignSection, /RAW_STATUS: status/);
     assert.match(assignSection, /RADAR: status\?\.radar \|\| null/);
-    assert.match(assignSection, /generatedAt: status\?\.liveTransport\?\.servedAt \|\| status\?\.capitalSummary\?\.generatedAt \|\| status\?\.generatedAt \|\| null/);
+    assert.match(
+      assignSection,
+      /generatedAt: status\?\.liveTransport\?\.servedAt \|\| status\?\.capitalSummary\?\.generatedAt \|\| status\?\.generatedAt \|\| null/,
+    );
   });
 
   test("live APR lookup prefers exact strategy entries before protocol fallback", () => {
