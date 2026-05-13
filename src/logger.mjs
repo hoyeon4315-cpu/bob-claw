@@ -2,6 +2,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, normalize, sep } from "node:path";
 
 import { safeJsonStringify } from "./lib/json-safe.mjs";
+import { traceMetadata } from "./trace-context.mjs";
 
 const LEVELS = Object.freeze({
   debug: 10,
@@ -148,12 +149,20 @@ function writeStreamLine(stream, line) {
   stream.write(`${line}\n`);
 }
 
+function buildTraceLogFields(traceContext, fields) {
+  if (!traceContext) return {};
+  return {
+    trace: traceMetadata(traceContext, fields?.traceAttributes || {}),
+  };
+}
+
 export function createLogger({
   component,
   level = process.env.BOB_CLAW_LOG_LEVEL || "info",
   stdout = process.stdout,
   stderr = process.stderr,
   filePath = null,
+  traceContext = null,
   now = () => new Date().toISOString(),
   env = process.env,
   extraSecrets = [],
@@ -187,6 +196,7 @@ export function createLogger({
     const record = {
       schemaVersion: 1,
       ...sanitizedFields,
+      ...buildTraceLogFields(traceContext, sanitizedFields),
       timestamp: now(),
       level: recordLevel,
       component,
@@ -210,6 +220,7 @@ export function createLogger({
         stdout,
         stderr,
         filePath,
+        traceContext,
         now,
         env,
         extraSecrets,
