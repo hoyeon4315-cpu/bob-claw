@@ -1,34 +1,33 @@
+import { createHash } from "node:crypto";
 import { Interface } from "ethers";
 import { registerBinding, resolveExitExecutor } from "../../../../executor/protocol-binding-registry.mjs";
 import { tokenAsset } from "../../../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../../../config/chains.mjs";
 import { assertStrategyCaps } from "../../../../config/strategy-caps.mjs";
+import { stableSerialize } from "../../../../execution/journal.mjs";
 import { estimateGas } from "../../../../gas/rpc-gas.mjs";
 import { sendSignerCommand } from "../../../../executor/signer/client.mjs";
 import { readErc20Allowance } from "../../../../evm/account-state.mjs";
-import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../../../../executor/helpers/gateway-btc-consolidation.mjs";
+import {
+  applyGasBuffer,
+  DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+} from "../../../../executor/helpers/gateway-btc-consolidation.mjs";
 import {
   defaultSettlementTimeoutMs,
   readEvmAssetBalance,
   sleep,
   waitForEvmAssetDelta,
 } from "../../../../executor/helpers/settlement-proof.mjs";
-import {
-  OdosClient,
-  normalizeOdosQuote,
-  attachOdosAssembly,
-  odosRoutingConfig,
-} from "../../../../dex/odos.mjs";
+import { OdosClient, normalizeOdosQuote, attachOdosAssembly, odosRoutingConfig } from "../../../../dex/odos.mjs";
 import { evGate } from "../../../../executor/policy/ev-gate.mjs";
 
-const ERC20_INTERFACE = new Interface([
-  "function approve(address spender,uint256 amount) returns (bool)",
-]);
+const ERC20_INTERFACE = new Interface(["function approve(address spender,uint256 amount) returns (bool)"]);
 
-const DEFAULT_SWAP_GAS_UNITS = 350_000;
+const DEFAULT_SWAP_GAS_UNITS = 650_000;
 const DEFAULT_APPROVE_GAS_UNITS = 80_000;
 const PENDLE_YT_ENTRY_INTENT_TYPE = "pendle_yt_entry";
 const PENDLE_YT_EXIT_INTENT_TYPE = "pendle_yt_exit";
+const PENDLE_API_BASE = "https://api-v2.pendle.finance/core";
 
 function toPositiveIntegerString(value, name) {
   const normalized = String(value || "").replace(/[^0-9]/g, "");
@@ -50,13 +49,37 @@ function finite(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeAddress(value) {
+  const lower = String(value || "")
+    .trim()
+    .toLowerCase();
+  return lower.startsWith("0x") && lower.length === 42 ? lower : null;
+}
+
+function sameAddress(left, right) {
+  const l = normalizeAddress(left);
+  const r = normalizeAddress(right);
+  return Boolean(l && r && l === r);
+}
+
 function gasLimitWithFallback(gas, fallbackUnits, gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS) {
   const units = Number(gas?.gasUnits);
   const baseUnits = Number.isFinite(units) && units > 0 ? Math.ceil(units) : fallbackUnits;
   return String(applyGasBuffer(baseUnits, gasBufferBps));
 }
 
-function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {}, executionReason = "strategy_execution" }) {
+function buildIntent({
+  strategyId,
+  chain,
+  amountUsd,
+  now,
+  ttlMs,
+  intentType,
+  tx,
+  approval = null,
+  metadata = {},
+  executionReason = "strategy_execution",
+}) {
   return {
     strategyId,
     chain,
@@ -85,7 +108,8 @@ function displayedAprPct(queueItem) {
 
 function resolveTinyCanaryExpectedHoldDays({ expectedHoldDays, campaignRemainingHours, campaignEndsAt, now }) {
   if (Number.isFinite(expectedHoldDays) && expectedHoldDays > 0) return expectedHoldDays;
-  if (Number.isFinite(campaignRemainingHours) && campaignRemainingHours > 0) return Math.max(1, campaignRemainingHours / 24);
+  if (Number.isFinite(campaignRemainingHours) && campaignRemainingHours > 0)
+    return Math.max(1, campaignRemainingHours / 24);
   if (campaignEndsAt && now) {
     const hours = (new Date(campaignEndsAt).getTime() - new Date(now).getTime()) / (1000 * 60 * 60);
     if (Number.isFinite(hours) && hours > 0) return Math.max(1, hours / 24);
@@ -149,6 +173,80 @@ async function buildOdosSwapStep({
   return attachOdosAssembly(normalizedQuote, assembled);
 }
 
+function firstPendleRoute(convert = {}) {
+  return Array.isArray(convert.routes) ? convert.routes.find((route) => route?.tx?.to && route?.tx?.data) : null;
+}
+
+function pendleApprovalForToken(convert = {}, token) {
+  const approvals = [
+    ...(Array.isArray(convert.requiredApprovals) ? convert.requiredApprovals : []),
+    ...(Array.isArray(convert.tokenApprovals) ? convert.tokenApprovals : []),
+  ];
+  return approvals.find((approval) => sameAddress(approval?.token, token)) || null;
+}
+
+export async function fetchPendleConvert({
+  chain,
+  marketAddress,
+  inputToken,
+  outputToken,
+  amount,
+  receiver,
+  slippage = 0.005,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const chainConfig = getEvmChainConfig(chain);
+  if (!chainConfig?.chainId) throw new Error(`Unsupported Pendle SDK chain: ${chain}`);
+  if (!marketAddress) throw new Error("marketAddress is required for Pendle SDK convert");
+  if (!inputToken) throw new Error("inputToken is required for Pendle SDK convert");
+  if (!outputToken) throw new Error("outputToken is required for Pendle SDK convert");
+  if (!amount) throw new Error("amount is required for Pendle SDK convert");
+  if (!receiver) throw new Error("receiver is required for Pendle SDK convert");
+  if (typeof fetchImpl !== "function") throw new Error("fetch implementation is unavailable");
+
+  const body = {
+    receiver,
+    slippage,
+    enableAggregator: !sameAddress(inputToken, outputToken),
+    inputs: [{ token: inputToken, amount: String(amount) }],
+    outputs: [outputToken],
+    additionalData: "impliedApy,effectiveApy",
+    useLimitOrder: true,
+  };
+  const response = await fetchImpl(`${PENDLE_API_BASE}/v3/sdk/${chainConfig.chainId}/convert`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response?.ok) {
+    let message = response?.status ? `status=${response.status}` : "request_failed";
+    try {
+      const text = await response.text();
+      if (text) message = `${message} ${text.slice(0, 500)}`;
+    } catch {
+      // keep status-only message
+    }
+    throw new Error(message);
+  }
+  const result = await response.json();
+  const route = firstPendleRoute(result);
+  if (!route) throw new Error("Pendle SDK convert returned no transaction route");
+  return {
+    ...result,
+    selectedRoute: route,
+    request: {
+      chain,
+      chainId: chainConfig.chainId,
+      marketAddress,
+      inputToken,
+      outputToken,
+      amount: String(amount),
+      receiver,
+      slippage,
+    },
+  };
+}
+
 export async function buildPendleYtEntryPlan({
   queueItem,
   senderAddress,
@@ -156,6 +254,7 @@ export async function buildPendleYtEntryPlan({
   strategyId = queueItem?.mappedStrategyId || "pendle-yt-canary",
   estimateGasImpl = estimateGas,
   readErc20AllowanceImpl = readErc20Allowance,
+  fetchPendleConvertImpl = fetchPendleConvert,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   now = new Date().toISOString(),
 } = {}) {
@@ -168,30 +267,42 @@ export async function buildPendleYtEntryPlan({
   const chain = queueItem.chain;
   const ytTokenAddress = binding.ytTokenAddress || binding.shareTokenAddress || null;
   const assetAddress = binding.assetAddress || binding.underlyingAsset || null;
+  const inputTokenAddress = queueItem.executionReadiness?.matchedToken?.token || assetAddress;
 
   if (!ytTokenAddress) throw new Error("ytTokenAddress is required in binding");
   if (!assetAddress) throw new Error("assetAddress is required in binding");
+  if (!inputTokenAddress) throw new Error("inputTokenAddress is required for Pendle entry");
 
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
-  const assetDecimals = Number.isInteger(binding.assetDecimals) ? binding.assetDecimals : tokenAsset(chain, assetAddress).decimals;
-  const amountUsd = amountUsdFromUnits(normalizedAmount, assetDecimals) ?? 0;
+  const assetDecimals = Number.isInteger(binding.assetDecimals)
+    ? binding.assetDecimals
+    : tokenAsset(chain, assetAddress).decimals;
+  const inputAssetMeta = tokenAsset(chain, inputTokenAddress);
+  const inputDecimals = Number.isInteger(inputAssetMeta.decimals) ? inputAssetMeta.decimals : assetDecimals;
+  const amountUsd =
+    finite(queueItem.executionReadiness?.matchedToken?.estimatedUsd) != null
+      ? (amountUsdFromUnits(normalizedAmount, inputDecimals) ?? 0)
+      : (amountUsdFromUnits(normalizedAmount, inputDecimals) ?? 0);
   const capAmountUsd = amountUsd;
   const buffer = Math.max(10_000, Number(gasBufferBps) || DEFAULT_GATEWAY_GAS_BUFFER_BPS);
 
-  let odosSwap = null;
+  let pendleConvert = null;
+  let route = null;
   try {
-    odosSwap = await buildOdosSwapStep({
+    pendleConvert = await fetchPendleConvertImpl({
       chain,
-      inputToken: assetAddress,
+      marketAddress: binding.marketAddress,
+      inputToken: inputTokenAddress,
       outputToken: ytTokenAddress,
       amount: normalizedAmount,
-      senderAddress,
+      receiver: senderAddress,
     });
+    route = pendleConvert.selectedRoute || firstPendleRoute(pendleConvert);
   } catch (error) {
     return {
       schemaVersion: 1,
       planStatus: "blocked",
-      blockedReason: `odos_swap_unavailable: ${error?.message || String(error)}`,
+      blockedReason: `pendle_sdk_convert_unavailable: ${error?.message || String(error)}`,
       strategyId,
       chain,
       senderAddress,
@@ -201,22 +312,47 @@ export async function buildPendleYtEntryPlan({
       name: queueItem.name,
       amount: normalizedAmount,
       amountUsd,
+      assetAddress,
+      inputTokenAddress,
     };
   }
+  if (!route?.tx?.to || !route?.tx?.data) {
+    return {
+      schemaVersion: 1,
+      planStatus: "blocked",
+      blockedReason: "pendle_sdk_convert_missing_tx",
+      strategyId,
+      chain,
+      senderAddress,
+      opportunityId: queueItem.opportunityId,
+      protocolId: queueItem.protocolId,
+      bindingKind: queueItem.protocolBindingPlan?.bindingKind || null,
+      name: queueItem.name,
+      amount: normalizedAmount,
+      amountUsd,
+      assetAddress,
+      inputTokenAddress,
+    };
+  }
+  const tx = route.tx;
+  const spender = tx.to;
+  const requiredApproval = pendleApprovalForToken(pendleConvert, inputTokenAddress);
+  const approvalAmount = toPositiveIntegerString(requiredApproval?.amount || normalizedAmount, "approvalAmount");
 
   let allowanceBefore = null;
   try {
-    allowanceBefore = await readErc20AllowanceImpl(chain, assetAddress, senderAddress, odosSwap.txTo, {
+    allowanceBefore = await readErc20AllowanceImpl(chain, inputTokenAddress, senderAddress, spender, {
       chainConfig: getEvmChainConfig(chain),
     });
   } catch {
     allowanceBefore = null;
   }
   const allowanceAmount = BigInt(allowanceBefore?.allowance ?? 0);
-  const allowanceCoversAmount = allowanceAmount >= BigInt(normalizedAmount);
+  const allowanceCoversAmount = allowanceAmount >= BigInt(approvalAmount);
   const allowanceNeedsZeroReset = !allowanceCoversAmount && allowanceAmount > 0n;
 
-  const tinyLiveCanary = queueItem.validationMode === "tiny_live_canary_only" || queueItem.metadata?.tinyLiveCanary === true;
+  const tinyLiveCanary =
+    queueItem.validationMode === "tiny_live_canary_only" || queueItem.metadata?.tinyLiveCanary === true;
   const executionReason = tinyLiveCanary ? "merkl_canary_autopilot" : "strategy_execution";
 
   let approveGas = null;
@@ -226,8 +362,8 @@ export async function buildPendleYtEntryPlan({
         chain,
         {
           from: senderAddress,
-          to: assetAddress,
-          data: ERC20_INTERFACE.encodeFunctionData("approve", [odosSwap.txTo, normalizedAmount]),
+          to: inputTokenAddress,
+          data: ERC20_INTERFACE.encodeFunctionData("approve", [spender, approvalAmount]),
           valueWei: "0",
         },
         getEvmChainConfig(chain),
@@ -246,39 +382,42 @@ export async function buildPendleYtEntryPlan({
     intentType: PENDLE_YT_ENTRY_INTENT_TYPE,
     executionReason,
     tx: {
-      to: odosSwap.txTo,
-      data: odosSwap.txData,
-      value: odosSwap.txValueWei || "0",
-      gasLimit: String(applyGasBuffer(Number(odosSwap.txGasLimit) || DEFAULT_SWAP_GAS_UNITS, buffer)),
+      to: tx.to,
+      data: tx.data,
+      value: tx.value || "0",
+      gasLimit: String(applyGasBuffer(Number(tx.gas || tx.gasLimit) || DEFAULT_SWAP_GAS_UNITS, buffer)),
     },
     metadata: {
       capCheckAmountUsd: capAmountUsd,
       exposureAction: "open",
       opportunityId: queueItem.opportunityId,
       protocol: queueItem.protocolId,
+      pendleMarketAddress: binding.marketAddress || null,
       ytTokenAddress,
       assetAddress,
+      inputTokenAddress,
       marketAddress: binding.marketAddress || null,
       tinyLiveCanary,
       expectedNetUsd: expectedGrossYieldUsd({ queueItem, amountUsd, now }),
-      odosPathId: odosSwap.pathId,
-      odosQuoteType: odosSwap.quoteType,
+      pendleSdkAction: pendleConvert.action || null,
+      pendleSdkRouteCount: Array.isArray(pendleConvert.routes) ? pendleConvert.routes.length : null,
       approval: {
-        token: assetAddress,
-        spender: odosSwap.txTo,
-        amount: normalizedAmount,
+        token: inputTokenAddress,
+        spender,
+        amount: approvalAmount,
       },
     },
   });
 
   const parentEvVerdict = evGate(swapIntent, null, { now });
-  const parentEvEvidence = parentEvVerdict.allow === true
-    ? {
-        allow: true,
-        expectedNetUsd: parentEvVerdict.evidence?.expectedNetUsd ?? null,
-        requiredNetUsd: parentEvVerdict.evidence?.requiredNetUsd ?? null,
-      }
-    : null;
+  const parentEvEvidence =
+    parentEvVerdict.allow === true
+      ? {
+          allow: true,
+          expectedNetUsd: parentEvVerdict.evidence?.expectedNetUsd ?? null,
+          requiredNetUsd: parentEvVerdict.evidence?.requiredNetUsd ?? null,
+        }
+      : null;
   const parentApprovalMetadata = parentEvEvidence
     ? {
         parentIntent: swapIntent,
@@ -289,71 +428,83 @@ export async function buildPendleYtEntryPlan({
     : {};
 
   const steps = [
-    ...(allowanceNeedsZeroReset ? [{
-      id: "reset_asset_allowance",
-      intent: buildIntent({
-        strategyId,
-        chain,
-        amountUsd: 0,
-        now,
-        ttlMs: strategyCaps.intentTtlMs,
-        intentType: "approve_exact",
-        approval: {
-          token: assetAddress,
-          spender: odosSwap.txTo,
-          amount: "0",
-          mode: "per_tx",
-        },
-        tx: {
-          to: assetAddress,
-          data: ERC20_INTERFACE.encodeFunctionData("approve", [odosSwap.txTo, "0"]),
-          value: "0",
-          gasLimit: gasLimitWithFallback(approveGas, DEFAULT_APPROVE_GAS_UNITS, buffer),
-        },
-        metadata: {
-          capCheckAmountUsd: 0,
-          opportunityId: queueItem.opportunityId,
-          protocol: queueItem.protocolId,
-          ytTokenAddress,
-          assetAddress,
-          tinyLiveCanary,
-          ...parentApprovalMetadata,
-          approvalResetReason: "existing_allowance_below_required_amount",
-        },
-      }),
-    }] : []),
-    ...(!allowanceCoversAmount ? [{
-      id: "approve_asset_to_odos",
-      intent: buildIntent({
-        strategyId,
-        chain,
-        amountUsd: 0,
-        now,
-        ttlMs: strategyCaps.intentTtlMs,
-        intentType: "approve_exact",
-        approval: {
-          token: assetAddress,
-          spender: odosSwap.txTo,
-          amount: normalizedAmount,
-          mode: "per_tx",
-        },
-        tx: {
-          to: assetAddress,
-          data: ERC20_INTERFACE.encodeFunctionData("approve", [odosSwap.txTo, normalizedAmount]),
-          value: "0",
-          gasLimit: gasLimitWithFallback(approveGas, DEFAULT_APPROVE_GAS_UNITS, buffer),
-        },
-        metadata: {
-          capCheckAmountUsd: 0,
-          opportunityId: queueItem.opportunityId,
-          protocol: queueItem.protocolId,
-          ytTokenAddress,
-          assetAddress,
-          tinyLiveCanary,
-          ...parentApprovalMetadata,
-        },
-      }),
-    }] : []),
+    ...(allowanceNeedsZeroReset
+      ? [
+          {
+            id: "reset_asset_allowance",
+            intent: buildIntent({
+              strategyId,
+              chain,
+              amountUsd: 0,
+              now,
+              ttlMs: strategyCaps.intentTtlMs,
+              intentType: "approve_exact",
+              approval: {
+                token: inputTokenAddress,
+                spender,
+                amount: "0",
+                mode: "per_tx",
+              },
+              tx: {
+                to: inputTokenAddress,
+                data: ERC20_INTERFACE.encodeFunctionData("approve", [spender, "0"]),
+                value: "0",
+                gasLimit: gasLimitWithFallback(approveGas, DEFAULT_APPROVE_GAS_UNITS, buffer),
+              },
+              metadata: {
+                capCheckAmountUsd: 0,
+                opportunityId: queueItem.opportunityId,
+                protocol: queueItem.protocolId,
+                pendleMarketAddress: binding.marketAddress || null,
+                ytTokenAddress,
+                assetAddress,
+                inputTokenAddress,
+                tinyLiveCanary,
+                ...parentApprovalMetadata,
+                approvalResetReason: "existing_allowance_below_required_amount",
+              },
+            }),
+          },
+        ]
+      : []),
+    ...(!allowanceCoversAmount
+      ? [
+          {
+            id: "approve_asset_to_pendle_router",
+            intent: buildIntent({
+              strategyId,
+              chain,
+              amountUsd: 0,
+              now,
+              ttlMs: strategyCaps.intentTtlMs,
+              intentType: "approve_exact",
+              approval: {
+                token: inputTokenAddress,
+                spender,
+                amount: approvalAmount,
+                mode: "per_tx",
+              },
+              tx: {
+                to: inputTokenAddress,
+                data: ERC20_INTERFACE.encodeFunctionData("approve", [spender, approvalAmount]),
+                value: "0",
+                gasLimit: gasLimitWithFallback(approveGas, DEFAULT_APPROVE_GAS_UNITS, buffer),
+              },
+              metadata: {
+                capCheckAmountUsd: 0,
+                opportunityId: queueItem.opportunityId,
+                protocol: queueItem.protocolId,
+                pendleMarketAddress: binding.marketAddress || null,
+                ytTokenAddress,
+                assetAddress,
+                inputTokenAddress,
+                tinyLiveCanary,
+                ...parentApprovalMetadata,
+              },
+            }),
+          },
+        ]
+      : []),
     {
       id: "swap_asset_to_yt",
       intent: swapIntent,
@@ -371,23 +522,35 @@ export async function buildPendleYtEntryPlan({
     protocolId: queueItem.protocolId,
     bindingKind: queueItem.protocolBindingPlan?.bindingKind || null,
     name: queueItem.name,
+    entryPlanner: "pendle_hosted_sdk_convert_v3",
     tinyLiveCanary,
     executionReason,
     ytTokenAddress,
     assetAddress,
+    inputTokenAddress,
     marketAddress: binding.marketAddress || null,
     amount: normalizedAmount,
     amountUsd,
-    asset: tokenAsset(chain, assetAddress, {
+    asset: tokenAsset(chain, inputTokenAddress, {
+      ticker: queueItem.executionReadiness?.matchedToken?.ticker || inputAssetMeta.ticker,
+      family: inputAssetMeta.family || "stablecoin",
+      decimals: inputDecimals,
+      priceKey: inputAssetMeta.priceKey || (inputAssetMeta.family === "stablecoin" ? "usd_stable" : null),
+    }),
+    underlyingAsset: tokenAsset(chain, assetAddress, {
       ticker: binding.assetSymbol || tokenAsset(chain, assetAddress).ticker,
       family: tokenAsset(chain, assetAddress).family || "stablecoin",
       decimals: assetDecimals,
-      priceKey: tokenAsset(chain, assetAddress).priceKey || (tokenAsset(chain, assetAddress).family === "stablecoin" ? "usd_stable" : null),
+      priceKey:
+        tokenAsset(chain, assetAddress).priceKey ||
+        (tokenAsset(chain, assetAddress).family === "stablecoin" ? "usd_stable" : null),
     }),
     shareAsset: tokenAsset(chain, ytTokenAddress, {
       ticker: binding.ytTokenSymbol || "PendleYT",
       family: "protocol_share",
-      decimals: Number.isInteger(binding.assetDecimals) ? binding.assetDecimals : tokenAsset(chain, ytTokenAddress).decimals,
+      decimals: Number.isInteger(binding.assetDecimals)
+        ? binding.assetDecimals
+        : tokenAsset(chain, ytTokenAddress).decimals,
       priceKey: null,
     }),
     steps,
@@ -397,17 +560,21 @@ export async function buildPendleYtEntryPlan({
           rpcUrl: allowanceBefore.rpcUrl || null,
           skippedApproval: allowanceCoversAmount,
           resetBeforeApproval: allowanceNeedsZeroReset,
+          spender,
         }
       : null,
+    pendleConvert: {
+      action: pendleConvert.action || null,
+      output: route.outputs?.[0] || null,
+      priceImpact: finite(route.data?.priceImpact),
+      effectiveApy: finite(route.data?.effectiveApy),
+      impliedApy: route.data?.impliedApy ?? null,
+    },
   };
 }
 
 function stableHash(obj) {
-  try {
-    return JSON.stringify(obj, Object.keys(obj).sort());
-  } catch {
-    return String(obj);
-  }
+  return createHash("sha256").update(stableSerialize(obj)).digest("hex");
 }
 
 export async function executePendleYtEntryPlan({
@@ -464,6 +631,16 @@ export async function executePendleYtEntryPlan({
       intentHash: stableHash(step.intent),
       ...signerResult,
     });
+    if (signerResult?.status !== "ok" || signerResult?.error || !signerResult?.broadcast?.txHash) {
+      const error = new Error(
+        `${step.id} failed: ${signerResult?.error?.message || signerResult?.status || "signer did not broadcast"}`,
+      );
+      error.name = signerResult?.error?.name || "SignerExecutionFailed";
+      error.stepId = step.id;
+      error.signerResult = signerResult;
+      error.stepResults = txResults;
+      throw error;
+    }
   }
 
   const swapResult = txResults.find((r) => r.stepId === "swap_asset_to_yt") || null;
@@ -488,12 +665,13 @@ export async function executePendleYtEntryPlan({
 
   return {
     status: "executed",
+    settlementStatus: shareProof?.status === "delivered" ? "delivered" : "share_delta_timeout",
     planStatus: plan.planStatus,
     chain: plan.chain,
     strategyId: plan.strategyId,
     opportunityId: plan.opportunityId,
     txResults,
-    swapTxHash: swapResult.txHash || null,
+    swapTxHash: swapResult.txHash || swapResult.broadcast?.txHash || null,
     positionProof: shareProof,
     assetBalanceBefore: assetBalanceBefore.balance.toString(),
     shareBalanceBefore: shareBalanceBefore.balance.toString(),
@@ -523,9 +701,12 @@ export async function executePendleYtExit({
   if (!getEvmChainConfig(position.chain)) throw new Error(`Unsupported EVM chain: ${position.chain}`);
 
   const now = new Date().toISOString();
-  const exitAssetDecimals = Number.isInteger(position.assetDecimals) ? position.assetDecimals : tokenAsset(position.chain, position.assetAddress).decimals;
+  const exitAssetDecimals = Number.isInteger(position.assetDecimals)
+    ? position.assetDecimals
+    : tokenAsset(position.chain, position.assetAddress).decimals;
   const exitAssetTicker = position.assetSymbol || tokenAsset(position.chain, position.assetAddress).ticker || "USDC";
-  const exitAssetFamily = position.assetFamily || (tokenAsset(position.chain, position.assetAddress).family || "stablecoin");
+  const exitAssetFamily =
+    position.assetFamily || tokenAsset(position.chain, position.assetAddress).family || "stablecoin";
   const asset = tokenAsset(position.chain, position.assetAddress, {
     ticker: exitAssetTicker,
     family: exitAssetFamily,
@@ -555,7 +736,9 @@ export async function executePendleYtExit({
 
   const currentShares = BigInt(shareBalanceBefore.balance || 0);
   const recordedShares = BigInt(position.shareDelta || 0);
-  const shareAmount = (recordedShares > 0n && recordedShares < currentShares ? recordedShares : currentShares).toString();
+  const shareAmount = (
+    recordedShares > 0n && recordedShares < currentShares ? recordedShares : currentShares
+  ).toString();
 
   if (BigInt(shareAmount) <= 0n) {
     const error = new Error("No YT shares available to exit");
@@ -586,9 +769,15 @@ export async function executePendleYtExit({
 
   let allowanceBefore = null;
   try {
-    allowanceBefore = await readErc20Allowance(position.chain, position.shareTokenAddress, senderAddress, odosSwap.txTo, {
-      chainConfig: getEvmChainConfig(position.chain),
-    });
+    allowanceBefore = await readErc20Allowance(
+      position.chain,
+      position.shareTokenAddress,
+      senderAddress,
+      odosSwap.txTo,
+      {
+        chainConfig: getEvmChainConfig(position.chain),
+      },
+    );
   } catch {
     allowanceBefore = null;
   }
@@ -697,7 +886,9 @@ export async function executePendleYtExit({
       to: odosSwap.txTo,
       data: odosSwap.txData,
       value: odosSwap.txValueWei || "0",
-      gasLimit: String(applyGasBuffer(Number(odosSwap.txGasLimit) || DEFAULT_SWAP_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS)),
+      gasLimit: String(
+        applyGasBuffer(Number(odosSwap.txGasLimit) || DEFAULT_SWAP_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS),
+      ),
     },
     metadata: {
       capCheckAmountUsd: 0,

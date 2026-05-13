@@ -56,83 +56,86 @@ test("sizes Merkl canary amount to the committed tiny cap and inventory", () => 
 });
 
 test("uses committed graduation ladder as the live canary sizing cap", () => {
-  const sizing = sizeMerklCanaryAmount(queueItem({
-    opportunityId: "opp-next",
-    executionReadiness: {
-      status: "inventory_ready",
-      matchedToken: {
-        ticker: "USDC",
-        actual: "100000000",
-        estimatedUsd: 100,
+  const sizing = sizeMerklCanaryAmount(
+    queueItem({
+      opportunityId: "opp-next",
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedToken: {
+          ticker: "USDC",
+          actual: "100000000",
+          estimatedUsd: 100,
+        },
+        matchedNative: {
+          asset: "ETH",
+          actual: "1000000000000000",
+          estimatedUsd: 2,
+        },
       },
-      matchedNative: {
-        asset: "ETH",
-        actual: "1000000000000000",
-        estimatedUsd: 2,
-      },
+    }),
+    {
+      canaryExecutions: [
+        {
+          observedAt: "2026-05-09T02:07:00.000Z",
+          mode: "execute",
+          status: "delivered",
+          queueItem: {
+            opportunityId: "opp-next",
+            chain: "base",
+            protocolId: "morpho",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            protocolBindingPlan: { bindingKind: "erc4626_vault_supply_withdraw" },
+          },
+          sizing: { amountUsd: 5 },
+          openedAt: "2026-05-09T02:00:00.000Z",
+          closedAt: "2026-05-09T02:07:00.000Z",
+          entryUsd: 5,
+          exitUsd: 5.12,
+          entryGasUsd: 0.01,
+          exitGasUsd: 0.01,
+          claimCostUsd: 0,
+          rewardSwapCostUsd: 0,
+          rewardUsd: 0,
+          bridgeCostUsd: 0,
+          slippageUsd: 0,
+          realizedNetBtcSats: 50,
+          terminalReconciliationStatus: "reconciled",
+          sourceObservedAt: "2026-05-09T02:07:00.000Z",
+          execution: { settlementStatus: "delivered", txHash: "0xaaa" },
+          realized: { netUsd: 0.05 },
+        },
+        {
+          observedAt: "2026-05-09T02:08:00.000Z",
+          mode: "execute",
+          status: "delivered",
+          queueItem: {
+            opportunityId: "opp-next",
+            chain: "base",
+            protocolId: "morpho",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            protocolBindingPlan: { bindingKind: "erc4626_vault_supply_withdraw" },
+          },
+          sizing: { amountUsd: 10 },
+          openedAt: "2026-05-09T02:01:00.000Z",
+          closedAt: "2026-05-09T02:08:00.000Z",
+          entryUsd: 10,
+          exitUsd: 10.12,
+          entryGasUsd: 0.01,
+          exitGasUsd: 0.01,
+          claimCostUsd: 0,
+          rewardSwapCostUsd: 0,
+          rewardUsd: 0,
+          bridgeCostUsd: 0,
+          slippageUsd: 0,
+          realizedNetBtcSats: 50,
+          terminalReconciliationStatus: "reconciled",
+          sourceObservedAt: "2026-05-09T02:08:00.000Z",
+          execution: { settlementStatus: "delivered", txHash: "0xbbb" },
+          realized: { netUsd: 0.05 },
+        },
+      ],
     },
-  }), {
-    canaryExecutions: [
-      {
-        observedAt: "2026-05-09T02:07:00.000Z",
-        mode: "execute",
-        status: "delivered",
-        queueItem: {
-          opportunityId: "opp-next",
-          chain: "base",
-          protocolId: "morpho",
-          mappedStrategyId: "gateway_native_asset_conversion_sleeve",
-          protocolBindingPlan: { bindingKind: "erc4626_vault_supply_withdraw" },
-        },
-        sizing: { amountUsd: 5 },
-        openedAt: "2026-05-09T02:00:00.000Z",
-        closedAt: "2026-05-09T02:07:00.000Z",
-        entryUsd: 5,
-        exitUsd: 5.12,
-        entryGasUsd: 0.01,
-        exitGasUsd: 0.01,
-        claimCostUsd: 0,
-        rewardSwapCostUsd: 0,
-        rewardUsd: 0,
-        bridgeCostUsd: 0,
-        slippageUsd: 0,
-        realizedNetBtcSats: 50,
-        terminalReconciliationStatus: "reconciled",
-        sourceObservedAt: "2026-05-09T02:07:00.000Z",
-        execution: { settlementStatus: "delivered", txHash: "0xaaa" },
-        realized: { netUsd: 0.05 },
-      },
-      {
-        observedAt: "2026-05-09T02:08:00.000Z",
-        mode: "execute",
-        status: "delivered",
-        queueItem: {
-          opportunityId: "opp-next",
-          chain: "base",
-          protocolId: "morpho",
-          mappedStrategyId: "gateway_native_asset_conversion_sleeve",
-          protocolBindingPlan: { bindingKind: "erc4626_vault_supply_withdraw" },
-        },
-        sizing: { amountUsd: 10 },
-        openedAt: "2026-05-09T02:01:00.000Z",
-        closedAt: "2026-05-09T02:08:00.000Z",
-        entryUsd: 10,
-        exitUsd: 10.12,
-        entryGasUsd: 0.01,
-        exitGasUsd: 0.01,
-        claimCostUsd: 0,
-        rewardSwapCostUsd: 0,
-        rewardUsd: 0,
-        bridgeCostUsd: 0,
-        slippageUsd: 0,
-        realizedNetBtcSats: 50,
-        terminalReconciliationStatus: "reconciled",
-        sourceObservedAt: "2026-05-09T02:08:00.000Z",
-        execution: { settlementStatus: "delivered", txHash: "0xbbb" },
-        realized: { netUsd: 0.05 },
-      },
-    ],
-  });
+  );
 
   assert.equal(sizing.status, "ready");
   assert.equal(sizing.graduation.targetUsd, 25);
@@ -141,25 +144,28 @@ test("uses committed graduation ladder as the live canary sizing cap", () => {
 });
 
 test("does not apply canary graduation ladder when tiny live cap is disabled", () => {
-  const sizing = sizeMerklCanaryAmount(queueItem({
-    opportunityId: "portfolio-hold",
-    executionReadiness: {
-      status: "inventory_ready",
-      matchedToken: {
-        ticker: "USDC",
-        actual: "100000000",
-        estimatedUsd: 100,
+  const sizing = sizeMerklCanaryAmount(
+    queueItem({
+      opportunityId: "portfolio-hold",
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedToken: {
+          ticker: "USDC",
+          actual: "100000000",
+          estimatedUsd: 100,
+        },
+        matchedNative: {
+          asset: "ETH",
+          actual: "1000000000000000",
+          estimatedUsd: 2,
+        },
       },
-      matchedNative: {
-        asset: "ETH",
-        actual: "1000000000000000",
-        estimatedUsd: 2,
-      },
+    }),
+    {
+      maxUsd: 100,
+      useTinyLiveCap: false,
     },
-  }), {
-    maxUsd: 100,
-    useTinyLiveCap: false,
-  });
+  );
 
   assert.equal(sizing.status, "ready");
   assert.equal(sizing.graduation, null);
@@ -204,7 +210,7 @@ test("Merkl canary opportunity policy uses campaign window and tiny canary cost 
   assert.equal(result.ok, true);
   assert.equal(
     result.blockers.some((blocker) => blocker.startsWith("same_chain_unprofitable")),
-    false
+    false,
   );
   assert.equal(result.intent.expectedHoldDays, 33);
 });
@@ -299,6 +305,20 @@ test("Merkl autopilot result summary separates selected candidates from policy-r
   });
 });
 
+test("Merkl autopilot result summary counts delivered position proofs", () => {
+  const summary = summarizeMerklAutopilotResults([
+    {
+      status: "executed",
+      execution: {
+        status: "executed",
+        positionProof: { status: "delivered" },
+      },
+    },
+  ]);
+
+  assert.equal(summary.deliveredCount, 1);
+});
+
 test("Merkl autopilot summary reports the EV gate matching the top blocker", () => {
   const summary = summarizeMerklAutopilotResults([
     {
@@ -346,21 +366,23 @@ test("Merkl autopilot summary reports the EV gate matching the top blocker", () 
 test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
   const sizing = sizeMerklCanaryAmount(queueItem(), {
     now: "2026-04-24T01:40:00.000Z",
-    auditRecords: [{
-      strategyId: "gateway_native_asset_conversion_sleeve",
-      chain: "base",
-      timestamp: "2026-04-24T01:20:00.000Z",
-      policyVerdict: "approved",
-      lifecycle: { stage: "confirmed" },
-      intent: {
+    auditRecords: [
+      {
         strategyId: "gateway_native_asset_conversion_sleeve",
         chain: "base",
-        intentType: "erc4626_deposit",
+        timestamp: "2026-04-24T01:20:00.000Z",
+        policyVerdict: "approved",
+        lifecycle: { stage: "confirmed" },
+        intent: {
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          chain: "base",
+          intentType: "erc4626_deposit",
+          amountUsd: 2_000,
+          metadata: { capCheckAmountUsd: 2_000 },
+        },
         amountUsd: 2_000,
-        metadata: { capCheckAmountUsd: 2_000 },
       },
-      amountUsd: 2_000,
-    }],
+    ],
   });
 
   assert.equal(sizing.status, "blocked");
@@ -368,9 +390,11 @@ test("blocks Merkl canary sizing when committed chain cap is exhausted", () => {
 });
 
 test("blocks Merkl canary sizing when tiny live cap is missing", () => {
-  const sizing = sizeMerklCanaryAmount(queueItem({
-    mappedStrategyId: "gateway-btc-offramp",
-  }));
+  const sizing = sizeMerklCanaryAmount(
+    queueItem({
+      mappedStrategyId: "gateway-btc-offramp",
+    }),
+  );
 
   assert.equal(sizing.status, "blocked");
   assert.ok(sizing.blockers.includes("strategy_tiny_live_cap_missing"));
@@ -381,21 +405,23 @@ test("selection skips candidates whose committed chain cap is exhausted", () => 
     { queue: [queueItem()] },
     {
       now: "2026-04-24T01:40:00.000Z",
-      auditRecords: [{
-        strategyId: "gateway_native_asset_conversion_sleeve",
-        chain: "base",
-        timestamp: "2026-04-24T01:20:00.000Z",
-        policyVerdict: "approved",
-      lifecycle: { stage: "confirmed" },
-      intent: {
+      auditRecords: [
+        {
           strategyId: "gateway_native_asset_conversion_sleeve",
           chain: "base",
-          intentType: "erc4626_deposit",
+          timestamp: "2026-04-24T01:20:00.000Z",
+          policyVerdict: "approved",
+          lifecycle: { stage: "confirmed" },
+          intent: {
+            strategyId: "gateway_native_asset_conversion_sleeve",
+            chain: "base",
+            intentType: "erc4626_deposit",
+            amountUsd: 2_000,
+            metadata: { capCheckAmountUsd: 2_000 },
+          },
           amountUsd: 2_000,
-          metadata: { capCheckAmountUsd: 2_000 },
         },
-        amountUsd: 2_000,
-      }],
+      ],
     },
   );
 
@@ -405,24 +431,27 @@ test("selection skips candidates whose committed chain cap is exhausted", () => 
 });
 
 test("does not use a fixed Ethereum notional floor before the tiny-canary EV gate", () => {
-  const sizing = sizeMerklCanaryAmount(queueItem({
-    chain: "ethereum",
-    executionReadiness: {
-      status: "inventory_ready",
-      matchedToken: {
-        ticker: "USDC",
-        actual: "100000000",
-        estimatedUsd: 100,
+  const sizing = sizeMerklCanaryAmount(
+    queueItem({
+      chain: "ethereum",
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedToken: {
+          ticker: "USDC",
+          actual: "100000000",
+          estimatedUsd: 100,
+        },
+        matchedNative: {
+          asset: "ETH",
+          actual: "100000000000000000",
+          estimatedUsd: 250,
+        },
       },
-      matchedNative: {
-        asset: "ETH",
-        actual: "100000000000000000",
-        estimatedUsd: 250,
-      },
+    }),
+    {
+      maxUsd: 5,
     },
-  }), {
-    maxUsd: 5,
-  });
+  );
 
   assert.equal(sizing.status, "ready");
   assert.equal(sizing.blockers.includes("cap_too_low_for_ethereum_gas_efficiency"), false);
@@ -470,12 +499,22 @@ test("selection can be scoped to one Merkl opportunity id", () => {
 });
 
 test("batch selection spreads Merkl canaries across chains before repeating a chain", () => {
-  const ethereumA = queueItem({ opportunityId: "ethereum-a", chain: "ethereum", priorityScore: 130, executionReadiness: {
-    status: "inventory_ready",
-    matchedToken: { ticker: "USDC", actual: "100000000", estimatedUsd: 100 },
-    matchedNative: { asset: "ETH", actual: "100000000000000000", estimatedUsd: 250 },
-  } });
-  const ethereumB = queueItem({ opportunityId: "ethereum-b", chain: "ethereum", priorityScore: 120, executionReadiness: ethereumA.executionReadiness });
+  const ethereumA = queueItem({
+    opportunityId: "ethereum-a",
+    chain: "ethereum",
+    priorityScore: 130,
+    executionReadiness: {
+      status: "inventory_ready",
+      matchedToken: { ticker: "USDC", actual: "100000000", estimatedUsd: 100 },
+      matchedNative: { asset: "ETH", actual: "100000000000000000", estimatedUsd: 250 },
+    },
+  });
+  const ethereumB = queueItem({
+    opportunityId: "ethereum-b",
+    chain: "ethereum",
+    priorityScore: 120,
+    executionReadiness: ethereumA.executionReadiness,
+  });
   const base = queueItem({ opportunityId: "base", chain: "base", priorityScore: 90 });
 
   const selection = selectMerklCanaryAutopilotCandidates(
@@ -484,11 +523,10 @@ test("batch selection spreads Merkl canaries across chains before repeating a ch
   );
 
   assert.equal(selection.readyCount, 3);
-  assert.deepEqual(selection.selected.map((item) => item.queueItem.opportunityId), [
-    "ethereum-a",
-    "base",
-    "ethereum-b",
-  ]);
+  assert.deepEqual(
+    selection.selected.map((item) => item.queueItem.opportunityId),
+    ["ethereum-a", "base", "ethereum-b"],
+  );
 });
 
 test("execute selection defers policy-failing candidates and keeps the first policy-pass candidate", async () => {
@@ -519,10 +557,7 @@ test("execute selection defers policy-failing candidates and keeps the first pol
       matchedNative: { asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 },
     },
   });
-  const selection = selectMerklCanaryAutopilotCandidates(
-    { queue: [optimism, base] },
-    { maxCandidates: 2 },
-  );
+  const selection = selectMerklCanaryAutopilotCandidates({ queue: [optimism, base] }, { maxCandidates: 2 });
 
   const filtered = await selectMerklCanaryOpportunityPolicyReadyCandidates(selection, {
     maxCandidates: 1,
@@ -575,7 +610,10 @@ test("portfolio graduation requests are selection hints ahead of raw priority sc
   );
 
   assert.equal(selection.selected[0].queueItem.opportunityId, "allocator-proof-request");
-  assert.equal(selection.selected[0].queueItem.metadata.portfolioGraduationRequest.evidenceConfidence, "graduation_ladder_rung_0");
+  assert.equal(
+    selection.selected[0].queueItem.metadata.portfolioGraduationRequest.evidenceConfidence,
+    "graduation_ladder_rung_0",
+  );
 });
 
 test("portfolio graduation hints do not force blocked candidates into selection", () => {
@@ -690,7 +728,7 @@ test("refreshes queue readiness from latest canary executions before selecting",
           observedAt: new Date().toISOString(),
           mode: "execute",
           queueItem: { opportunityId: "base" },
-          execution: { settlementStatus: "delivered" },
+          execution: { positionProof: { status: "delivered" } },
         },
       ],
       inventorySnapshot: {
@@ -717,6 +755,58 @@ test("refreshes queue readiness from latest canary executions before selecting",
   assert.equal(selection.readyCount, 0);
   assert.equal(selection.selected, null);
   assert.ok(selection.candidates[0].sizing.blockers.includes("cooldown_active"));
+});
+
+test("blocks another Pendle entry while a delivered YT position is still open", () => {
+  const selection = selectMerklCanaryAutopilotCandidate(
+    {
+      queue: [
+        queueItem({
+          opportunityId: "pendle-open",
+          protocolId: "pendle",
+          mappedStrategyId: "pendle-yt-canary",
+          protocolBindingPlan: {
+            status: "binding_ready",
+            bindingKind: "pendle_yt_buy_sell_redeem",
+            resolvedBinding: {
+              marketAddress: "0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+              ytTokenAddress: "0xf90c9350ed4a91121167ad40a79ec5852c6018e2",
+              assetAddress: "0xd993935e13851dd7517af10687ec7e5022127228",
+              entryTokenAddresses: ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"],
+            },
+          },
+        }),
+      ],
+    },
+    {
+      canaryExecutions: [
+        {
+          observedAt: "2026-05-13T10:24:44.586Z",
+          mode: "execute",
+          queueItem: { opportunityId: "pendle-open" },
+          execution: { positionProof: { status: "delivered" } },
+        },
+      ],
+      now: "2026-05-13T10:40:00.000Z",
+      inventorySnapshot: {
+        native: [{ chain: "base", actual: "1000000000000000", estimatedUsd: 2 }],
+        tokens: [
+          {
+            chain: "base",
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            ticker: "USDC",
+            actual: "5000000",
+            estimatedUsd: 5,
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(selection.readyCount, 0);
+  assert.equal(selection.selected, null);
+  assert.equal(selection.candidates[0].queueItem.executionReadiness.status, "open_position_active");
+  assert.ok(selection.candidates[0].sizing.blockers.includes("open_position_active"));
 });
 
 test("refreshes execute sizing from live balances before Merkl canary execution", async () => {
@@ -754,6 +844,65 @@ test("refreshes execute sizing from live balances before Merkl canary execution"
   assert.equal(refreshed.sizing.status, "ready");
   assert.equal(refreshed.sizing.amount, "100024");
   assert.equal(refreshed.sizing.amountUsd, 0.100024);
+});
+
+test("refreshes execute sizing from the matched entry token for Pendle SDK zaps", async () => {
+  const usdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const apxUsd = "0xd993935e13851dd7517af10687ec7e5022127228";
+  const readTokens = [];
+  const selected = {
+    queueItem: queueItem({
+      protocolId: "pendle",
+      mappedStrategyId: "pendle-yt-canary",
+      protocolBindingPlan: {
+        status: "binding_ready",
+        bindingKind: "pendle_yt_buy_sell_redeem",
+        resolvedBinding: {
+          marketAddress: "0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+          assetAddress: apxUsd,
+          ytTokenAddress: "0xf90c9350ed4a91121167ad40a79ec5852c6018e2",
+          entryTokenAddresses: [apxUsd, usdc],
+          sdkInputTokenAddresses: [apxUsd, usdc],
+          assetDecimals: 18,
+        },
+      },
+      executionReadiness: {
+        status: "inventory_ready",
+        matchedToken: {
+          ticker: "USDC",
+          token: usdc,
+          actual: "29376610",
+          estimatedUsd: 29.37661,
+        },
+        matchedNative: {
+          asset: "ETH",
+          actual: "1000000000000000",
+          estimatedUsd: 2,
+        },
+      },
+    }),
+    sizing: {
+      status: "ready",
+      amount: "5000000",
+      amountUsd: 5,
+    },
+  };
+
+  const refreshed = await refreshMerklAutopilotSelectionForExecute({
+    selected,
+    senderAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    readErc20BalanceImpl: async (chain, token) => {
+      readTokens.push(token);
+      return { balance: 5000000n, rpcUrl: "https://mainnet.base.org" };
+    },
+    readNativeBalanceImpl: async () => ({ balanceWei: 1000000000000000n, rpcUrl: "https://mainnet.base.org" }),
+  });
+
+  assert.deepEqual(readTokens, [usdc]);
+  assert.equal(refreshed.queueItem.executionReadiness.status, "inventory_ready");
+  assert.equal(refreshed.queueItem.executionReadiness.matchedToken.token, usdc);
+  assert.equal(refreshed.sizing.status, "ready");
+  assert.equal(refreshed.sizing.amount, "5000000");
 });
 
 test("classifies reverted Merkl canary broadcasts as candidate blockers", () => {

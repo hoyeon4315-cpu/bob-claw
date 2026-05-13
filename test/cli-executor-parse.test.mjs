@@ -13,7 +13,11 @@ import {
 } from "../src/cli/check-full-automation-readiness.mjs";
 import { parseArgs as parseRuntimeReadinessArgs } from "../src/cli/check-executor-runtime.mjs";
 import { parseArgs as parseLaunchdArgs, retryableBootstrapFailure } from "../src/cli/manage-executor-launchd.mjs";
-import { retryableBootstrapFailure as retryableLiveAutomationBootstrapFailure } from "../src/cli/manage-live-automation-launchd.mjs";
+import {
+  parseArgs as parseLiveAutomationLaunchdArgs,
+  retryableBootstrapFailure as retryableLiveAutomationBootstrapFailure,
+  runLiveAutomationLaunchdAction,
+} from "../src/cli/manage-live-automation-launchd.mjs";
 import { parseArgs as parseResetConsecutiveFailureArgs } from "../src/cli/run-reset-consecutive-failures.mjs";
 import {
   parseArgs as parsePaybackSchedulerArgs,
@@ -389,6 +393,81 @@ test("full automation readiness treats Merkl canary auto-entry as a live executi
   assert.deepEqual(report.blockers, []);
 });
 
+test("full automation readiness treats completed live watch automation as ready idle", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 3 },
+        jobs: [{ requiresManualReview: false }, { requiresManualReview: false }, { requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 11 },
+      executionSurfaces: {
+        summary: { liveEligibleCount: 0 },
+        strategies: [
+          {
+            id: "gateway_wrapped_btc_loops",
+            selectedMode: "shadow",
+            status: "candidate_for_validation",
+            reason: "policy_ready",
+            liveAdmissionBlockers: ["route_specific_executor_inputs_required"],
+          },
+          {
+            id: "defillama-yield-portfolio",
+            selectedMode: "analysis",
+            status: "analysis_only",
+            reason: "adapter_wired_shadow_only",
+            liveAdmissionBlockers: ["analysis_probe_only", "live_executor_not_bound"],
+          },
+        ],
+      },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      activeRun: false,
+      status: "completed",
+      phase: "idle_consolidation_preview",
+      nextAction: "continue_live_watch",
+      refill: {
+        blockedCount: 0,
+        blockers: [],
+        attemptedCount: 0,
+        executedCount: 0,
+      },
+    },
+  });
+
+  assert.equal(report.ready, true);
+  assert.equal(report.strategyDispatch.ready, true);
+  assert.equal(report.strategyDispatch.liveEligibleCount, 0);
+  assert.equal(report.liveAutomation.ready, true);
+  assert.deepEqual(report.blockers, []);
+});
+
 test("full automation readiness reflects unresolved autopilot refill blockers and payback reserve gaps", () => {
   const report = buildFullAutomationReadiness({
     runtime: {
@@ -600,6 +679,78 @@ test("full automation readiness ignores deterministic LiFi native gas refill def
   assert.deepEqual(report.blockers, []);
 });
 
+test("full automation readiness ignores deterministic policy no-trade refill deferrals as non-live-blocking", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 2 },
+        jobs: [{ requiresManualReview: false }, { requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 4 },
+      executionSurfaces: { summary: { liveEligibleCount: 0 } },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+          nextAction: null,
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      status: "completed_with_blockers",
+      nextAction: "continue_live_watch",
+      refill: {
+        blockedCount: 2,
+        blockers: [
+          {
+            reason: "expected_net_below_receipt_cost_p90_floor,strategy_per_day_cap_exceeded",
+            chain: "base",
+            asset: "wBTC.OFT",
+            selectedMethod: "cross_chain_bridge_lifi",
+          },
+          {
+            reason: "expected_net_below_receipt_cost_p90_floor",
+            chain: "optimism",
+            asset: "USDC",
+            selectedMethod: "cross_chain_bridge_lifi",
+          },
+        ],
+        attemptedCount: 2,
+        executedCount: 0,
+      },
+      merklCanary: {
+        readyCount: 8,
+        selectedCount: 6,
+        status: "completed_with_blockers",
+      },
+    },
+  });
+
+  assert.equal(report.ready, true);
+  assert.equal(report.liveAutomation.ready, true);
+  assert.deepEqual(report.blockers, []);
+});
+
 test("full automation readiness surfaces active all-chain autopilot runs as wait state", () => {
   const report = buildFullAutomationReadiness({
     runtime: {
@@ -693,6 +844,64 @@ test("manage-executor-launchd retries transient bootstrap I/O failures", () => {
 test("manage-live-automation-launchd retries transient bootstrap I/O failures", () => {
   assert.equal(retryableLiveAutomationBootstrapFailure("Bootstrap failed: 5: Input/output error"), true);
   assert.equal(retryableLiveAutomationBootstrapFailure("service already loaded"), false);
+});
+
+test("manage-live-automation-launchd parseArgs reads stop and start actions", () => {
+  const stopArgs = parseLiveAutomationLaunchdArgs(["--json", "--stop", "--uid=501"]);
+  assert.equal(stopArgs.json, true);
+  assert.equal(stopArgs.stop, true);
+  assert.equal(stopArgs.uid, 501);
+
+  const startArgs = parseLiveAutomationLaunchdArgs(["--start", "--launch-agents-dir=/tmp/agents"]);
+  assert.equal(startArgs.start, true);
+  assert.equal(startArgs.launchAgentsDir, "/tmp/agents");
+});
+
+test("manage-live-automation-launchd stop and start use launchctl service actions", async () => {
+  const commonArgs = [
+    "--uid=501",
+    "--root-dir=/repo",
+    "--node-path=/usr/local/bin/node",
+    "--launch-agents-dir=/Users/test/Library/LaunchAgents",
+    "--log-dir=/repo/logs/launchd",
+  ];
+  const calls = [];
+  const launchctlRunner = (args) => {
+    calls.push(args);
+    return { status: 0, stdout: "", stderr: "", error: null };
+  };
+  const statusReader = async (spec) => ({
+    id: spec.id,
+    label: spec.label,
+    status: "not_loaded",
+    loaded: false,
+    running: false,
+    pid: null,
+    plistPresent: true,
+  });
+
+  const stopPayload = await runLiveAutomationLaunchdAction(parseLiveAutomationLaunchdArgs(["--stop", ...commonArgs]), {
+    launchctlRunner,
+    statusReader,
+  });
+  assert.equal(stopPayload.action, "stop");
+  assert.deepEqual(calls, [
+    ["bootout", "gui/501/com.bobclaw.gate-self-heal"],
+    ["bootout", "gui/501/com.bobclaw.all-chain-autopilot"],
+  ]);
+
+  calls.length = 0;
+  const startPayload = await runLiveAutomationLaunchdAction(
+    parseLiveAutomationLaunchdArgs(["--start", ...commonArgs]),
+    { launchctlRunner, statusReader },
+  );
+  assert.equal(startPayload.action, "start");
+  assert.deepEqual(calls, [
+    ["bootstrap", "gui/501", "/Users/test/Library/LaunchAgents/com.bobclaw.gate-self-heal.plist"],
+    ["kickstart", "-k", "gui/501/com.bobclaw.gate-self-heal"],
+    ["bootstrap", "gui/501", "/Users/test/Library/LaunchAgents/com.bobclaw.all-chain-autopilot.plist"],
+    ["kickstart", "-k", "gui/501/com.bobclaw.all-chain-autopilot"],
+  ]);
 });
 
 test("run-payback-scheduler persists executed payback disbursements to signer audit log", async () => {

@@ -76,10 +76,15 @@ test("gateway btc consolidation plan normalizes quote data and injects buffered 
   assert.equal(plan.route.srcToken, WBTC_OFT_TOKEN);
   assert.equal(plan.amountUsd, 10);
   assert.equal(plan.quote.latencyMs, 321);
+  assert.equal(plan.quote.maxAgeMs, 60_000);
   assert.equal(plan.gasPreflight.gasBufferBps, DEFAULT_GATEWAY_GAS_BUFFER_BPS);
   assert.equal(plan.gasPreflight.gasLimit, 288000);
   assert.equal(plan.intent.tx.gasLimit, "288000");
-  assert.equal(plan.intent.metadata.gatewayRouteKey, `${plan.route.srcChain}:${plan.route.srcToken}->${plan.route.dstChain}:${plan.route.dstToken}`);
+  assert.equal(plan.intent.metadata.quoteMaxAgeMs, 60_000);
+  assert.equal(
+    plan.intent.metadata.gatewayRouteKey,
+    `${plan.route.srcChain}:${plan.route.srcToken}->${plan.route.dstChain}:${plan.route.dstToken}`,
+  );
 });
 
 test("gateway btc consolidation plan blocks when gas preflight fails", async () => {

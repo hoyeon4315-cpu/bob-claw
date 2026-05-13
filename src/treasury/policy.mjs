@@ -7,6 +7,7 @@ import { computeIdleDustThreshold } from "../config/idle-dust-threshold.mjs";
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
 const BASE_USDC_TOKEN = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BASE_APXUSD_TOKEN = "0xd993935e13851dd7517af10687ec7e5022127228";
 const BASE_CBTC_TOKEN = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
 const BSC_USDC_TOKEN = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 const BSC_USDT_TOKEN = "0x55d398326f99059fF775485246999027B3197955";
@@ -21,6 +22,12 @@ const MERKL_PORTFOLIO_REFILL_POLICY = {
   strategyType: "merkl_portfolio_stable_carry",
   actionType: "treasury_refill_for_yield",
   perTradeCapUsd: 75,
+};
+const PENDLE_YT_CANARY_ENTRY_REFILL_POLICY = {
+  ...MERKL_PORTFOLIO_REFILL_POLICY,
+  id: "pendle_yt_canary_entry_refill",
+  strategyType: "pendle_yt_canary",
+  perTradeCapUsd: 10,
 };
 const REPRESENTATIVE_STABLE_REFILL_POLICY = {
   ...MERKL_PORTFOLIO_REFILL_POLICY,
@@ -115,7 +122,8 @@ function gatewayWbtcPolicy(chain, overrides = {}) {
     minBalance: "0.00003",
     targetBalance: "0.0001",
     maxBalance: "0.0005",
-    rationale: "Tiny all-chain Gateway wrapped-BTC buffer for automated route proof, canary prep, and payback return-path validation.",
+    rationale:
+      "Tiny all-chain Gateway wrapped-BTC buffer for automated route proof, canary prep, and payback return-path validation.",
     ...overrides,
   });
 }
@@ -123,24 +131,25 @@ function gatewayWbtcPolicy(chain, overrides = {}) {
 function destinationRepresentativeStableInventoryPolicies() {
   return Object.values(DESTINATION_REPRESENTATIVE_BINDINGS)
     .filter((binding) => !EXPLICIT_REPRESENTATIVE_FLOAT_CHAINS.has(binding.chain))
-    .map((binding) => tokenPolicy(binding.chain, binding.assetAddress, {
-      ticker: binding.assetSymbol,
-      decimals: binding.assetDecimals,
-      minBalance: "0.75",
-      targetBalance: "3",
-      maxBalance: "9",
-      rationale: `Representative ${binding.assetSymbol} buffer for ${binding.chain} live-capital validation; capital manager may refill this before the destination representative autopilot deploys the capped canary.`,
-      strategyPolicy: {
-        ...REPRESENTATIVE_STABLE_REFILL_POLICY,
-        perTradeCapUsd: binding.maxCanaryUsd,
-      },
-    }));
+    .map((binding) =>
+      tokenPolicy(binding.chain, binding.assetAddress, {
+        ticker: binding.assetSymbol,
+        decimals: binding.assetDecimals,
+        minBalance: "0.75",
+        targetBalance: "3",
+        maxBalance: "9",
+        rationale: `Representative ${binding.assetSymbol} buffer for ${binding.chain} live-capital validation; capital manager may refill this before the destination representative autopilot deploys the capped canary.`,
+        strategyPolicy: {
+          ...REPRESENTATIVE_STABLE_REFILL_POLICY,
+          perTradeCapUsd: binding.maxCanaryUsd,
+        },
+      }),
+    );
 }
 
 export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
-  const activeBudgetUsd = Number.isFinite(walletTotalUsd) && walletTotalUsd > 0
-    ? walletTotalUsd
-    : deriveConfiguredActiveBudgetUsd();
+  const activeBudgetUsd =
+    Number.isFinite(walletTotalUsd) && walletTotalUsd > 0 ? walletTotalUsd : deriveConfiguredActiveBudgetUsd();
   const nativeBalances = {
     bob: nativePolicy("bob", {
       enabled: true,
@@ -247,12 +256,13 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
       evidenceSource: "data/treasury/inbound-events.jsonl trailing_30d",
     },
     nativeBalances,
-      tokenInventories: [
+    tokenInventories: [
       tokenPolicy("ethereum", ETHEREUM_WBTC_TOKEN, {
         minBalance: "0.00003",
         targetBalance: "0.0001",
         maxBalance: "0.0005",
-        rationale: "Ethereum uses canonical WBTC for BTC-wrapper inventory; keep a tiny buffer for route proof and unwind readiness without probing non-canonical OFT addresses.",
+        rationale:
+          "Ethereum uses canonical WBTC for BTC-wrapper inventory; keep a tiny buffer for route proof and unwind readiness without probing non-canonical OFT addresses.",
       }),
       gatewayWbtcPolicy("bob", {
         minBalance: "0.0001",
@@ -278,21 +288,33 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         minBalance: "25",
         targetBalance: "68",
         maxBalance: "150",
-        rationale: "Merkl portfolio live-capital validation float on Base; refill cost is evaluated as holding-period carry, not same-tick route alpha.",
+        rationale:
+          "Merkl portfolio live-capital validation float on Base; refill cost is evaluated as holding-period carry, not same-tick route alpha.",
         strategyPolicy: MERKL_PORTFOLIO_REFILL_POLICY,
+      }),
+      tokenPolicy("base", BASE_APXUSD_TOKEN, {
+        enabled: false,
+        minBalance: "0",
+        targetBalance: "0",
+        maxBalance: "0",
+        rationale:
+          "Pendle apxUSD YT canaries enter through the Pendle Hosted SDK convert path from Base USDC; do not refill apxUSD via generic Odos token-to-token swaps.",
+        strategyPolicy: PENDLE_YT_CANARY_ENTRY_REFILL_POLICY,
       }),
       tokenPolicy("base", BASE_CBTC_TOKEN, {
         minBalance: "0.00025",
         targetBalance: "0.00035",
         maxBalance: "0.005",
-        rationale: "Moonwell wrapped-BTC lending loop collateral on Base; enough for the capped tiny-live validation entry before scaling.",
+        rationale:
+          "Moonwell wrapped-BTC lending loop collateral on Base; enough for the capped tiny-live validation entry before scaling.",
         strategyPolicy: WRAPPED_BTC_LOOP_COLLATERAL_REFILL_POLICY,
       }),
       tokenPolicy("ethereum", ETHEREUM_USDC_TOKEN, {
         minBalance: "25",
         targetBalance: "90",
         maxBalance: "150",
-        rationale: "Ethereum Morpho/YO Merkl stable-carry inventory; routed from BSC stablecoin float when live-capital validation is active.",
+        rationale:
+          "Ethereum Morpho/YO Merkl stable-carry inventory; routed from BSC stablecoin float when live-capital validation is active.",
         strategyPolicy: {
           ...MERKL_PORTFOLIO_REFILL_POLICY,
           perTradeCapUsd: 100,
@@ -309,7 +331,8 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         minBalance: "10",
         targetBalance: "35",
         maxBalance: "75",
-        rationale: "Ethereum Euler/Aave RLUSD Merkl inventory; smaller cap until RLUSD entry and exit receipts are live-proven.",
+        rationale:
+          "Ethereum Euler/Aave RLUSD Merkl inventory; smaller cap until RLUSD entry and exit receipts are live-proven.",
         strategyPolicy: {
           ...MERKL_PORTFOLIO_REFILL_POLICY,
           perTradeCapUsd: 35,
@@ -319,13 +342,15 @@ export function buildDefaultTreasuryPolicy({ walletTotalUsd = null } = {}) {
         minBalance: "1",
         targetBalance: "3",
         maxBalance: "50",
-        rationale: "Tiny BSC stablecoin settlement buffer; larger stable deployment requires a committed strategy cap and measured route.",
+        rationale:
+          "Tiny BSC stablecoin settlement buffer; larger stable deployment requires a committed strategy cap and measured route.",
       }),
       tokenPolicy("bsc", BSC_USDT_TOKEN, {
         minBalance: "1",
         targetBalance: "3",
         maxBalance: "50",
-        rationale: "Tiny BSC stablecoin settlement buffer; larger stable deployment requires a committed strategy cap and measured route.",
+        rationale:
+          "Tiny BSC stablecoin settlement buffer; larger stable deployment requires a committed strategy cap and measured route.",
       }),
       ...destinationRepresentativeStableInventoryPolicies(),
     ],

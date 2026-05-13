@@ -13,9 +13,7 @@ import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAsset
 export const LIFI_BRIDGE_STRATEGY_ID = "lifi-bridge";
 export const LIFI_API_BASE = "https://li.quest/v1";
 
-const ERC20_INTERFACE = new Interface([
-  "function approve(address spender,uint256 amount)",
-]);
+const ERC20_INTERFACE = new Interface(["function approve(address spender,uint256 amount)"]);
 
 function positiveIntegerString(value, label) {
   const text = String(value ?? "").trim();
@@ -81,7 +79,9 @@ function assertNativeSourceCoversPlan({ plan, sourceBalanceBefore, destinationBa
   const available = BigInt(sourceBalanceBefore?.balance ?? 0);
   const required = BigInt(plan.nativeSourceRequirementWei);
   if (available >= required) return;
-  const error = new Error(`Insufficient native balance for LI.FI gas: required ${required.toString()}, available ${available.toString()}`);
+  const error = new Error(
+    `Insufficient native balance for LI.FI gas: required ${required.toString()}, available ${available.toString()}`,
+  );
   error.name = "InsufficientNativeBalanceForLifiGas";
   error.partialExecution = {
     schemaVersion: 1,
@@ -134,7 +134,9 @@ async function lifiQuote({ apiBase = LIFI_API_BASE, fetchImpl = fetch, params })
 }
 
 function amountUsdFromRaw(rawAmount, asset, prices, fallbackPriceUsd = null) {
-  const priceUsd = Number.isFinite(Number(fallbackPriceUsd)) ? Number(fallbackPriceUsd) : priceForAssetUsd(asset, prices);
+  const priceUsd = Number.isFinite(Number(fallbackPriceUsd))
+    ? Number(fallbackPriceUsd)
+    : priceForAssetUsd(asset, prices);
   if (!Number.isFinite(priceUsd)) return null;
   if (!Number.isInteger(asset.decimals) || asset.decimals < 0) {
     const error = new Error(`Missing token decimals for LI.FI source asset: ${asset.chain}:${asset.token}`);
@@ -156,7 +158,9 @@ function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationB
   const available = BigInt(sourceBalanceBefore?.balance ?? 0);
   const required = BigInt(plan?.amount ?? 0);
   if (available >= required) return;
-  const error = new Error(`Insufficient source balance: required ${required.toString()}, available ${available.toString()}`);
+  const error = new Error(
+    `Insufficient source balance: required ${required.toString()}, available ${available.toString()}`,
+  );
   error.name = "InsufficientSourceBalance";
   error.partialExecution = {
     schemaVersion: 1,
@@ -199,6 +203,7 @@ export async function buildLifiBridgePlan({
   slippageBps = 50,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   executionReason = "strategy_execution",
+  systemEconomics = null,
   now = new Date().toISOString(),
 } = {}) {
   if (!senderAddress) throw new Error("LI.FI sender address is required");
@@ -259,23 +264,24 @@ export async function buildLifiBridgePlan({
       );
     }
     const quotedGasLimit = tx.gasLimit ? Number(BigInt(tx.gasLimit)) : null;
-    const bridgeGasLimit = Number.isFinite(quotedGasLimit) && quotedGasLimit > 0
-      ? applyGasBuffer(quotedGasLimit, gasBuffer)
-      : applyGasBuffer(
-          (
-            await estimateGasImpl(
-              srcChain,
-              {
-                from: senderAddress,
-                to: tx.to,
-                data: tx.data,
-                valueWei: txValueWei,
-              },
-              srcConfig,
-            )
-          ).gasUnits,
-          gasBuffer,
-        );
+    const bridgeGasLimit =
+      Number.isFinite(quotedGasLimit) && quotedGasLimit > 0
+        ? applyGasBuffer(quotedGasLimit, gasBuffer)
+        : applyGasBuffer(
+            (
+              await estimateGasImpl(
+                srcChain,
+                {
+                  from: senderAddress,
+                  to: tx.to,
+                  data: tx.data,
+                  valueWei: txValueWei,
+                },
+                srcConfig,
+              )
+            ).gasUnits,
+            gasBuffer,
+          );
     gasPreflight = {
       gasLimit: bridgeGasLimit,
       gasLimitHex: toHexQuantity(bridgeGasLimit),
@@ -286,6 +292,7 @@ export async function buildLifiBridgePlan({
       family: "evm",
       intentType,
       amountUsd,
+      systemEconomics,
       mode: "live",
       observedAt: now,
       executionReason,
@@ -303,29 +310,33 @@ export async function buildLifiBridgePlan({
       },
     });
     steps = [
-      ...(srcAsset.isNative ? [] : [{
-        id: "approve_lifi_spender",
-        intent: buildIntent({
-          intentType: "approve_exact",
-          approval: {
-            token: srcToken,
-            spender: approvalAddress,
-            amount: normalizedAmount,
-            mode: "per_tx",
-          },
-          tx: {
-            to: srcToken,
-            data: ERC20_INTERFACE.encodeFunctionData("approve", [approvalAddress, normalizedAmount]),
-            value: "0",
-            gasLimit: String(applyGasBuffer(approvalGasPreflight.gasUnits, gasBuffer)),
-          },
-          metadata: {
-            capCheckAmountUsd: approvalCapCheckAmountUsd(amountUsd),
-            srcToken,
-            dstToken,
-          },
-        }),
-      }]),
+      ...(srcAsset.isNative
+        ? []
+        : [
+            {
+              id: "approve_lifi_spender",
+              intent: buildIntent({
+                intentType: "approve_exact",
+                approval: {
+                  token: srcToken,
+                  spender: approvalAddress,
+                  amount: normalizedAmount,
+                  mode: "per_tx",
+                },
+                tx: {
+                  to: srcToken,
+                  data: ERC20_INTERFACE.encodeFunctionData("approve", [approvalAddress, normalizedAmount]),
+                  value: "0",
+                  gasLimit: String(applyGasBuffer(approvalGasPreflight.gasUnits, gasBuffer)),
+                },
+                metadata: {
+                  capCheckAmountUsd: approvalCapCheckAmountUsd(amountUsd),
+                  srcToken,
+                  dstToken,
+                },
+              }),
+            },
+          ]),
       {
         id: "lifi_bridge",
         intent: buildIntent({
@@ -346,7 +357,9 @@ export async function buildLifiBridgePlan({
       },
     ];
   } catch (error) {
-    blockedReason = error.blockedReason || (error.name === "LifiQuoteError" ? "lifi_quote_rejected" : classifyGasEstimateError(error));
+    blockedReason =
+      error.blockedReason ||
+      (error.name === "LifiQuoteError" ? "lifi_quote_rejected" : classifyGasEstimateError(error));
     lifiError = serializeError(error);
     preflightError = error.name === "LifiQuoteError" ? null : serializeError(error);
   }
@@ -442,32 +455,35 @@ export async function executeLifiBridgePlan({
         stepResults: [...stepResults, { id: step.id, signerResult: result }],
         sourceBalanceBefore,
         destinationBalanceBefore,
-        error: result?.status === "rejected"
-          ? {
-              name: "SignerRejected",
-              message: (result?.policy?.blockers || []).join(",") || "Signer rejected funding intent",
-              policy: result?.policy || null,
-              notification: result?.notification || null,
-              requiresUnwind: result?.requiresUnwind || false,
-              emergencyUnwindPath: result?.emergencyUnwindPath || null,
-            }
-          : result?.error || null,
+        error:
+          result?.status === "rejected"
+            ? {
+                name: "SignerRejected",
+                message: (result?.policy?.blockers || []).join(",") || "Signer rejected funding intent",
+                policy: result?.policy || null,
+                notification: result?.notification || null,
+                requiresUnwind: result?.requiresUnwind || false,
+                emergencyUnwindPath: result?.emergencyUnwindPath || null,
+              }
+            : result?.error || null,
       };
     }
     stepResults.push({ id: step.id, signerResult: result });
   }
   const destinationProof = awaitDestinationSettlement
-    ? classifySettlementTimeout(await waitForEvmAssetDelta({
-        asset: plan.dstAsset,
-        owner: plan.recipient,
-        initialBalance: destinationBalanceBefore,
-        requiredDelta: plan.minimumOutputAmount,
-        readErc20BalanceImpl,
-        readNativeBalanceImpl,
-        timeoutMs: destinationSettlementTimeoutMs,
-        pollIntervalMs: destinationPollIntervalMs,
-        sleepImpl,
-      }))
+    ? classifySettlementTimeout(
+        await waitForEvmAssetDelta({
+          asset: plan.dstAsset,
+          owner: plan.recipient,
+          initialBalance: destinationBalanceBefore,
+          requiredDelta: plan.minimumOutputAmount,
+          readErc20BalanceImpl,
+          readNativeBalanceImpl,
+          timeoutMs: destinationSettlementTimeoutMs,
+          pollIntervalMs: destinationPollIntervalMs,
+          sleepImpl,
+        }),
+      )
     : null;
   const execution = {
     schemaVersion: 1,

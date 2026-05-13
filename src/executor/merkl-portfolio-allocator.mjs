@@ -2,7 +2,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config/env.mjs";
 import { merklPortfolioPolicy } from "../config/merkl-portfolio.mjs";
-import { DIVERSIFICATION_POLICY, canAcceptNewAllocation, computeHhi, perChainMaxShareFor } from "../config/diversification.mjs";
+import {
+  DIVERSIFICATION_POLICY,
+  canAcceptNewAllocation,
+  computeHhi,
+  perChainMaxShareFor,
+} from "../config/diversification.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd, latestPriceSnapshot, pricesFromSnapshot } from "../market/prices.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
@@ -16,11 +21,7 @@ import {
   applyMerklCanaryExecutionReadiness,
   latestTreasuryInventoryForAddress,
 } from "../strategy/merkl-canary-execution-readiness.mjs";
-import {
-  isSupportedBindingKind,
-  resolvePlanBuilder,
-  resolvePlanExecutor,
-} from "./protocol-binding-registry.mjs";
+import { isSupportedBindingKind, resolvePlanBuilder, resolvePlanExecutor } from "./protocol-binding-registry.mjs";
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { sizeMerklCanaryAmount } from "./merkl-canary-autopilot.mjs";
@@ -50,17 +51,31 @@ function opportunityKey(record = {}) {
 }
 
 function latestDeliveredCanary(records = [], opportunityId = null) {
-  return [...records]
-    .filter((record) => {
-      return opportunityKey(record) === String(opportunityId || "") &&
-        record.mode === "execute" &&
-        record.execution?.settlementStatus === "delivered";
-    })
-    .sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null;
+  return (
+    [...records]
+      .filter((record) => {
+        return (
+          opportunityKey(record) === String(opportunityId || "") &&
+          record.mode === "execute" &&
+          record.execution?.settlementStatus === "delivered"
+        );
+      })
+      .sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null
+  );
 }
 
 function activePositionKey(record = {}) {
   return String(record.positionId || "");
+}
+
+function residualPositionKey(record = {}, previous = {}) {
+  const opportunityId = record.opportunityId || previous.opportunityId || null;
+  if (opportunityId) return `residual:${opportunityId}`;
+  return null;
+}
+
+function newerOrSame(left = {}, right = {}) {
+  return new Date(left.observedAt || 0).getTime() >= new Date(right.observedAt || 0).getTime();
 }
 
 export function activeMerklPortfolioPositions(records = []) {
@@ -70,6 +85,23 @@ export function activeMerklPortfolioPositions(records = []) {
     if (!id) continue;
     if (record.event === "position_exit_confirmed" || record.status === "closed") {
       byId.set(id, { ...(byId.get(id) || {}), ...record, status: "closed" });
+      continue;
+    }
+    if (record.event === "position_exit_residual_detected") {
+      const previous = byId.get(id) || {};
+      byId.set(id, { ...previous, ...record, status: "closed" });
+      const residualId = residualPositionKey(record, previous);
+      if (!residualId) continue;
+      const residual = {
+        ...previous,
+        ...record,
+        positionId: residualId,
+        sourcePositionId: id,
+        amountUsd: finite(record.amountUsd) ?? finite(record.residualAmountUsd),
+        status: "open",
+      };
+      const existing = byId.get(residualId);
+      if (!existing || newerOrSame(residual, existing)) byId.set(residualId, residual);
       continue;
     }
     if (record.event === "position_opened" || record.status === "open") {
@@ -109,7 +141,8 @@ function activeDiversificationAllocations(positions = [], denominatorUsd = null)
     const strategyId = position.opportunityId || position.strategyId || position.positionId;
     if (strategyId) allocations.perStrategy[strategyId] = (allocations.perStrategy[strategyId] || 0) + share;
     if (position.chain) allocations.perChain[position.chain] = (allocations.perChain[position.chain] || 0) + share;
-    if (position.protocolId) allocations.perProtocol[position.protocolId] = (allocations.perProtocol[position.protocolId] || 0) + share;
+    if (position.protocolId)
+      allocations.perProtocol[position.protocolId] = (allocations.perProtocol[position.protocolId] || 0) + share;
   }
   return allocations;
 }
@@ -119,8 +152,7 @@ function positionUsd(position = {}) {
 }
 
 function isTinyLiveCanaryEntry(queueItem = {}) {
-  return queueItem.validationMode === "tiny_live_canary_only" ||
-    queueItem.metadata?.tinyLiveCanary === true;
+  return queueItem.validationMode === "tiny_live_canary_only" || queueItem.metadata?.tinyLiveCanary === true;
 }
 
 function diversificationGateForAllocation({
@@ -155,16 +187,13 @@ function diversificationGateForAllocation({
       bypassed: true,
     };
   }
-  const result = canAcceptNewAllocation(
-    activeDiversificationAllocations(activePositions, denominatorUsd),
-    {
-      strategyId: queueItem.opportunityId || queueItem.mappedStrategyId,
-      chainId: queueItem.chain,
-      protocolIds: [queueItem.protocolId].filter(Boolean),
-      directHolding: false,
-      addShare: candidateUsd / denominatorUsd,
-    },
-  );
+  const result = canAcceptNewAllocation(activeDiversificationAllocations(activePositions, denominatorUsd), {
+    strategyId: queueItem.opportunityId || queueItem.mappedStrategyId,
+    chainId: queueItem.chain,
+    protocolIds: [queueItem.protocolId].filter(Boolean),
+    directHolding: false,
+    addShare: candidateUsd / denominatorUsd,
+  });
   const candidateStrategyId = queueItem.opportunityId || queueItem.mappedStrategyId;
   const candidateChainId = queueItem.chain;
   const candidateProtocolIds = new Set([queueItem.protocolId].filter(Boolean));
@@ -175,13 +204,10 @@ function diversificationGateForAllocation({
     if (violation.kind === "chain_not_gateway_official") return violation.id === candidateChainId;
     return false;
   });
-  const beforeDenominatorUsd = capacityUsd != null && capacityUsd > 0
-    ? denominatorUsd
-    : activePositionUsd;
+  const beforeDenominatorUsd = capacityUsd != null && capacityUsd > 0 ? denominatorUsd : activePositionUsd;
   const beforeHhi = computeHhi(activeDiversificationAllocations(activePositions, beforeDenominatorUsd).perStrategy);
   const hhiWorsened =
-    (result.verdict?.hhi ?? 0) > DIVERSIFICATION_POLICY.hhiMax &&
-    (result.verdict?.hhi ?? 0) > beforeHhi;
+    (result.verdict?.hhi ?? 0) > DIVERSIFICATION_POLICY.hhiMax && (result.verdict?.hhi ?? 0) > beforeHhi;
   const accepted = result.accepted || (candidateSpecificViolations.length === 0 && !hhiWorsened);
   return {
     ...result,
@@ -193,21 +219,16 @@ function diversificationGateForAllocation({
   };
 }
 
-function maxAddForShareCap({
-  currentGroupUsd = 0,
-  activeUsd = 0,
-  portfolioCapacityUsd = null,
-  maxShare = null,
-} = {}) {
+function maxAddForShareCap({ currentGroupUsd = 0, activeUsd = 0, portfolioCapacityUsd = null, maxShare = null } = {}) {
   const groupUsd = finite(currentGroupUsd) ?? 0;
   const totalUsd = finite(activeUsd) ?? 0;
   const capacityUsd = finite(portfolioCapacityUsd);
   const share = finite(maxShare);
   if (!(share > 0) || share >= 1) return Number.POSITIVE_INFINITY;
   if (capacityUsd != null && capacityUsd > 0) {
-    return Math.max(0, (share * Math.max(capacityUsd, totalUsd)) - groupUsd);
+    return Math.max(0, share * Math.max(capacityUsd, totalUsd) - groupUsd);
   }
-  return Math.max(0, ((share * totalUsd) - groupUsd) / (1 - share));
+  return Math.max(0, (share * totalUsd - groupUsd) / (1 - share));
 }
 
 function activeByStrategy(positions = []) {
@@ -256,24 +277,23 @@ function chainTargetMaxAddUsd({ chain, exposureChainUsd = new Map(), targetChain
   }
   const targetUsd = finite(targetChainUsd[chain]);
   if (targetUsd == null) return Number.POSITIVE_INFINITY;
-  const currentUsd = exposureChainUsd instanceof Map
-    ? exposureChainUsd.get(chain) || 0
-    : finite(exposureChainUsd[chain]) ?? 0;
+  const currentUsd =
+    exposureChainUsd instanceof Map ? exposureChainUsd.get(chain) || 0 : (finite(exposureChainUsd[chain]) ?? 0);
   return Math.max(0, targetUsd + (finite(toleranceUsd) ?? 5) - currentUsd);
 }
 
-function diversificationMaxAddUsd({
-  activePositions = [],
-  queueItem = {},
-  portfolioCapacityUsd = null,
-} = {}) {
+function diversificationMaxAddUsd({ activePositions = [], queueItem = {}, portfolioCapacityUsd = null } = {}) {
   const activePositionUsd = activeUsd(activePositions);
   const capacityUsd = finite(portfolioCapacityUsd);
   if (activePositionUsd < 10 && !(capacityUsd > 0)) return Number.POSITIVE_INFINITY;
   const strategyId = queueItem.opportunityId || queueItem.mappedStrategyId || null;
   const strategyUsd = strategyId ? activeByStrategy(activePositions).get(strategyId) || 0 : 0;
-  const chainUsd = queueItem.chain ? activeBy(activePositions, (position) => position.chain).get(queueItem.chain) || 0 : 0;
-  const protocolUsd = queueItem.protocolId ? activeBy(activePositions, (position) => position.protocolId).get(queueItem.protocolId) || 0 : 0;
+  const chainUsd = queueItem.chain
+    ? activeBy(activePositions, (position) => position.chain).get(queueItem.chain) || 0
+    : 0;
+  const protocolUsd = queueItem.protocolId
+    ? activeBy(activePositions, (position) => position.protocolId).get(queueItem.protocolId) || 0
+    : 0;
   return Math.min(
     maxAddForShareCap({
       currentGroupUsd: strategyUsd,
@@ -318,11 +338,10 @@ function overfitPenalty(item = {}) {
   return 0.35;
 }
 
-export function merklPortfolioScore(queueItem = {}, {
-  policy = merklPortfolioPolicy(),
-  canaryProof = null,
-  campaignAprMap = null,
-} = {}) {
+export function merklPortfolioScore(
+  queueItem = {},
+  { policy = merklPortfolioPolicy(), canaryProof = null, campaignAprMap = null } = {},
+) {
   const weights = policy.scoreWeights;
   let apr = finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct) ?? 0;
   if (campaignAprMap && campaignAprMap.has(queueItem.opportunityId)) {
@@ -338,7 +357,8 @@ export function merklPortfolioScore(queueItem = {}, {
     (readiness.status === "inventory_ready" ? weights.inventoryReady : 0) +
     (readiness.matchedNative ? weights.gasReady : 0) -
     overfitPenalty(queueItem) * weights.overfitPenalty -
-    (queueItem.capabilityGaps || []).filter((gap) => gap === "chain_live_dex_route_unproven_or_missing_stable_output").length *
+    (queueItem.capabilityGaps || []).filter((gap) => gap === "chain_live_dex_route_unproven_or_missing_stable_output")
+      .length *
       weights.chainRouteGapPenalty;
   return Math.round(Math.max(0, raw) * 100) / 100;
 }
@@ -417,8 +437,7 @@ function rewardHaircutPct(queueItem = {}, policy = SMALL_CAPITAL_CAMPAIGN_MODE) 
 }
 
 function candidateCostComponentsUsd(queueItem = {}) {
-  const gas = finite(queueItem.estimatedGasCostUsd) ??
-    tinyCanarySameChainRoundTripCostUsd({ chain: queueItem.chain });
+  const gas = finite(queueItem.estimatedGasCostUsd) ?? tinyCanarySameChainRoundTripCostUsd({ chain: queueItem.chain });
   return {
     p90GasUsd: gas,
     p90BridgeUsd: finite(queueItem.estimatedBridgeCostUsd) ?? 0,
@@ -454,7 +473,9 @@ function buildCandidateDecision({
   const estimatedCostSats = usdToSatsCeil(estimatedCostUsd, price);
   const bridgeCostSats = usdToSatsCeil(costs.p90BridgeUsd, price);
   const notionalSats = usdToSatsFloor(positionUsd, price);
-  if ([grossRewardSats, haircutRewardSats, estimatedCostSats, bridgeCostSats, notionalSats].some((value) => value == null)) {
+  if (
+    [grossRewardSats, haircutRewardSats, estimatedCostSats, bridgeCostSats, notionalSats].some((value) => value == null)
+  ) {
     return null;
   }
   const expectedNetSats = haircutRewardSats - estimatedCostSats;
@@ -513,121 +534,123 @@ export function buildMerklPortfolioAllocationPlan({
   const activeChainUsd = activeBy(activePositions, (position) => position.chain);
   const exposureChainUsd = activeBy(exposurePositions, (position) => position.chain);
   const activeProtocolUsd = activeBy(activePositions, (position) => position.protocolId);
-  const runBudgetUsd = Math.max(0, Math.min(
-    finite(maxUsd) ?? Number.POSITIVE_INFINITY,
-    policy.maxActiveUsd - activePositionUsd,
-  ));
+  const runBudgetUsd = Math.max(
+    0,
+    Math.min(finite(maxUsd) ?? Number.POSITIVE_INFINITY, policy.maxActiveUsd - activePositionUsd),
+  );
   const tokenBudgetUsd = new Map();
 
-  const candidates = (queue.queue || []).map((rawItem) => {
-    const queueItem = applyMerklCanaryExecutionReadiness(rawItem, {
-      inventorySnapshot,
-      canaryExecutions,
-      now,
-      cooldownMs: 0,
-    });
-    const canaryProof = latestDeliveredCanary(canaryExecutions, queueItem.opportunityId);
-    const resolvedAprPct = campaignAprMap && campaignAprMap.has(queueItem.opportunityId)
-      ? campaignAprMap.get(queueItem.opportunityId)
-      : finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct) ?? finite(queueItem.apr) ?? 0;
-    const opportunityActiveUsd = activeOpportunityUsd(activePositions, queueItem);
-    const chainActiveUsd = exposureChainUsd.get(queueItem.chain) || 0;
-    const protocolActiveUsd = activeProtocolUsd.get(queueItem.protocolId) || 0;
-    const sizing = sizeMerklCanaryAmount(queueItem, {
-      maxUsd: Math.min(policy.perOpportunityMaxUsd, runBudgetUsd || policy.perOpportunityMaxUsd),
-      minEthereumNotionalUsd: finite(policy.minEthereumNotionalUsd) ?? undefined,
-      allowInefficientEthereum: Boolean(policy.allowSmallEthereumProofBackedEntries && canaryProof),
-      useTinyLiveCap: false,
-      auditRecords,
-      now,
-    });
-    const decision = buildCandidateDecision({
-      queueItem,
-      amountUsd: sizing.amountUsd,
-      aprPct: resolvedAprPct,
-      btcPriceUsd,
-      btcPriceSnapshotAt,
-      now,
-    });
-    const score = merklPortfolioScore(queueItem, { policy, canaryProof, campaignAprMap });
-    const targetMaxAddUsd = chainTargetMaxAddUsd({
-      chain: queueItem.chain,
-      exposureChainUsd,
-      targetChainUsd,
-      toleranceUsd: chainTargetToleranceUsd,
-    });
-    const blockers = [];
-    if (!isSupportedBindingKind(bindingKind(queueItem))) blockers.push("hold_executor_missing");
-    if (!canaryProof) blockers.push("live_canary_proof_required_before_hold");
-    if (sameOpportunityActive(activePositions, queueItem) && !policy.allowTopUps) blockers.push("opportunity_already_open");
-    if ((finite(queueItem.campaignRemainingHours) ?? Number.POSITIVE_INFINITY) < policy.minRemainingHoursForEntry) {
-      blockers.push("campaign_too_close_to_expiry");
-    }
-    if (score < policy.minScoreForEntry) blockers.push("portfolio_score_below_entry_floor");
-    if (sizing.status !== "ready") blockers.push(...(sizing.blockers || ["sizing_not_ready"]));
-    if (sizing.status === "ready" && !decision) blockers.push("btc_price_required_for_sats_decision");
-    if (decision && decision.expectedNetSats <= 0) blockers.push("expected_net_sats_not_positive");
-    const tinyLiveEntry = isTinyLiveCanaryEntry(queueItem);
-    const diversification = diversificationGateForAllocation({
-      activePositions: exposurePositions,
-      queueItem,
-      addUsd: sizing.amountUsd,
-      portfolioCapacityUsd: tinyLiveEntry ? policy.maxActiveUsd : null,
-    });
-    const diversificationMaxUsd = diversificationMaxAddUsd({
-      activePositions: exposurePositions,
-      queueItem,
-      portfolioCapacityUsd: tinyLiveEntry ? policy.maxActiveUsd : null,
-    });
-    if (!diversification.accepted && diversificationMaxUsd < policy.minPositionUsd) {
-      blockers.push("diversification_policy_rejected");
-    }
-    if (targetMaxAddUsd < policy.minPositionUsd) blockers.push("chain_target_exceeded");
-    const needsCapitalJob =
-      queueItem.capabilityGaps?.includes("current_inventory_entry_route_required") ||
-      (sizing.blockers || []).some((blocker) => [
-        "inventory_missing",
-        "inventory_unknown",
-        "matched_token_missing",
-        "native_gas_missing",
-      ].includes(blocker));
-    const blockerSplit = splitCandidateBlockers(blockers, { candidateScopedInventory: true });
-    return {
-      queueItem,
-      score,
-      canaryProofObservedAt: canaryProof?.observedAt || null,
-      opportunityActiveUsd,
-      chainActiveUsd,
-      protocolActiveUsd,
-      diversification: {
-        accepted: diversification.accepted,
-        activeUsd: diversification.activeUsd,
-        candidateUsd: diversification.candidateUsd,
-        addShare: diversification.addShare,
-        bypassed: diversification.bypassed || false,
-        violations: diversification.verdict?.violations || [],
-      },
-      diversificationMaxUsd,
-      targetChainUsd: targetChainUsd?.[queueItem.chain] ?? null,
-      targetMaxAddUsd,
-      sizing,
-      decision,
-      status: blockerSplit.blockers.length ? "blocked" : blockerSplit.filters.length ? "filtered" : "candidate",
-      blockers: blockerSplit.blockers,
-      filters: blockerSplit.filters,
-      blockerCodes: blockerSplit.blockerCodes,
-      filterCodes: blockerSplit.filterCodes,
-      capitalJob: needsCapitalJob && canaryProof ? buildCapitalJob(queueItem) : null,
-      graduationCanary: !canaryProof
-        ? buildProofGraduationCanaryRequest({
-            queueItem,
-            canaryExecutions,
-            auditRecords,
-            now,
-          })
-        : null,
-    };
-  }).sort((left, right) => right.score - left.score || (right.sizing?.amountUsd ?? 0) - (left.sizing?.amountUsd ?? 0));
+  const candidates = (queue.queue || [])
+    .map((rawItem) => {
+      const queueItem = applyMerklCanaryExecutionReadiness(rawItem, {
+        inventorySnapshot,
+        canaryExecutions,
+        now,
+        cooldownMs: 0,
+      });
+      const canaryProof = latestDeliveredCanary(canaryExecutions, queueItem.opportunityId);
+      const resolvedAprPct =
+        campaignAprMap && campaignAprMap.has(queueItem.opportunityId)
+          ? campaignAprMap.get(queueItem.opportunityId)
+          : (finite(queueItem.nativeAprPct) ?? finite(queueItem.aprPct) ?? finite(queueItem.apr) ?? 0);
+      const opportunityActiveUsd = activeOpportunityUsd(activePositions, queueItem);
+      const chainActiveUsd = exposureChainUsd.get(queueItem.chain) || 0;
+      const protocolActiveUsd = activeProtocolUsd.get(queueItem.protocolId) || 0;
+      const sizing = sizeMerklCanaryAmount(queueItem, {
+        maxUsd: Math.min(policy.perOpportunityMaxUsd, runBudgetUsd || policy.perOpportunityMaxUsd),
+        minEthereumNotionalUsd: finite(policy.minEthereumNotionalUsd) ?? undefined,
+        allowInefficientEthereum: Boolean(policy.allowSmallEthereumProofBackedEntries && canaryProof),
+        useTinyLiveCap: false,
+        auditRecords,
+        now,
+      });
+      const decision = buildCandidateDecision({
+        queueItem,
+        amountUsd: sizing.amountUsd,
+        aprPct: resolvedAprPct,
+        btcPriceUsd,
+        btcPriceSnapshotAt,
+        now,
+      });
+      const score = merklPortfolioScore(queueItem, { policy, canaryProof, campaignAprMap });
+      const targetMaxAddUsd = chainTargetMaxAddUsd({
+        chain: queueItem.chain,
+        exposureChainUsd,
+        targetChainUsd,
+        toleranceUsd: chainTargetToleranceUsd,
+      });
+      const blockers = [];
+      const tinyLiveEntry = isTinyLiveCanaryEntry(queueItem);
+      const opportunityAlreadyOpen = sameOpportunityActive(activePositions, queueItem);
+      if (!isSupportedBindingKind(bindingKind(queueItem))) blockers.push("hold_executor_missing");
+      if (!canaryProof) blockers.push("live_canary_proof_required_before_hold");
+      if (opportunityAlreadyOpen && tinyLiveEntry) blockers.push("open_position_active");
+      if (opportunityAlreadyOpen && !policy.allowTopUps) blockers.push("opportunity_already_open");
+      if ((finite(queueItem.campaignRemainingHours) ?? Number.POSITIVE_INFINITY) < policy.minRemainingHoursForEntry) {
+        blockers.push("campaign_too_close_to_expiry");
+      }
+      if (score < policy.minScoreForEntry) blockers.push("portfolio_score_below_entry_floor");
+      if (sizing.status !== "ready") blockers.push(...(sizing.blockers || ["sizing_not_ready"]));
+      if (sizing.status === "ready" && !decision) blockers.push("btc_price_required_for_sats_decision");
+      if (decision && decision.expectedNetSats <= 0) blockers.push("expected_net_sats_not_positive");
+      const diversification = diversificationGateForAllocation({
+        activePositions: exposurePositions,
+        queueItem,
+        addUsd: sizing.amountUsd,
+        portfolioCapacityUsd: tinyLiveEntry ? policy.maxActiveUsd : null,
+      });
+      const diversificationMaxUsd = diversificationMaxAddUsd({
+        activePositions: exposurePositions,
+        queueItem,
+        portfolioCapacityUsd: tinyLiveEntry ? policy.maxActiveUsd : null,
+      });
+      if (!diversification.accepted && diversificationMaxUsd < policy.minPositionUsd) {
+        blockers.push("diversification_policy_rejected");
+      }
+      if (targetMaxAddUsd < policy.minPositionUsd) blockers.push("chain_target_exceeded");
+      const needsCapitalJob =
+        queueItem.capabilityGaps?.includes("current_inventory_entry_route_required") ||
+        (sizing.blockers || []).some((blocker) =>
+          ["inventory_missing", "inventory_unknown", "matched_token_missing", "native_gas_missing"].includes(blocker),
+        );
+      const blockerSplit = splitCandidateBlockers(blockers, { candidateScopedInventory: true });
+      return {
+        queueItem,
+        score,
+        canaryProofObservedAt: canaryProof?.observedAt || null,
+        opportunityActiveUsd,
+        chainActiveUsd,
+        protocolActiveUsd,
+        diversification: {
+          accepted: diversification.accepted,
+          activeUsd: diversification.activeUsd,
+          candidateUsd: diversification.candidateUsd,
+          addShare: diversification.addShare,
+          bypassed: diversification.bypassed || false,
+          violations: diversification.verdict?.violations || [],
+        },
+        diversificationMaxUsd,
+        targetChainUsd: targetChainUsd?.[queueItem.chain] ?? null,
+        targetMaxAddUsd,
+        sizing,
+        decision,
+        status: blockerSplit.blockers.length ? "blocked" : blockerSplit.filters.length ? "filtered" : "candidate",
+        blockers: blockerSplit.blockers,
+        filters: blockerSplit.filters,
+        blockerCodes: blockerSplit.blockerCodes,
+        filterCodes: blockerSplit.filterCodes,
+        capitalJob: needsCapitalJob && canaryProof ? buildCapitalJob(queueItem) : null,
+        graduationCanary: !canaryProof
+          ? buildProofGraduationCanaryRequest({
+              queueItem,
+              canaryExecutions,
+              auditRecords,
+              now,
+            })
+          : null,
+      };
+    })
+    .sort((left, right) => right.score - left.score || (right.sizing?.amountUsd ?? 0) - (left.sizing?.amountUsd ?? 0));
 
   const allocations = [];
   let remainingBudgetUsd = runBudgetUsd;
@@ -643,7 +666,8 @@ export function buildMerklPortfolioAllocationPlan({
     }
     const remainingTokenUsd = tokenBudgetUsd.get(key) ?? 0;
     const chainLimitUsd = finite(policy.chainMaxUsd?.[candidate.queueItem.chain]) ?? Number.POSITIVE_INFINITY;
-    const protocolLimitUsd = finite(policy.protocolMaxUsd?.[candidate.queueItem.protocolId]) ?? Number.POSITIVE_INFINITY;
+    const protocolLimitUsd =
+      finite(policy.protocolMaxUsd?.[candidate.queueItem.protocolId]) ?? Number.POSITIVE_INFINITY;
     const targetUsd = Math.min(
       finite(candidate.sizing.amountUsd) ?? 0,
       Math.max(0, policy.perOpportunityMaxUsd - (finite(candidate.opportunityActiveUsd) ?? 0)),
@@ -655,7 +679,9 @@ export function buildMerklPortfolioAllocationPlan({
       finite(candidate.targetMaxAddUsd) ?? Number.POSITIVE_INFINITY,
     );
     if (targetUsd < policy.minPositionUsd) {
-      const split = splitCandidateBlockers(["target_allocation_below_min_position_usd"], { candidateScopedInventory: true });
+      const split = splitCandidateBlockers(["target_allocation_below_min_position_usd"], {
+        candidateScopedInventory: true,
+      });
       allocations.push({
         ...candidate,
         status: "filtered",
@@ -678,9 +704,13 @@ export function buildMerklPortfolioAllocationPlan({
     const resizedDecision = buildCandidateDecision({
       queueItem: candidate.queueItem,
       amountUsd: resized.amountUsd,
-      aprPct: campaignAprMap && campaignAprMap.has(candidate.queueItem.opportunityId)
-        ? campaignAprMap.get(candidate.queueItem.opportunityId)
-        : finite(candidate.queueItem.nativeAprPct) ?? finite(candidate.queueItem.aprPct) ?? finite(candidate.queueItem.apr) ?? 0,
+      aprPct:
+        campaignAprMap && campaignAprMap.has(candidate.queueItem.opportunityId)
+          ? campaignAprMap.get(candidate.queueItem.opportunityId)
+          : (finite(candidate.queueItem.nativeAprPct) ??
+            finite(candidate.queueItem.aprPct) ??
+            finite(candidate.queueItem.apr) ??
+            0),
       btcPriceUsd,
       btcPriceSnapshotAt,
       now,
@@ -790,7 +820,15 @@ export function buildMerklPortfolioAllocationPlan({
   };
   const idleCapitalReport = {
     bridgeCostGreaterThanExpectedNet: allocations
-      .filter((item) => item.decision && item.decision.bridgeCostSats > Math.max(0, item.decision.haircutRewardSats - item.decision.estimatedCostSats + item.decision.bridgeCostSats))
+      .filter(
+        (item) =>
+          item.decision &&
+          item.decision.bridgeCostSats >
+            Math.max(
+              0,
+              item.decision.haircutRewardSats - item.decision.estimatedCostSats + item.decision.bridgeCostSats,
+            ),
+      )
       .map((item) => ({
         opportunityId: item.queueItem?.opportunityId || null,
         chain: item.queueItem?.chain || null,
@@ -879,9 +917,9 @@ async function readCampaignAwareAprMap(dataDir) {
 }
 
 function txHashForStep(execution = {}, stepIds = []) {
-  return (execution.stepResults || [])
-    .find((step) => stepIds.includes(step.id))
-    ?.signerResult?.broadcast?.txHash || null;
+  return (
+    (execution.stepResults || []).find((step) => stepIds.includes(step.id))?.signerResult?.broadcast?.txHash || null
+  );
 }
 
 export function parseInsufficientAssetBalance(error) {
@@ -920,14 +958,17 @@ export function executionErrorBlockers(error) {
   const message = error?.message || String(error);
   if (parseInsufficientAssetBalance(error)) return ["insufficient_asset_balance"];
   if (/insufficient_native_balance_for_gas/iu.test(message)) return ["insufficient_native_gas_balance"];
-  if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message)) return ["receipt_confirmation_timeout"];
+  if (/waitForTransaction failed .*timeout|code=TIMEOUT|timed out/iu.test(message))
+    return ["receipt_confirmation_timeout"];
   return ["portfolio_execution_error"];
 }
 
 function buildPositionRecord({ allocation, plan, execution, now = new Date().toISOString() } = {}) {
   const entryTxHash = txHashForStep(execution, ["deposit_asset_to_vault", "supply_asset_to_pool"]);
   const positionId = `merkl:${plan.chain}:${plan.opportunityId}:${entryTxHash || now}`;
-  const minHoldUntil = new Date(new Date(now).getTime() + (allocation.policy?.minHoldMinutes || 30) * 60_000).toISOString();
+  const minHoldUntil = new Date(
+    new Date(now).getTime() + (allocation.policy?.minHoldMinutes || 30) * 60_000,
+  ).toISOString();
   return {
     schemaVersion: 1,
     event: "position_opened",
@@ -999,7 +1040,14 @@ export async function runMerklPortfolioAllocator({
   }
 
   const queue = await readJson(queuePath);
-  const [inventoryRecords, protocolCanaryExecutions, autopilotExecutions, positionRecords, auditRecords, wholeWalletInventoryRecords] = await Promise.all([
+  const [
+    inventoryRecords,
+    protocolCanaryExecutions,
+    autopilotExecutions,
+    positionRecords,
+    auditRecords,
+    wholeWalletInventoryRecords,
+  ] = await Promise.all([
     readJsonl(config.dataDir, "treasury-inventory"),
     readJsonl(config.dataDir, "erc4626-protocol-canaries"),
     readJsonl(config.dataDir, "merkl-canary-autopilot-runs").catch(() => []),
@@ -1057,18 +1105,19 @@ export async function runMerklPortfolioAllocator({
     readJsonIfExists(join(config.dataDir, "destination-promotion-gate.json")),
     readJsonIfExists(join(config.dataDir, "destination-economics-ledger.json")),
   ]);
-  const scoredTargets = totalCapitalUsd > 0
-    ? buildScoredTargetBalances({
-        promotionGate,
-        economics,
-        strategyCaps: listStrategyCaps(),
-        totalCapitalUsd,
-        chainScoreLedger: buildChainScoreLedger({
-          records: auditRecords,
-          now: new Date().toISOString(),
-        }),
-      })
-    : null;
+  const scoredTargets =
+    totalCapitalUsd > 0
+      ? buildScoredTargetBalances({
+          promotionGate,
+          economics,
+          strategyCaps: listStrategyCaps(),
+          totalCapitalUsd,
+          chainScoreLedger: buildChainScoreLedger({
+            records: auditRecords,
+            now: new Date().toISOString(),
+          }),
+        })
+      : null;
   const targetChainUsd = scoredTargets
     ? Object.fromEntries((scoredTargets.perChain || []).map((entry) => [entry.chain, entry.settlementTargetUsd || 0]))
     : null;
@@ -1189,21 +1238,20 @@ export async function runMerklPortfolioAllocator({
           continue;
         }
       }
-      const positionRecord = execution.settlementStatus === "position_opened"
-        ? buildPositionRecord({
-            allocation: { ...executedAllocation, policy: plan.policy },
-            plan: executedPlan,
-            execution,
-            now: execution.observedAt,
-          })
-        : null;
+      const positionRecord =
+        execution.settlementStatus === "position_opened"
+          ? buildPositionRecord({
+              allocation: { ...executedAllocation, policy: plan.policy },
+              plan: executedPlan,
+              execution,
+              now: execution.observedAt,
+            })
+          : null;
       if (positionRecord) await store.append("merkl-portfolio-positions", positionRecord);
       executions.push({
         opportunityId: queueItem.opportunityId,
         status: execution.settlementStatus,
-        txHashes: (execution.stepResults || [])
-          .map((step) => step.signerResult?.broadcast?.txHash)
-          .filter(Boolean),
+        txHashes: (execution.stepResults || []).map((step) => step.signerResult?.broadcast?.txHash).filter(Boolean),
         positionRecord,
         execution,
       });
@@ -1239,6 +1287,9 @@ export async function runMerklPortfolioAllocator({
 }
 
 async function writePortfolioReport(report) {
-  await writeTextIfChanged(join(config.dataDir, "merkl-portfolio-allocator-latest.json"), `${safeJsonStringify(report, 2)}\n`);
+  await writeTextIfChanged(
+    join(config.dataDir, "merkl-portfolio-allocator-latest.json"),
+    `${safeJsonStringify(report, 2)}\n`,
+  );
   await new JsonlStore(config.dataDir).append("merkl-portfolio-allocator-runs", JSON.parse(safeJsonStringify(report)));
 }

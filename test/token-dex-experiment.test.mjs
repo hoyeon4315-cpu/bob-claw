@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ZERO_TOKEN } from "../src/assets/tokens.mjs";
-import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "../src/executor/helpers/token-dex-experiment.mjs";
+import {
+  buildTokenDexExperimentPlan,
+  executeTokenDexExperimentPlan,
+} from "../src/executor/helpers/token-dex-experiment.mjs";
 
 function odosClientFixture() {
   return {
@@ -63,6 +66,11 @@ function pancakeProviderFixture() {
 }
 
 test("token dex experiment plan builds approval and swap steps", async () => {
+  const systemEconomics = {
+    effectiveSystemNetPnlUsd: 0.42,
+    estimatedNetPnlUsd: 0.42,
+    routeKey: "base:wbtc->cbbtc",
+  };
   const plan = await buildTokenDexExperimentPlan({
     client: odosClientFixture(),
     estimateGasImpl: async () => ({
@@ -89,6 +97,7 @@ test("token dex experiment plan builds approval and swap steps", async () => {
     senderAddress: "0x1111111111111111111111111111111111111111",
     inputToken: "wbtc.oft",
     outputToken: "cbbtc",
+    systemEconomics,
     now: "2026-04-16T06:00:00.000Z",
   });
 
@@ -96,7 +105,9 @@ test("token dex experiment plan builds approval and swap steps", async () => {
   assert.equal(plan.steps.length, 2);
   assert.equal(plan.steps[0].id, "approve_input_token");
   assert.equal(plan.steps[0].intent.metadata.capCheckAmountUsd, 0);
+  assert.deepEqual(plan.steps[0].intent.systemEconomics, systemEconomics);
   assert.equal(plan.steps[1].id, "swap_input_to_output");
+  assert.deepEqual(plan.steps[1].intent.systemEconomics, systemEconomics);
   assert.equal(plan.outputAsset.ticker, "cbBTC");
   assert.equal(plan.minimumOutputAmount, "9850");
   assert.equal(plan.slippageBps, 50);
@@ -308,13 +319,15 @@ test("token dex experiment plan directly unwraps wrapped-native input to native 
   let quoteCalled = false;
   let estimateCalls = 0;
   const plan = await buildTokenDexExperimentPlan({
-    providers: [{
-      name: "should_not_quote",
-      quote: async () => {
-        quoteCalled = true;
-        throw new Error("quote should not be requested for direct unwrap");
+    providers: [
+      {
+        name: "should_not_quote",
+        quote: async () => {
+          quoteCalled = true;
+          throw new Error("quote should not be requested for direct unwrap");
+        },
       },
-    }],
+    ],
     estimateGasImpl: async () => {
       estimateCalls += 1;
       return {
@@ -456,12 +469,14 @@ test("token dex experiment execution waits for output token delivery proof", asy
 
 test("token dex experiment native output proof subtracts same-wallet gas fees", async () => {
   const plan = await buildTokenDexExperimentPlan({
-    providers: [{
-      name: "should_not_quote",
-      quote: async () => {
-        throw new Error("quote should not be requested for direct unwrap");
+    providers: [
+      {
+        name: "should_not_quote",
+        quote: async () => {
+          throw new Error("quote should not be requested for direct unwrap");
+        },
       },
-    }],
+    ],
     estimateGasImpl: async () => ({
       observedAt: "2026-04-16T06:00:01.000Z",
       chain: "base",

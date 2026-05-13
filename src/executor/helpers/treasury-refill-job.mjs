@@ -1,14 +1,15 @@
-import { WBTC_OFT_TOKEN, ZERO_TOKEN, gatewayBtcSettlementTokenForChain, isBtcLikeAsset, tokenAsset } from "../../assets/tokens.mjs";
+import {
+  WBTC_OFT_TOKEN,
+  ZERO_TOKEN,
+  gatewayBtcSettlementTokenForChain,
+  isBtcLikeAsset,
+  tokenAsset,
+} from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
+import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { readNativeBalance } from "../../evm/account-state.mjs";
-import {
-  buildGatewayBtcConsolidationPlan,
-  executeGatewayBtcConsolidationPlan,
-} from "./gateway-btc-consolidation.mjs";
-import {
-  buildGasZipNativeRefuelPlan,
-  executeGasZipNativeRefuelPlan,
-} from "./gas-zip-refuel.mjs";
+import { buildGatewayBtcConsolidationPlan, executeGatewayBtcConsolidationPlan } from "./gateway-btc-consolidation.mjs";
+import { buildGasZipNativeRefuelPlan, executeGasZipNativeRefuelPlan } from "./gas-zip-refuel.mjs";
 import { buildGatewayBtcOnrampPlan, executeGatewayBtcOnrampPlan } from "./gateway-btc-onramp.mjs";
 import { buildNativeDexExperimentPlan, executeNativeDexExperimentPlan } from "./native-dex-experiment.mjs";
 import {
@@ -19,7 +20,10 @@ import {
 import { buildAcrossBridgePlan, executeAcrossBridgePlan } from "./across-bridge.mjs";
 import { acrossTickerForToken } from "../../config/across.mjs";
 import { buildLifiBridgePlan, executeLifiBridgePlan } from "./lifi-bridge.mjs";
-import { evaluateBridgeMovementCostGuard, isStrategyRealizedPnlMovement } from "../../treasury/discretionary-budget-guard.mjs";
+import {
+  evaluateBridgeMovementCostGuard,
+  isStrategyRealizedPnlMovement,
+} from "../../treasury/discretionary-budget-guard.mjs";
 
 const INPUT_BUFFER_MULTIPLIER = 1.1;
 const GAS_ZIP_INPUT_BUFFER_MULTIPLIER = 1.04;
@@ -95,12 +99,15 @@ function inferDecimalsFromObservedBalance(source = null) {
 
 function sourceAssetDecimals(source = null) {
   const sourceAsset = tokenAsset(source?.chain, source?.token || ZERO_TOKEN);
-  return Number.isInteger(sourceAsset.decimals)
-    ? sourceAsset.decimals
-    : inferDecimalsFromObservedBalance(source);
+  return Number.isInteger(sourceAsset.decimals) ? sourceAsset.decimals : inferDecimalsFromObservedBalance(source);
 }
 
-function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = INPUT_BUFFER_MULTIPLIER }) {
+function estimateInputAmountFromSource({
+  job,
+  source,
+  inputBufferMultiplier = INPUT_BUFFER_MULTIPLIER,
+  maxInputUsd = null,
+}) {
   const targetUsd = job?.estimatedAssetValueUsd;
   const sourceUsd = source?.estimatedUsd;
   const sourceDecimal = source?.actualDecimal;
@@ -112,11 +119,29 @@ function estimateInputAmountFromSource({ job, source, inputBufferMultiplier = IN
   }
   const decimals = sourceAssetDecimals(source);
   const sourceUnitUsd = sourceUsd / sourceDecimal;
-  const buffer = Number.isFinite(inputBufferMultiplier) && inputBufferMultiplier > 0
-    ? inputBufferMultiplier
-    : INPUT_BUFFER_MULTIPLIER;
-  const inputDecimal = Math.min(sourceDecimal, (targetUsd * buffer) / sourceUnitUsd);
+  const buffer =
+    Number.isFinite(inputBufferMultiplier) && inputBufferMultiplier > 0
+      ? inputBufferMultiplier
+      : INPUT_BUFFER_MULTIPLIER;
+  const maxInputDecimal = isFiniteNumber(maxInputUsd) && maxInputUsd > 0 ? maxInputUsd / sourceUnitUsd : null;
+  const inputDecimal = Math.min(sourceDecimal, (targetUsd * buffer) / sourceUnitUsd, maxInputDecimal ?? sourceDecimal);
   return clampAmountToSourceBalance(ceilUnitsFromDecimalAmount(inputDecimal, decimals), source);
+}
+
+function perTxCapUsdForStrategy(strategyId) {
+  try {
+    const caps = assertStrategyCaps(strategyId);
+    return Number.isFinite(caps.caps?.perTxUsd) ? caps.caps.perTxUsd : null;
+  } catch {
+    return null;
+  }
+}
+
+function tokenDexCapLimitedPartialAllowed({ job, executor } = {}) {
+  if (executor !== "token_dex_experiment") return false;
+  if (job?.executionMethod !== "same_chain_token_to_token_swap") return false;
+  const perTxCapUsd = perTxCapUsdForStrategy(TOKEN_DEX_EXPERIMENT_STRATEGY_ID);
+  return Number.isFinite(perTxCapUsd) && Number(job?.estimatedAssetValueUsd) > perTxCapUsd;
 }
 
 function gatewayOnrampAmountSats({ job, source }) {
@@ -161,19 +186,27 @@ function crossChainStepExecutor(step = {}) {
   return null;
 }
 
-function coverageForPlan({ plan, job, executor }) {
+function coverageForPlan({ plan, job, executor, allowCapLimitedPartialRefill = false }) {
   const outputAmount = positiveBigInt(outputAmountForCoverage(plan, executor));
   const targetAmount = positiveBigInt(job?.targetAmount);
   const coversTarget = outputAmount != null && targetAmount != null ? outputAmount >= targetAmount : null;
-  const coverageBps = outputAmount != null && targetAmount != null && targetAmount > 0n
-    ? (outputAmount * 10_000n) / targetAmount
-    : null;
+  const coverageBps =
+    outputAmount != null && targetAmount != null && targetAmount > 0n ? (outputAmount * 10_000n) / targetAmount : null;
+  const thresholdPartialRefill =
+    coversTarget === false && coverageBps != null && coverageBps >= PARTIAL_REFILL_MIN_COVERAGE_BPS;
+  const capLimitedPartialRefill =
+    coversTarget === false && allowCapLimitedPartialRefill && outputAmount != null && outputAmount > 0n;
   return {
     targetAmount: targetAmount?.toString() || job?.targetAmount || null,
     minimumOutputAmount: outputAmount?.toString() || outputAmountForCoverage(plan, executor),
     coversTarget,
     coverageBps: coverageBps?.toString() || null,
-    partialRefill: coversTarget === false && coverageBps != null && coverageBps >= PARTIAL_REFILL_MIN_COVERAGE_BPS,
+    partialRefill: thresholdPartialRefill || capLimitedPartialRefill,
+    partialRefillReason: capLimitedPartialRefill
+      ? "strategy_per_tx_cap_limited"
+      : thresholdPartialRefill
+        ? "coverage_threshold_met"
+        : null,
     partialRefillMinCoverageBps: PARTIAL_REFILL_MIN_COVERAGE_BPS.toString(),
   };
 }
@@ -220,16 +253,18 @@ async function buildLifiBridgePlanWithNativeGasReserve({
   senderAddress,
   buildLifiBridgePlanImpl,
 }) {
-  const buildPlan = (nextAmount) => buildLifiBridgePlanImpl({
-    srcChain: source.chain,
-    dstChain: job.chain,
-    srcToken: source.token,
-    dstToken: job.type === "refill_native" ? ZERO_TOKEN : job.token,
-    amount: nextAmount,
-    senderAddress,
-    recipient: senderAddress,
-    executionReason: executionReasonForJob(job),
-  });
+  const buildPlan = (nextAmount) =>
+    buildLifiBridgePlanImpl({
+      srcChain: source.chain,
+      dstChain: job.chain,
+      srcToken: source.token,
+      dstToken: job.type === "refill_native" ? ZERO_TOKEN : job.token,
+      amount: nextAmount,
+      senderAddress,
+      recipient: senderAddress,
+      executionReason: executionReasonForJob(job),
+      systemEconomics: job.systemEconomics || null,
+    });
 
   const plan = await buildPlan(amount);
   const nativeRequirement = lifiNativeSourceRequirementBlocked({ plan, source });
@@ -270,7 +305,10 @@ function nativeGasBudgetForPlan(plan = {}) {
   const chainConfig = getEvmChainConfig(plan.chain || "");
   if (!chainConfig) return null;
   const totalGasUnits = Array.isArray(plan.steps)
-    ? plan.steps.reduce((sum, step) => sum + (toBigIntOrNull(step?.intent?.tx?.gasLimit) ?? BigInt(chainConfig.fallbackGasUnits)), 0n)
+    ? plan.steps.reduce(
+        (sum, step) => sum + (toBigIntOrNull(step?.intent?.tx?.gasLimit) ?? BigInt(chainConfig.fallbackGasUnits)),
+        0n,
+      )
     : 0n;
   if (totalGasUnits <= 0n) return null;
   if (chainConfig.legacyTxType === true) {
@@ -283,9 +321,7 @@ function nativeGasBudgetForPlan(plan = {}) {
   const priorityFeeWei = toBigIntOrNull(plan?.gasSnapshot?.priorityFeeWei);
   const minPriorityFeeWei = toBigIntOrNull(chainConfig.minPriorityFeePerGasWei) ?? 0n;
   const effectivePriorityFeeWei = maxBigInt(priorityFeeWei, minPriorityFeeWei);
-  const eip1559BudgetWei = baseFeeWei !== null
-    ? (baseFeeWei * 2n) + effectivePriorityFeeWei
-    : effectivePriorityFeeWei;
+  const eip1559BudgetWei = baseFeeWei !== null ? baseFeeWei * 2n + effectivePriorityFeeWei : effectivePriorityFeeWei;
   const maxFeePerGasWei = applyBps(
     maxBigInt(gasPriceWei, eip1559BudgetWei, effectivePriorityFeeWei),
     chainConfig.maxFeePerGasBufferBps,
@@ -321,7 +357,14 @@ function isNoRoutePlan(plan = null) {
   return plan?.planStatus === "blocked" && plan?.blockedReason === "no_route";
 }
 
-function blockedPreparation({ job, executor = null, blockedReason, plan = null, coverage = null, discretionaryBudget = null }) {
+function blockedPreparation({
+  job,
+  executor = null,
+  blockedReason,
+  plan = null,
+  coverage = null,
+  discretionaryBudget = null,
+}) {
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
@@ -351,7 +394,10 @@ function readyPreparation({ job, executor, plan, coverage, discretionaryBudget =
 }
 
 function executionReasonForJob(job = {}) {
-  return job.executionReason || (String(job.origin || "").startsWith("capital_rebalance") ? "capital_rebalance" : "strategy_execution");
+  return (
+    job.executionReason ||
+    (String(job.origin || "").startsWith("capital_rebalance") ? "capital_rebalance" : "strategy_execution")
+  );
 }
 
 function bridgeQuoteCostUsd(job = {}, plan = null) {
@@ -374,7 +420,8 @@ export function refillExecutorForJob(job = {}) {
   if (job.executionMethod === "same_chain_token_to_native_swap") return "token_dex_experiment";
   if (job.executionMethod === "same_chain_token_to_token_swap") return "token_dex_experiment";
   if (job.executionMethod === "same_chain_native_to_token_swap") return "native_dex_experiment";
-  if (job.executionMethod === "gas_refuel_bridge_gas_zip" && job.type === "refill_native") return "gas_zip_native_refuel";
+  if (job.executionMethod === "gas_refuel_bridge_gas_zip" && job.type === "refill_native")
+    return "gas_zip_native_refuel";
   if (
     job.executionMethod === "cross_chain_bridge_or_swap" &&
     (job.type === "refill_native" || job.type === "refill_token") &&
@@ -391,7 +438,8 @@ export function refillExecutorForJob(job = {}) {
   ) {
     return "gateway_btc_consolidation";
   }
-  if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token") return "gateway_btc_consolidation";
+  if (job.executionMethod === "cross_chain_bridge_or_swap" && job.type === "refill_token")
+    return "gateway_btc_consolidation";
   if (job.executionMethod === "cross_chain_swap_via_btc_intermediate") return "cross_chain_btc_intermediate";
   if (job.executionMethod === "cross_chain_bridge_across") return "across_bridge";
   if (job.executionMethod === "cross_chain_bridge_lifi") return "lifi_bridge";
@@ -514,16 +562,22 @@ export async function buildTreasuryRefillExecutionPlan({
 
   let plan = null;
   if (executor === "token_dex_experiment") {
-    const amount = estimateInputAmountFromSource({ job, source });
-    if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     const tokenToToken = job.executionMethod === "same_chain_token_to_token_swap";
+    const strategyId = tokenToToken ? TOKEN_DEX_EXPERIMENT_STRATEGY_ID : NATIVE_GAS_REFILL_STRATEGY_ID;
+    const amount = estimateInputAmountFromSource({
+      job,
+      source,
+      maxInputUsd: tokenToToken ? perTxCapUsdForStrategy(strategyId) : null,
+    });
+    if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     plan = await buildTokenDexPlanImpl({
       chain: job.chain,
       amount,
       senderAddress,
       inputToken: source.token,
       outputToken: tokenToToken ? job.token : "native",
-      strategyId: tokenToToken ? TOKEN_DEX_EXPERIMENT_STRATEGY_ID : NATIVE_GAS_REFILL_STRATEGY_ID,
+      strategyId,
+      systemEconomics: job.systemEconomics || null,
       executionReason: executionReasonForJob(job),
     });
     const requiredGasBudgetWei = nativeGasBudgetForPlan(plan);
@@ -533,7 +587,11 @@ export async function buildTreasuryRefillExecutionPlan({
       nativeDecimal: destinationNativeDecimal,
       readNativeBalanceImpl,
     });
-    if (requiredGasBudgetWei !== null && currentNativeBalanceWei !== null && currentNativeBalanceWei < requiredGasBudgetWei) {
+    if (
+      requiredGasBudgetWei !== null &&
+      currentNativeBalanceWei !== null &&
+      currentNativeBalanceWei < requiredGasBudgetWei
+    ) {
       return blockedPreparation({
         job,
         executor,
@@ -557,16 +615,19 @@ export async function buildTreasuryRefillExecutionPlan({
     const targetAsset = job.type === "refill_token" ? tokenAsset(job.chain, job.token) : null;
     const stableTokenRefill = job.type === "refill_token" && !isBtcLikeAsset(targetAsset);
     const destinationBtcSettlementToken = gatewayBtcSettlementTokenForChain(job.chain);
-    const amount = job.type === "refill_native"
-      ? estimateInputAmountFromSource({ job, source })
-      : stableTokenRefill
+    const amount =
+      job.type === "refill_native"
         ? estimateInputAmountFromSource({ job, source })
-        : clampAmountToSourceBalance(targetAmount?.toString(), source);
+        : stableTokenRefill
+          ? estimateInputAmountFromSource({ job, source })
+          : clampAmountToSourceBalance(targetAmount?.toString(), source);
     if (job.type === "refill_native" && !amount) {
       return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     }
-    if (job.type !== "refill_native" && !targetAmount) return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
-    if (job.type !== "refill_native" && !amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
+    if (job.type !== "refill_native" && !targetAmount)
+      return blockedPreparation({ job, executor, blockedReason: "target_amount_unavailable" });
+    if (job.type !== "refill_native" && !amount)
+      return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     let gatewayPlan = await buildGatewayBtcPlanImpl({
       srcChain: source.chain,
       dstChain: job.chain,
@@ -592,7 +653,12 @@ export async function buildTreasuryRefillExecutionPlan({
       if (gatewayPlan.planStatus === "ready") {
         const destinationWrappedBtcAmount = gatewayPlan.quote?.outputAmount?.amount;
         if (!destinationWrappedBtcAmount) {
-          return blockedPreparation({ job, executor, blockedReason: "gateway_output_amount_unavailable", plan: gatewayPlan });
+          return blockedPreparation({
+            job,
+            executor,
+            blockedReason: "gateway_output_amount_unavailable",
+            plan: gatewayPlan,
+          });
         }
         destinationDexPlan = await buildTokenDexPlanImpl({
           chain: job.chain,
@@ -613,7 +679,12 @@ export async function buildTreasuryRefillExecutionPlan({
       }
     }
     if (gatewayPlan.planStatus !== "ready") {
-      return blockedPreparation({ job, executor, blockedReason: gatewayPlan.blockedReason || "gateway_step_blocked", plan: gatewayPlan });
+      return blockedPreparation({
+        job,
+        executor,
+        blockedReason: gatewayPlan.blockedReason || "gateway_step_blocked",
+        plan: gatewayPlan,
+      });
     }
     plan = destinationDexPlan
       ? {
@@ -665,9 +736,10 @@ export async function buildTreasuryRefillExecutionPlan({
       discretionaryBudgetBypass: isStrategyRealizedPnlMovement(job),
     });
   } else if (executor === "across_bridge") {
-    const amount = job.type === "refill_native"
-      ? estimateInputAmountFromSource({ job, source })
-      : positiveBigInt(job.targetAmount)?.toString() || null;
+    const amount =
+      job.type === "refill_native"
+        ? estimateInputAmountFromSource({ job, source })
+        : positiveBigInt(job.targetAmount)?.toString() || null;
     if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     const ticker = acrossTickerForToken(source.chain, source.token);
     if (!ticker) return blockedPreparation({ job, executor, blockedReason: "across_ticker_unsupported" });
@@ -681,12 +753,11 @@ export async function buildTreasuryRefillExecutionPlan({
       executionReason: executionReasonForJob(job),
     });
   } else if (executor === "lifi_bridge") {
-    const sameTokenRefill =
-      job.type === "refill_token" &&
-      normalizedToken(source.token) === normalizedToken(job.token);
-    const amount = job.type === "refill_token" && sameTokenRefill
-      ? positiveBigInt(job.targetAmount)?.toString() || null
-      : estimateInputAmountFromSource({ job, source });
+    const sameTokenRefill = job.type === "refill_token" && normalizedToken(source.token) === normalizedToken(job.token);
+    const amount =
+      job.type === "refill_token" && sameTokenRefill
+        ? positiveBigInt(job.targetAmount)?.toString() || null
+        : estimateInputAmountFromSource({ job, source });
     if (!amount) return blockedPreparation({ job, executor, blockedReason: "source_input_amount_unavailable" });
     const lifiResult = await buildLifiBridgePlanWithNativeGasReserve({
       job,
@@ -729,7 +800,12 @@ export async function buildTreasuryRefillExecutionPlan({
         buildLifiBridgePlanImpl,
       });
       if (!fallbackPlan) {
-        return blockedPreparation({ job, executor, blockedReason: step1Plan.blockedReason || "dex_step_blocked", plan: step1Plan });
+        return blockedPreparation({
+          job,
+          executor,
+          blockedReason: step1Plan.blockedReason || "dex_step_blocked",
+          plan: step1Plan,
+        });
       }
       plan = fallbackPlan;
     }
@@ -772,7 +848,12 @@ export async function buildTreasuryRefillExecutionPlan({
         if (step2Plan.planStatus === "ready") {
           const destinationWrappedBtcAmount = step2Plan.quote?.outputAmount?.amount;
           if (!destinationWrappedBtcAmount) {
-            return blockedPreparation({ job, executor, blockedReason: "gateway_output_amount_unavailable", plan: step2Plan });
+            return blockedPreparation({
+              job,
+              executor,
+              blockedReason: "gateway_output_amount_unavailable",
+              plan: step2Plan,
+            });
           }
           step3Plan = await buildTokenDexPlanImpl({
             chain: job.chain,
@@ -783,7 +864,12 @@ export async function buildTreasuryRefillExecutionPlan({
             executionReason: executionReasonForJob(job),
           });
           if (step3Plan.planStatus !== "ready") {
-            return blockedPreparation({ job, executor, blockedReason: step3Plan.blockedReason || "destination_dex_step_blocked", plan: step3Plan });
+            return blockedPreparation({
+              job,
+              executor,
+              blockedReason: step3Plan.blockedReason || "destination_dex_step_blocked",
+              plan: step3Plan,
+            });
           }
         }
       }
@@ -846,7 +932,12 @@ export async function buildTreasuryRefillExecutionPlan({
       }
 
       if (step2Plan.planStatus !== "ready") {
-        return blockedPreparation({ job, executor, blockedReason: step2Plan.blockedReason || "gateway_step_blocked", plan: step2Plan });
+        return blockedPreparation({
+          job,
+          executor,
+          blockedReason: step2Plan.blockedReason || "gateway_step_blocked",
+          plan: step2Plan,
+        });
       }
 
       plan = {
@@ -883,19 +974,25 @@ export async function buildTreasuryRefillExecutionPlan({
     });
   }
 
-  const coverage = executor === "cross_chain_btc_intermediate"
-    ? coverageForPlan({
-        plan: plan.step3?.plan || plan.step2.plan,
-        job,
-        executor: plan.step3 ? "token_dex_experiment" : "gateway_btc_consolidation",
-      })
-    : executor === "gateway_btc_consolidation" && plan.step2?.plan
+  const coverage =
+    executor === "cross_chain_btc_intermediate"
       ? coverageForPlan({
-          plan: plan.step2.plan,
+          plan: plan.step3?.plan || plan.step2.plan,
           job,
-          executor: "token_dex_experiment",
+          executor: plan.step3 ? "token_dex_experiment" : "gateway_btc_consolidation",
         })
-    : coverageForPlan({ plan, job, executor });
+      : executor === "gateway_btc_consolidation" && plan.step2?.plan
+        ? coverageForPlan({
+            plan: plan.step2.plan,
+            job,
+            executor: "token_dex_experiment",
+          })
+        : coverageForPlan({
+            plan,
+            job,
+            executor,
+            allowCapLimitedPartialRefill: tokenDexCapLimitedPartialAllowed({ job, executor }),
+          });
   if (!refillCoverageAcceptable(coverage)) {
     return blockedPreparation({
       job,

@@ -2803,6 +2803,126 @@ test("all-chain autopilot does not retry alternate refill methods after source-d
   );
 });
 
+test("all-chain autopilot preserves signer policy blockers from refill execution failures", async () => {
+  const seen = [];
+  const command = ({ args }) => {
+    const name = args[0];
+    seen.push(args.join(" "));
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "REBALANCE_REQUIRED", actions: [] },
+          capitalPlan: { decision: "REFILL_REQUIRED", summary: { actionCount: 1, blockerCount: 0 } },
+          jobs: {
+            summary: { jobCount: 1, autoQueuedJobCount: 1, manualReviewJobCount: 0 },
+            jobs: [
+              {
+                jobId: "policy-blocked-refill",
+                jobSourceStore: "capital-manager-refill-jobs",
+                autopilotRefillSource: "capital_manager",
+                decision: "REFILL_REQUIRED",
+                status: "planned",
+                requiresManualReview: false,
+                type: "refill_token",
+                chain: "base",
+                asset: "wBTC.OFT",
+                token: "0x0555",
+                targetAmount: "1000",
+                targetAmountDecimal: 0.00001,
+                executionMethod: "same_chain_token_to_token_swap",
+                fundingSource: {
+                  selectionStatus: "ready",
+                  method: "same_chain_token_to_token_swap",
+                  source: { chain: "base", ticker: "USDC" },
+                },
+                candidateMethods: [
+                  {
+                    method: "same_chain_token_to_token_swap",
+                    availability: "ready",
+                    source: { chain: "base", ticker: "USDC" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 0 },
+          jobs: [],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--execute")) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: "",
+          stderr: "",
+          json: {
+            preparation: { status: "ready", executionMethod: "same_chain_token_to_token_swap" },
+            execution: {
+              settlementStatus: "failed",
+              stepResults: [
+                {
+                  id: "approve_input_token",
+                  signerResult: {
+                    status: "rejected",
+                    policy: {
+                      decision: "BLOCK",
+                      blockers: ["expected_net_below_receipt_cost_p90_floor"],
+                    },
+                  },
+                },
+              ],
+              error: { name: "SignerExecutionFailed", message: "Signer did not complete approve_input_token" },
+            },
+            error: { name: "SignerExecutionFailed", message: "Signer did not complete approve_input_token" },
+          },
+          error: { name: "SignerExecutionFailed", message: "Command failed" },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          preparation: { status: "ready", executionMethod: "same_chain_token_to_token_swap" },
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  const report = await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    runCommandImpl: command,
+  });
+
+  assert.equal(report.summary.refillAttemptedCount, 1);
+  assert.equal(report.summary.refillExecutedCount, 0);
+  assert.equal(report.refillExecutions[0].executionBlockedReason, "expected_net_below_receipt_cost_p90_floor");
+  assert.equal(report.refillExecutions[0].blockerTaxonomy, "real_negative_ev");
+  assert.equal(
+    seen.some((args) => args.includes("--execute")),
+    true,
+  );
+});
+
 test("all-chain autopilot separates refill attempts from delivered executions", async () => {
   const command = ({ args }) => {
     const name = args[0];

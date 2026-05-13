@@ -7,7 +7,9 @@ const AUTOMATED_CANARY_BINDINGS = new Set([
 ]);
 
 function normalized(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function sameAddress(left, right) {
@@ -15,7 +17,10 @@ function sameAddress(left, right) {
 }
 
 function latest(items = [], observedAtKey = "observedAt") {
-  return [...items].sort((left, right) => new Date(right?.[observedAtKey] || 0) - new Date(left?.[observedAtKey] || 0))[0] || null;
+  return (
+    [...items].sort((left, right) => new Date(right?.[observedAtKey] || 0) - new Date(left?.[observedAtKey] || 0))[0] ||
+    null
+  );
 }
 
 function unique(values = []) {
@@ -30,6 +35,19 @@ function positiveUnits(raw) {
   }
 }
 
+function bindingEntryTokenAddresses(binding = {}) {
+  return [
+    binding.assetAddress,
+    ...(binding.entryTokenAddresses || []),
+    ...(binding.sdkInputTokenAddresses || []),
+    ...(binding.syInputTokenAddresses || []),
+  ].filter(Boolean);
+}
+
+function matchesAnyAddress(token, addresses = []) {
+  return addresses.some((address) => sameAddress(token, address));
+}
+
 function matchingEntryAssets(queueItem = {}, token = {}) {
   const entryAssets = queueItem.entryAssets || [];
   const tokenTicker = normalized(token.ticker);
@@ -39,30 +57,40 @@ function matchingEntryAssets(queueItem = {}, token = {}) {
 function matchingInventoryToken(queueItem = {}, inventorySnapshot = null) {
   const tokens = inventorySnapshot?.tokens || [];
   const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
+  const entryTokenAddresses = bindingEntryTokenAddresses(binding);
   const underlying = tokens.find((token) => {
     if (token.chain !== queueItem.chain || !positiveUnits(token.actual)) return false;
-    if (sameAddress(token.token, binding.assetAddress)) return true;
+    if (matchesAnyAddress(token.token, entryTokenAddresses)) return true;
     return matchingEntryAssets(queueItem, token);
   });
   if (underlying && !sameAddress(underlying.token, binding.shareTokenAddress)) return underlying;
-  return tokens.find((token) => {
-    if (token.chain !== queueItem.chain || !positiveUnits(token.actual)) return false;
-    if (sameAddress(token.token, binding.assetAddress)) return true;
-    return matchingEntryAssets(queueItem, token) && !sameAddress(token.token, binding.shareTokenAddress);
-  }) || null;
+  return (
+    tokens.find((token) => {
+      if (token.chain !== queueItem.chain || !positiveUnits(token.actual)) return false;
+      if (sameAddress(token.token, binding.assetAddress)) return true;
+      return matchingEntryAssets(queueItem, token) && !sameAddress(token.token, binding.shareTokenAddress);
+    }) || null
+  );
 }
 
 function matchingNativeBalance(queueItem = {}, inventorySnapshot = null) {
-  return (inventorySnapshot?.native || []).find((native) => native.chain === queueItem.chain && positiveUnits(native.actual)) || null;
+  return (
+    (inventorySnapshot?.native || []).find(
+      (native) => native.chain === queueItem.chain && positiveUnits(native.actual),
+    ) || null
+  );
 }
 
 function matchingDeliveredExecution(records = [], opportunityId = null) {
   return latest(
     records.filter((record) => {
       const recordOpportunityId = record?.queueItem?.opportunityId || record?.plan?.opportunityId || null;
-      return String(recordOpportunityId || "") === String(opportunityId || "") &&
+      return (
+        String(recordOpportunityId || "") === String(opportunityId || "") &&
         record?.mode === "execute" &&
-        record?.execution?.settlementStatus === "delivered";
+        (record?.execution?.settlementStatus === "delivered" ||
+          record?.execution?.positionProof?.status === "delivered")
+      );
     }),
   );
 }
@@ -71,16 +99,44 @@ function automatedExecutionSupported(queueItem = {}) {
   return AUTOMATED_CANARY_BINDINGS.has(queueItem?.protocolBindingPlan?.bindingKind || "");
 }
 
-export function latestTreasuryInventoryForAddress(records = [], address = null) {
-  return latest(
-    records.filter((item) => normalized(item?.address) === normalized(address)),
+function bindingKind(queueItem = {}) {
+  return queueItem?.protocolBindingPlan?.bindingKind || "";
+}
+
+function hasOpenPendleExecution(queueItem = {}, execution = null) {
+  return (
+    bindingKind(queueItem) === "pendle_yt_buy_sell_redeem" &&
+    execution &&
+    !execution.closedAt &&
+    execution?.execution?.positionProof?.status === "delivered"
   );
+}
+
+function matchingOpenPortfolioPosition(records = [], queueItem = {}) {
+  const latestByPosition = new Map();
+  for (const record of records || []) {
+    if (String(record?.opportunityId || "") !== String(queueItem?.opportunityId || "")) continue;
+    if (record?.chain && record.chain !== queueItem.chain) continue;
+    if (record?.bindingKind && record.bindingKind !== bindingKind(queueItem)) continue;
+    const positionId = record?.positionId || record?.entryTxHash || record?.txHash || null;
+    if (!positionId) continue;
+    const previous = latestByPosition.get(positionId);
+    const previousTime = previous ? new Date(previous.observedAt || 0).getTime() : 0;
+    const currentTime = new Date(record.observedAt || 0).getTime();
+    if (!previous || currentTime >= previousTime) latestByPosition.set(positionId, record);
+  }
+  return latest([...latestByPosition.values()].filter((record) => record?.status === "open"));
+}
+
+export function latestTreasuryInventoryForAddress(records = [], address = null) {
+  return latest(records.filter((item) => normalized(item?.address) === normalized(address)));
 }
 
 export function buildMerklCanaryExecutionReadiness({
   queueItem,
   inventorySnapshot = null,
   canaryExecutions = [],
+  positionRecords = [],
   now = new Date().toISOString(),
   cooldownMs = DEFAULT_EXECUTION_COOLDOWN_MS,
 } = {}) {
@@ -89,6 +145,8 @@ export function buildMerklCanaryExecutionReadiness({
   const matchedToken = matchingInventoryToken(queueItem, inventorySnapshot);
   const matchedNative = matchingNativeBalance(queueItem, inventorySnapshot);
   const recentExecution = matchingDeliveredExecution(canaryExecutions, queueItem.opportunityId);
+  const openPendleExecution = hasOpenPendleExecution(queueItem, recentExecution);
+  const openPortfolioPosition = matchingOpenPortfolioPosition(positionRecords, queueItem);
   const executorSupported = automatedExecutionSupported(queueItem);
   const cooldownUntil = recentExecution
     ? new Date(new Date(recentExecution.observedAt).getTime() + Math.max(0, Number(cooldownMs) || 0)).toISOString()
@@ -103,6 +161,8 @@ export function buildMerklCanaryExecutionReadiness({
   if (inventorySnapshot && !matchedToken) reasons.push("entry_asset_unavailable");
   if (inventorySnapshot && !matchedNative) reasons.push("native_gas_unavailable");
   if (cooldownActive) reasons.push("recent_execution_cooldown");
+  if (openPendleExecution) reasons.push("open_pendle_position_active");
+  if (openPortfolioPosition) reasons.push("open_position_active");
 
   if (!executorSupported) {
     status = "executor_missing";
@@ -114,6 +174,8 @@ export function buildMerklCanaryExecutionReadiness({
     status = "native_gas_missing";
   } else if (cooldownActive) {
     status = "cooldown_active";
+  } else if (openPendleExecution || openPortfolioPosition) {
+    status = "open_position_active";
   } else {
     status = "inventory_ready";
   }
@@ -144,6 +206,13 @@ export function buildMerklCanaryExecutionReadiness({
     latestDeliveredAt: recentExecution?.observedAt || null,
     cooldownUntil,
     cooldownActive,
+    openPosition: openPortfolioPosition
+      ? {
+          positionId: openPortfolioPosition.positionId || null,
+          entryTxHash: openPortfolioPosition.entryTxHash || openPortfolioPosition.txHash || null,
+          observedAt: openPortfolioPosition.observedAt || null,
+        }
+      : null,
   };
 }
 
@@ -152,7 +221,9 @@ export function applyMerklCanaryExecutionReadiness(queueItem, options = {}) {
     queueItem,
     ...options,
   });
-  const capabilityGaps = (queueItem?.capabilityGaps || []).filter((gap) => gap !== "current_inventory_entry_route_required");
+  const capabilityGaps = (queueItem?.capabilityGaps || []).filter(
+    (gap) => gap !== "current_inventory_entry_route_required",
+  );
 
   if (executionReadiness.status === "inventory_missing" || executionReadiness.status === "inventory_unknown") {
     capabilityGaps.unshift("current_inventory_entry_route_required");
@@ -169,12 +240,13 @@ export function applyMerklCanaryExecutionReadiness(queueItem, options = {}) {
   if (executionReadiness.status === "cooldown_active") {
     capabilityGaps.unshift("recent_execution_cooldown_active");
   }
+  if (executionReadiness.status === "open_position_active") {
+    capabilityGaps.unshift("open_position_active");
+  }
 
   return {
     ...queueItem,
-    queueStatus: executionReadiness.status === "inventory_ready"
-      ? "ready_for_tiny_live_canary"
-      : queueItem.queueStatus,
+    queueStatus: executionReadiness.status === "inventory_ready" ? "ready_for_tiny_live_canary" : queueItem.queueStatus,
     capabilityGaps: unique(capabilityGaps),
     executionReadiness,
   };

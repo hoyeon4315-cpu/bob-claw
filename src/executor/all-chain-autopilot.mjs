@@ -17,11 +17,7 @@ import {
   buildGatewayBtcConsolidationPlan,
   executeGatewayBtcConsolidationPlan,
 } from "./helpers/gateway-btc-consolidation.mjs";
-import {
-  refillCandidateExecutable,
-  refillExecutionCandidates,
-  jobWithCandidate,
-} from "./helpers/refill-fallback.mjs";
+import { refillCandidateExecutable, refillExecutionCandidates, jobWithCandidate } from "./helpers/refill-fallback.mjs";
 import { buildSignerAuditRecord, appendSignerAuditRecord } from "./signer/audit-log.mjs";
 import { buildIdleInventoryConsolidationPlan } from "./treasury/idle-inventory-trigger.mjs";
 
@@ -54,10 +50,7 @@ const DISCRETIONARY_REFILL_METHOD_TO_CATEGORY = Object.freeze({
   cross_chain_bridge_lifi: "bridge",
   cross_chain_swap_via_btc_intermediate: "consolidation",
 });
-const SOURCE_NATIVE_GAS_BLOCKERS = new Set([
-  "insufficient_funds",
-  "insufficient_native_gas_balance",
-]);
+const SOURCE_NATIVE_GAS_BLOCKERS = new Set(["insufficient_funds", "insufficient_native_gas_balance"]);
 const SOURCE_NATIVE_GAS_CONSUMING_METHODS = new Set([
   "cross_chain_bridge_or_swap",
   "cross_chain_swap_via_btc_intermediate",
@@ -151,7 +144,9 @@ function timestampMs(value) {
 }
 
 function normalizeReasonText(reason = null) {
-  return String(reason || "").trim().toLowerCase();
+  return String(reason || "")
+    .trim()
+    .toLowerCase();
 }
 
 function refillBlockerTaxonomy(reason = null) {
@@ -168,7 +163,13 @@ function refillBlockerTaxonomy(reason = null) {
   if (MISSING_CAPABILITY_REFILL_BLOCKERS.has(text) || text.includes("executor_missing")) {
     return "missing_executor_capability";
   }
-  if (text.includes("inventory_not_live") || text.includes("refresh_error") || text.includes("stale") || text.includes("freshness") || text.includes("price")) {
+  if (
+    text.includes("inventory_not_live") ||
+    text.includes("refresh_error") ||
+    text.includes("stale") ||
+    text.includes("freshness") ||
+    text.includes("price")
+  ) {
     return "missing_price_or_freshness_evidence";
   }
   if (text.includes("unknown_token") || text.includes("unapproved") || text.includes("whitelist")) {
@@ -177,7 +178,12 @@ function refillBlockerTaxonomy(reason = null) {
   if (text.includes("expected_net_unmeasured") || text.includes("cost_unmeasured")) {
     return "expected_net_unmeasured";
   }
-  if (text.includes("unprofitable") || text.includes("negative_ev") || text.includes("economically_unjustified") || text.includes("below_receipt_cost")) {
+  if (
+    text.includes("unprofitable") ||
+    text.includes("negative_ev") ||
+    text.includes("economically_unjustified") ||
+    text.includes("below_receipt_cost")
+  ) {
     return "real_negative_ev";
   }
   if (OPERATOR_ACTION_REFILL_BLOCKERS.has(text) || text.includes("operator")) {
@@ -189,13 +195,27 @@ function refillBlockerTaxonomy(reason = null) {
 }
 
 function refillImprovementType(taxonomy = null) {
-  if (["route_specific_failure_lock", "method_specific_failure_lock", "missing_executor_capability", "false_or_stale_blocker"].includes(taxonomy)) {
+  if (
+    [
+      "route_specific_failure_lock",
+      "method_specific_failure_lock",
+      "missing_executor_capability",
+      "false_or_stale_blocker",
+    ].includes(taxonomy)
+  ) {
     return "type_1_fixable_plumbing_blocker";
   }
   if (["missing_price_or_freshness_evidence", "expected_net_unmeasured"].includes(taxonomy)) {
     return "type_2_fixable_evidence_blocker";
   }
-  if (["system_wide_safety_blocker", "asset_specific_policy_blocker", "unknown_or_unapproved_asset", "real_negative_ev"].includes(taxonomy)) {
+  if (
+    [
+      "system_wide_safety_blocker",
+      "asset_specific_policy_blocker",
+      "unknown_or_unapproved_asset",
+      "real_negative_ev",
+    ].includes(taxonomy)
+  ) {
     return "type_3_real_policy_profitability_or_safety_blocker";
   }
   return "type_4_external_or_operator_blocker";
@@ -241,7 +261,8 @@ function selectedRefillCandidate(job = {}, method = null) {
 }
 
 function refillSourceAsset(job = {}, selectedCandidate = null) {
-  return selectedCandidate?.source?.asset ||
+  return (
+    selectedCandidate?.source?.asset ||
     selectedCandidate?.source?.ticker ||
     selectedCandidate?.source?.symbol ||
     selectedCandidate?.source?.token ||
@@ -249,7 +270,8 @@ function refillSourceAsset(job = {}, selectedCandidate = null) {
     job.fundingSource?.source?.ticker ||
     job.fundingSource?.source?.symbol ||
     job.fundingSource?.source?.token ||
-    null;
+    null
+  );
 }
 
 function refillSourceChain(job = {}, selectedCandidate = null) {
@@ -329,11 +351,15 @@ export async function defaultRunCommand({ args, cwd = process.cwd(), timeoutMs =
     ok: false,
     exitCode,
     stdout,
-    stderr: stderr || (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
+    stderr:
+      stderr ||
+      (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
     json: parseJson(stdout),
     error: {
       name: "CommandFailed",
-      message: stderr || (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
+      message:
+        stderr ||
+        (result.signal ? `Command terminated by signal ${result.signal}` : `Command exited with code ${exitCode}`),
     },
   };
 }
@@ -345,7 +371,10 @@ function commandStep(name, args, result) {
     args,
     ok: result.ok || isBlocked,
     exitCode: result.exitCode,
-    stderrSummary: String(result.stderr || "").split("\n").filter(Boolean).slice(-5),
+    stderrSummary: String(result.stderr || "")
+      .split("\n")
+      .filter(Boolean)
+      .slice(-5),
     json: result.json || null,
     error: result.error && !isBlocked ? result.error : null,
   };
@@ -402,10 +431,10 @@ function refillPreparationReady(json = null) {
 function refillPreviewBlockedReason(result = {}) {
   return normalizeRefillBlockedReason(
     result?.json?.preparation?.blockedReason ||
-    result?.json?.event?.blockers?.[0] ||
-    result?.json?.blockers?.[0] ||
-    classifyRefillRouteError(result) ||
-    null,
+      result?.json?.event?.blockers?.[0] ||
+      result?.json?.blockers?.[0] ||
+      classifyRefillRouteError(result) ||
+      null,
   );
 }
 
@@ -477,7 +506,9 @@ function refillPreviewStatus(result = {}) {
 }
 
 function refillExecutionStatus(result = {}) {
-  return result?.json?.execution?.settlementStatus || result?.json?.outcomeEvent?.status || result?.json?.status || null;
+  return (
+    result?.json?.execution?.settlementStatus || result?.json?.outcomeEvent?.status || result?.json?.status || null
+  );
 }
 
 function refillDeliveredStatus(status = null) {
@@ -505,17 +536,14 @@ function forcedRefillMethodArgs(job = {}, activeMethod = null) {
 }
 
 function commandErrorText(result = {}) {
-  return [
-    result?.error?.message,
-    result?.stderr,
-    result?.stdout,
-  ].filter(Boolean).join("\n");
+  return [result?.error?.message, result?.stderr, result?.stdout].filter(Boolean).join("\n");
 }
 
 function classifyRefillRouteError(result = {}) {
   const text = commandErrorText(result).toLowerCase();
   if (!text) return null;
-  if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance/u.test(text)) return "insufficient_native_gas_balance";
+  if (/insufficient_native_balance_for_gas|insufficient_native_gas_balance/u.test(text))
+    return "insufficient_native_gas_balance";
   if (/pair unsupported/u.test(text)) return "bridge_pair_unsupported";
   if (/lifi.*quote.*reject|quote.*reject/u.test(text)) return "lifi_quote_rejected";
   if (/no[_ ]route|route.*unsupported|unsupported.*route/u.test(text)) return "no_route";
@@ -534,6 +562,21 @@ function normalizeRefillBlockedReason(reason = null) {
     return "insufficient_native_gas_balance";
   }
   return reason;
+}
+
+function signerPolicyBlockerReasonFromExecution(result = {}) {
+  const stepResults = result?.json?.execution?.stepResults;
+  if (!Array.isArray(stepResults)) return null;
+  for (const step of stepResults) {
+    const signerResult = step?.signerResult || {};
+    if (signerResult.status !== "rejected" && signerResult.policy?.decision !== "BLOCK") continue;
+    const blockers = [
+      ...(Array.isArray(signerResult.policy?.blockers) ? signerResult.policy.blockers : []),
+      ...(Array.isArray(signerResult.lifecycle?.blockers) ? signerResult.lifecycle.blockers : []),
+    ].filter(Boolean);
+    if (blockers.length > 0) return blockers.join(",");
+  }
+  return null;
 }
 
 function blocksRefillFallbackForSourceNativeGas({ reason, activeMethod } = {}) {
@@ -564,14 +607,15 @@ function refillExecutionBlockedReason(result = {}) {
   const status = refillExecutionStatus(result);
   return normalizeRefillBlockedReason(
     result?.json?.outcomeEvent?.blockers?.[0] ||
-    result?.json?.event?.blockers?.[0] ||
-    result?.json?.blockers?.[0] ||
-    result?.json?.execution?.error?.message ||
-    result?.json?.error?.message ||
-    classifyRefillRouteError(result) ||
-    (!refillDeliveredStatus(status) ? status : null) ||
-    result?.error?.message ||
-    null,
+      result?.json?.event?.blockers?.[0] ||
+      result?.json?.blockers?.[0] ||
+      signerPolicyBlockerReasonFromExecution(result) ||
+      result?.json?.execution?.error?.message ||
+      result?.json?.error?.message ||
+      classifyRefillRouteError(result) ||
+      (!refillDeliveredStatus(status) ? status : null) ||
+      result?.error?.message ||
+      null,
   );
 }
 
@@ -615,15 +659,15 @@ function compactRefillExecution(job, preview, execution = null) {
     `--job-id=${job.jobId}`,
     selectedExecutionMethod ? `--method=${selectedExecutionMethod}` : null,
     "--json",
-  ].filter(Boolean).join(" ");
-  const resetReasonScope = [
-    "operator_reviewed_scoped_refill_blocker",
-    job.chain,
-    job.asset,
-    selectedExecutionMethod,
-  ].filter(Boolean).join("_");
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const resetReasonScope = ["operator_reviewed_scoped_refill_blocker", job.chain, job.asset, selectedExecutionMethod]
+    .filter(Boolean)
+    .join("_");
   const scopedSafeResetCommand =
-    (taxonomy === "false_or_stale_blocker" || primaryBlocker === "max_consecutive_failures_reached") && (job.strategyId || job.strategy || job.familyId)
+    (taxonomy === "false_or_stale_blocker" || primaryBlocker === "max_consecutive_failures_reached") &&
+    (job.strategyId || job.strategy || job.familyId)
       ? `npm run executor:reset-consecutive-failures -- --strategy-id=${job.strategyId || job.strategy || job.familyId} --chain=${job.chain} --reason=${resetReasonScope}`
       : null;
   const nextOperatorAction =
@@ -723,7 +767,8 @@ function compactMerkl(report = null) {
     blockedReason: report?.blockedReason || null,
     readyCount: report?.summary?.readyCount ?? 0,
     selectedCount: report?.summary?.selectedCount ?? (report?.summary?.selectedChain ? 1 : 0),
-    selectedChains: report?.summary?.selectedChains || (report?.summary?.selectedChain ? [report.summary.selectedChain] : []),
+    selectedChains:
+      report?.summary?.selectedChains || (report?.summary?.selectedChain ? [report.summary.selectedChain] : []),
     previewReadyCount: report?.summary?.previewReadyCount ?? null,
     deliveredCount: report?.summary?.deliveredCount ?? null,
     blockedCount: report?.summary?.blockedCount ?? null,
@@ -775,12 +820,18 @@ function compactDestinationAllocator(report = null) {
   };
 }
 
-function compactRepresentativeExecutionCoverage({ merklQueue = null, destinationAllocator = null, destinationRepresentative = null } = {}) {
+function compactRepresentativeExecutionCoverage({
+  merklQueue = null,
+  destinationAllocator = null,
+  destinationRepresentative = null,
+} = {}) {
   const merklQueuedChains = new Set(Object.keys(merklQueue?.summary?.byChain || {}));
   const merklMissingChains = merklQueue?.summary?.representativeCoverage?.missingChains || [];
   const representativeCoveredChains = new Set(
     (destinationRepresentative?.candidates || [])
-      .filter((candidate) => candidate.status === "covered" || candidate.status === "ready" || candidate.status === "queued")
+      .filter(
+        (candidate) => candidate.status === "covered" || candidate.status === "ready" || candidate.status === "queued",
+      )
       .map((candidate) => candidate.chain)
       .filter(Boolean),
   );
@@ -797,11 +848,12 @@ function compactRepresentativeExecutionCoverage({ merklQueue = null, destination
     allocatorReviewOnlyChains,
     allocatorReadyButNotQueuedChains,
     topAllocatorReadyButNotQueuedChain: allocatorReadyButNotQueuedChains[0] || null,
-    topAction: allocatorReadyButNotQueuedChains.length > 0
-      ? "wire_destination_allocator_candidate_to_protocol_canary_or_direct_executor"
-      : merklMissingChains.length > 0
-        ? "source_or_build_representative_opportunity"
-        : "monitor_active_representative_receipts",
+    topAction:
+      allocatorReadyButNotQueuedChains.length > 0
+        ? "wire_destination_allocator_candidate_to_protocol_canary_or_direct_executor"
+        : merklMissingChains.length > 0
+          ? "source_or_build_representative_opportunity"
+          : "monitor_active_representative_receipts",
   };
 }
 
@@ -816,34 +868,30 @@ function compactDestinationRepresentative(report = null) {
     selectedChain: report?.summary?.selected?.chain || null,
     selectedProtocolId: report?.summary?.selected?.protocolId || null,
     proofStatus: report?.summary?.proofStatus || report?.execution?.destinationProof?.status || null,
-    txHashes: report?.summary?.txHashes || (report?.execution?.stepResults || [])
-      .map((step) => step.signerResult?.broadcast?.txHash)
-      .filter(Boolean),
+    txHashes:
+      report?.summary?.txHashes ||
+      (report?.execution?.stepResults || []).map((step) => step.signerResult?.broadcast?.txHash).filter(Boolean),
   };
 }
 
 function compactPortfolio(report = null) {
   const plan = report?.plan || report?.allocator?.plan || null;
-  const graduationCanaryRequests = plan?.graduationCanaryRequests
-    || report?.graduationCanaryRequests
-    || [];
-  const topGraduationCanaryRequest = graduationCanaryRequests[0]
-    || report?.allocator?.topGraduationCanaryRequest
-    || null;
+  const graduationCanaryRequests = plan?.graduationCanaryRequests || report?.graduationCanaryRequests || [];
+  const topGraduationCanaryRequest =
+    graduationCanaryRequests[0] || report?.allocator?.topGraduationCanaryRequest || null;
   return {
     status: report?.status || null,
     blockedReason: report?.blockedReason || null,
     exit: report?.exit || null,
     allocator: report?.allocator || null,
-    graduationCanaryRequestCount: plan?.summary?.graduationCanaryRequestCount
-      ?? report?.allocator?.graduationCanaryRequestCount
-      ?? report?.summary?.graduationCanaryRequestCount
-      ?? graduationCanaryRequests.length,
+    graduationCanaryRequestCount:
+      plan?.summary?.graduationCanaryRequestCount ??
+      report?.allocator?.graduationCanaryRequestCount ??
+      report?.summary?.graduationCanaryRequestCount ??
+      graduationCanaryRequests.length,
     topGraduationCanaryRequest,
-    idleCapitalReport: plan?.idleCapitalReport
-      || report?.allocator?.idleCapitalReport
-      || report?.idleCapitalReport
-      || null,
+    idleCapitalReport:
+      plan?.idleCapitalReport || report?.allocator?.idleCapitalReport || report?.idleCapitalReport || null,
   };
 }
 
@@ -859,10 +907,16 @@ function compactCanarySweep(report = null) {
     executionBudget: report?.summary?.executionBudget || null,
     deliveredCount: report?.summary?.deliveredCount ?? 0,
     blockedCount: report?.summary?.blockedCount ?? 0,
-    chainsTouched: [...new Set((report?.results || [])
-      .filter((item) => item.execution?.lastTxHash || item.status === "preview_ready" || item.status === "delivered")
-      .map((item) => item.candidate?.chain)
-      .filter(Boolean))],
+    chainsTouched: [
+      ...new Set(
+        (report?.results || [])
+          .filter(
+            (item) => item.execution?.lastTxHash || item.status === "preview_ready" || item.status === "delivered",
+          )
+          .map((item) => item.candidate?.chain)
+          .filter(Boolean),
+      ),
+    ],
   };
 }
 
@@ -888,7 +942,9 @@ function compactRadarBoard(report = null) {
 }
 
 function receiptDiscretionaryCategory(entry = {}) {
-  const kind = String(entry?.kind || entry?.receiptKind || entry?.routeKind || "").trim().toLowerCase();
+  const kind = String(entry?.kind || entry?.receiptKind || entry?.routeKind || "")
+    .trim()
+    .toLowerCase();
   return DISCRETIONARY_RECEIPT_KIND_TO_CATEGORY[kind] || null;
 }
 
@@ -919,17 +975,17 @@ function refillDiscretionaryIntent({ job = {}, preview = null, category = null, 
   const discretionaryBudget = preparation.discretionaryBudget || {};
   const plan = preparation.plan || {};
   const classification =
-    job?.movementBudget?.classification ||
-    job?.classification ||
-    job?.strategyPolicy?.classification ||
-    null;
-  const discretionaryBudgetUsd = [
-    discretionaryBudget.quoteCostUsd,
-    discretionaryBudget.bridgeQuoteCostUsd,
-    job?.movementBudget?.bridgeQuoteCostUsd,
-    job?.fundingSource?.expectedExecutionRefillCostUsd,
-    category === "refuel" ? plan?.amountUsd : null,
-  ].map(finiteNumber).find(Number.isFinite) ?? null;
+    job?.movementBudget?.classification || job?.classification || job?.strategyPolicy?.classification || null;
+  const discretionaryBudgetUsd =
+    [
+      discretionaryBudget.quoteCostUsd,
+      discretionaryBudget.bridgeQuoteCostUsd,
+      job?.movementBudget?.bridgeQuoteCostUsd,
+      job?.fundingSource?.expectedExecutionRefillCostUsd,
+      category === "refuel" ? plan?.amountUsd : null,
+    ]
+      .map(finiteNumber)
+      .find(Number.isFinite) ?? null;
   return {
     discretionaryBudgetCategory: category,
     discretionaryBudgetUsd,
@@ -972,8 +1028,8 @@ function compactStrategyDispatch(report = null, { capitalDispatchReadiness = nul
     dispatchId: report?.record?.dispatchId || null,
     batchStatus: report?.record?.batchStatus || null,
     selectedCount: report?.record?.selectedCount ?? 0,
-    successCount: currentResults.length ? currentSucceeded : report?.summary?.successCount ?? null,
-    failedCount: currentResults.length ? currentFailed : report?.summary?.failureCount ?? null,
+    successCount: currentResults.length ? currentSucceeded : (report?.summary?.successCount ?? null),
+    failedCount: currentResults.length ? currentFailed : (report?.summary?.failureCount ?? null),
     liveEligibleCount: report?.executionSurfaces?.summary?.liveEligibleCount ?? null,
     missingExecutorCount: report?.executionSurfaces?.summary?.missingExecutorCount ?? null,
     orchestrationSource: report?.record?.orchestration?.source || null,
@@ -991,7 +1047,10 @@ function compactStrategyDispatch(report = null, { capitalDispatchReadiness = nul
 
 function compactWrappedBtcHandoff(preview = null, execution = null) {
   const active = execution?.json || preview?.json || null;
-  const executionStatus = execution?.json?.execution?.handoffStatus || execution?.json?.execution?.conversionExecution?.settlementStatus || null;
+  const executionStatus =
+    execution?.json?.execution?.handoffStatus ||
+    execution?.json?.execution?.conversionExecution?.settlementStatus ||
+    null;
   return {
     previewStatus: preview?.json?.plan?.handoffStatus || null,
     amountSats: preview?.json?.plan?.amountSats || null,
@@ -1013,7 +1072,8 @@ function compactPayback(report = null) {
     status: report?.status || null,
     reason: report?.reason || null,
     plannedPaybackSats: report?.compositePlan?.plannedPaybackSats ?? null,
-    pendingCarrySats: report?.decision?.snapshot?.pendingDeferredSats ?? report?.decision?.snapshot?.pendingCarrySats ?? null,
+    pendingCarrySats:
+      report?.decision?.snapshot?.pendingDeferredSats ?? report?.decision?.snapshot?.pendingCarrySats ?? null,
     nextAction: report?.nextAction || null,
   };
 }
@@ -1075,7 +1135,9 @@ function stepIsRecoverable(step, steps) {
     return steps.some((item) => item.name === "treasury_refill_plan_stored_snapshot_fallback" && item.ok && item.json);
   }
   if (step.name === "capital_manager_refill_plan") {
-    return steps.some((item) => item.name === "capital_manager_refill_plan_stored_snapshot_fallback" && item.ok && item.json);
+    return steps.some(
+      (item) => item.name === "capital_manager_refill_plan_stored_snapshot_fallback" && item.ok && item.json,
+    );
   }
   if (step.name === "inbound_inventory_watcher") {
     const stderr = step.stderrSummary?.join("\n") || "";
@@ -1091,7 +1153,8 @@ function stepIsRecoverable(step, steps) {
     ].includes(refillPreviewBlockedReason(step));
   }
   if (step.name?.startsWith("treasury_refill_execute:")) {
-    const executionStatus = step.json?.outcomeEvent?.status || step.json?.execution?.settlementStatus || step.json?.status || null;
+    const executionStatus =
+      step.json?.outcomeEvent?.status || step.json?.execution?.settlementStatus || step.json?.status || null;
     return ["blocked", "failed", "unproven_timeout", "near_match_timeout"].includes(executionStatus);
   }
   if (step.name === "live_canary_sweep") {
@@ -1131,9 +1194,13 @@ function wrappedBtcLoopSurface(report = null) {
 
 function tokenInventoryItem(inventory = null, { chain, token } = {}) {
   const normalizedToken = String(token || "").toLowerCase();
-  return (inventory?.tokens || []).find(
-    (item) => String(item?.chain || "").toLowerCase() === chain && String(item?.token || "").toLowerCase() === normalizedToken,
-  ) || null;
+  return (
+    (inventory?.tokens || []).find(
+      (item) =>
+        String(item?.chain || "").toLowerCase() === chain &&
+        String(item?.token || "").toLowerCase() === normalizedToken,
+    ) || null
+  );
 }
 
 function wrappedBtcHandoffAmountSats(executionSurfaces = null, inventory = null) {
@@ -1152,15 +1219,20 @@ function wrappedBtcHandoffAmountSats(executionSurfaces = null, inventory = null)
   const evidence = strategy?.evidence || {};
   const requiredUnits = evidence.baseCbBtcRequiredUnits ? BigInt(evidence.baseCbBtcRequiredUnits) : null;
   const actualUnits = BigInt(evidence.baseCbBtcCollateralUnits || "0");
-  const tinyCapUsd = Number(evidence.livePerTradeCapUsd || getStrategyCaps(WRAPPED_BTC_LOOP_STRATEGY_ID)?.caps?.tinyLivePerTxUsd || 25);
+  const tinyCapUsd = Number(
+    evidence.livePerTradeCapUsd || getStrategyCaps(WRAPPED_BTC_LOOP_STRATEGY_ID)?.caps?.tinyLivePerTxUsd || 25,
+  );
   const priceUsd = Number(evidence.baseCbBtcPriceUsd || source?.priceUsd || 0);
   const fallbackRequiredUnits = priceUsd > 0 ? BigInt(Math.ceil((tinyCapUsd / priceUsd) * 100_000_000)) : 34_000n;
   const resolvedRequiredUnits = requiredUnits || fallbackRequiredUnits;
   if (actualUnits >= resolvedRequiredUnits) return null;
   const deficit = resolvedRequiredUnits - actualUnits;
   const slippageBuffer = (resolvedRequiredUnits + 99n) / 100n;
-  const minHandoffUnits = priceUsd > 0 ? BigInt(Math.ceil((MIN_WRAPPED_BTC_HANDOFF_USD / priceUsd) * 100_000_000)) : 7_000n;
-  const amount = [deficit + slippageBuffer, availableSourceUnits].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))[0];
+  const minHandoffUnits =
+    priceUsd > 0 ? BigInt(Math.ceil((MIN_WRAPPED_BTC_HANDOFF_USD / priceUsd) * 100_000_000)) : 7_000n;
+  const amount = [deficit + slippageBuffer, availableSourceUnits].sort((left, right) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  )[0];
   if (amount < minHandoffUnits) return null;
   return amount > 0n ? amount.toString() : null;
 }
@@ -1199,7 +1271,9 @@ function positiveBigIntOrNull(value) {
 }
 
 function normalizedToken(value = "") {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function sourceIsNative(source = {}) {
@@ -1233,7 +1307,14 @@ function refillExecutionStepResults(execution = null) {
     if (!item || typeof item !== "object" || seen.has(item)) continue;
     seen.add(item);
     if (Array.isArray(item.stepResults)) stepResults.push(...item.stepResults);
-    for (const key of ["step1Result", "step2Result", "step3Result", "sourceExecution", "bridgeExecution", "destinationExecution"]) {
+    for (const key of [
+      "step1Result",
+      "step2Result",
+      "step3Result",
+      "sourceExecution",
+      "bridgeExecution",
+      "destinationExecution",
+    ]) {
       if (item[key] && typeof item[key] === "object") stack.push(item[key]);
     }
   }
@@ -1280,11 +1361,7 @@ function refillSourceReservationAmount(job = {}) {
   const targetAmount = positiveBigIntOrNull(job?.targetAmount);
   const sourceActual = positiveBigIntOrNull(source?.actual);
   if (!sourceActual) return null;
-  if (
-    job.type === "refill_token" &&
-    targetAmount &&
-    normalizedToken(source?.token) === normalizedToken(job?.token)
-  ) {
+  if (job.type === "refill_token" && targetAmount && normalizedToken(source?.token) === normalizedToken(job?.token)) {
     return targetAmount;
   }
   if (
@@ -1331,7 +1408,11 @@ function reserveRefillSource(reservations, reservation) {
 
 function refillSourceDebitLikely(execution = null) {
   const status = refillExecutionStatus(execution);
-  return refillDeliveredStatus(status) || status === "source_confirmed_only" || refillExecutionHasSourceDebitBroadcast(execution);
+  return (
+    refillDeliveredStatus(status) ||
+    status === "source_confirmed_only" ||
+    refillExecutionHasSourceDebitBroadcast(execution)
+  );
 }
 
 function refillSourceDebitIndeterminate(execution = null, { activeMethod = null } = {}) {
@@ -1386,12 +1467,13 @@ function mergeAutopilotRefillJobs(jobGroups = []) {
       }
     }
   }
-  return [...merged.values()].sort((left, right) =>
-    refillPriorityRank(left) - refillPriorityRank(right) ||
-    refillSourcePriority(left.autopilotRefillSource) - refillSourcePriority(right.autopilotRefillSource) ||
-    String(left.chain || "").localeCompare(String(right.chain || "")) ||
-    String(left.asset || "").localeCompare(String(right.asset || "")) ||
-    String(left.jobId || "").localeCompare(String(right.jobId || "")),
+  return [...merged.values()].sort(
+    (left, right) =>
+      refillPriorityRank(left) - refillPriorityRank(right) ||
+      refillSourcePriority(left.autopilotRefillSource) - refillSourcePriority(right.autopilotRefillSource) ||
+      String(left.chain || "").localeCompare(String(right.chain || "")) ||
+      String(left.asset || "").localeCompare(String(right.asset || "")) ||
+      String(left.jobId || "").localeCompare(String(right.jobId || "")),
   );
 }
 
@@ -1425,7 +1507,10 @@ async function writeAutopilotLatest(dataDir, report) {
 }
 
 async function writeAutopilotLatestCompleted(dataDir, report) {
-  await writeTextIfChanged(join(dataDir, "all-chain-autopilot-latest-completed.json"), `${safeJsonStringify(report, 2)}\n`);
+  await writeTextIfChanged(
+    join(dataDir, "all-chain-autopilot-latest-completed.json"),
+    `${safeJsonStringify(report, 2)}\n`,
+  );
 }
 
 async function writeAutopilotCompletedArtifacts(dataDir, report) {
@@ -1460,7 +1545,8 @@ async function defaultReadWalletSnapshot({ cwd = process.cwd() } = {}) {
 function walletSnapshotAddress(walletSnapshot = {}) {
   const evmAddressPattern = /^0x[a-fA-F0-9]{40}$/u;
   const firstValidEvmAddress = (values = []) =>
-    values.map((value) => (typeof value === "string" ? value.trim() : ""))
+    values
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
       .find((value) => evmAddressPattern.test(value)) || null;
   const direct = firstValidEvmAddress([
     walletSnapshot.walletAddress,
@@ -1469,7 +1555,8 @@ function walletSnapshotAddress(walletSnapshot = {}) {
     walletSnapshot.address,
   ]);
   if (direct) return direct;
-  const metadata = walletSnapshot.metadata || walletSnapshot.summary || walletSnapshot.wallet || walletSnapshot.owner || {};
+  const metadata =
+    walletSnapshot.metadata || walletSnapshot.summary || walletSnapshot.wallet || walletSnapshot.owner || {};
   const nested = firstValidEvmAddress([
     metadata.walletAddress,
     metadata.ownerAddress,
@@ -1477,8 +1564,14 @@ function walletSnapshotAddress(walletSnapshot = {}) {
     metadata.address,
   ]);
   if (nested) return nested;
-  const itemAddress = [...(walletSnapshot.items || []), ...(walletSnapshot.all || []), ...(walletSnapshot.walletItems || [])]
-    .map((item) => firstValidEvmAddress([item?.ownerAddress, item?.walletAddress, item?.owner?.address, item?.wallet?.address]))
+  const itemAddress = [
+    ...(walletSnapshot.items || []),
+    ...(walletSnapshot.all || []),
+    ...(walletSnapshot.walletItems || []),
+  ]
+    .map((item) =>
+      firstValidEvmAddress([item?.ownerAddress, item?.walletAddress, item?.owner?.address, item?.wallet?.address]),
+    )
     .find(Boolean);
   if (itemAddress) return itemAddress;
   return null;
@@ -1810,9 +1903,11 @@ export async function runAllChainAutopilot({
   let walletSnapshot = null;
   try {
     walletSnapshot = await readWalletSnapshotImpl({ cwd });
-    const treasuryPolicy = validateTreasuryPolicy(buildDefaultTreasuryPolicy({
-      walletTotalUsd: finiteNumber(walletSnapshot?.totalUsd),
-    }));
+    const treasuryPolicy = validateTreasuryPolicy(
+      buildDefaultTreasuryPolicy({
+        walletTotalUsd: finiteNumber(walletSnapshot?.totalUsd),
+      }),
+    );
     const idleThreshold = treasuryPolicy.idleInventoryConsolidation || {};
     idleConsolidationPlan = buildIdleInventoryConsolidationPlanImpl({
       walletSnapshot,
@@ -1821,7 +1916,10 @@ export async function runAllChainAutopilot({
         ...idleThreshold,
         maxAggregateIdleUsd: Math.min(50, finiteNumber(idleThreshold.maxAggregateIdleUsd) ?? 50),
       },
-      killSwitchActive: autoKillResult.json?.triggered === true || autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
+      killSwitchActive:
+        autoKillResult.json?.triggered === true ||
+        autoKillResult.json?.killSwitchActive === true ||
+        autoKillResult.json?.alreadyArmed === true,
       now: observedAt,
     });
   } catch (error) {
@@ -1848,9 +1946,12 @@ export async function runAllChainAutopilot({
       observedAt,
       autopilotRunId,
       mode: "idle_preview",
-      status: autoKillResult.json?.triggered === true || autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true
-        ? "completed_with_blockers"
-        : "completed",
+      status:
+        autoKillResult.json?.triggered === true ||
+        autoKillResult.json?.killSwitchActive === true ||
+        autoKillResult.json?.alreadyArmed === true
+          ? "completed_with_blockers"
+          : "completed",
       phase: "idle_consolidation_preview",
       blockedReason: null,
       chains,
@@ -1862,7 +1963,8 @@ export async function runAllChainAutopilot({
           ...liveExecutionGate,
           autopilotRunId,
           autoKillTriggered: autoKillResult.json?.triggered === true,
-          killSwitchActive: autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
+          killSwitchActive:
+            autoKillResult.json?.killSwitchActive === true || autoKillResult.json?.alreadyArmed === true,
           killSwitchAlreadyArmed: autoKillResult.json?.alreadyArmed === true,
         },
       },
@@ -1928,7 +2030,10 @@ export async function runAllChainAutopilot({
 
   const treasuryInventoryBlocker = inventoryFreshnessBlocker(refillPlan, "treasury");
   const capitalManagerInventoryBlocker = inventoryFreshnessBlocker(capitalManagerRefillPlan, "capital_manager");
-  const treasuryRefillJobs = suppressAutoRefillJobsForInventoryBlocker(refillPlan?.jobs || [], treasuryInventoryBlocker);
+  const treasuryRefillJobs = suppressAutoRefillJobsForInventoryBlocker(
+    refillPlan?.jobs || [],
+    treasuryInventoryBlocker,
+  );
   const capitalManagerRefillJobs = suppressAutoRefillJobsForInventoryBlocker(
     capitalManagerRefillPlan?.jobs?.jobs || [],
     capitalManagerInventoryBlocker,
@@ -1980,7 +2085,11 @@ export async function runAllChainAutopilot({
       }
       if (refillPreviewRetryable(preview, { activeMethod: refillSelectedMethod(preview, job.executionMethod) })) {
         preview = routingExhaustedPreparation(preview, routeAttemptReasons);
-        steps[steps.length - 1] = commandStep(steps[steps.length - 1]?.name || `treasury_refill_preview:${job.jobId}`, steps[steps.length - 1]?.args || [], preview);
+        steps[steps.length - 1] = commandStep(
+          steps[steps.length - 1]?.name || `treasury_refill_preview:${job.jobId}`,
+          steps[steps.length - 1]?.args || [],
+          preview,
+        );
       }
     }
     let execution = null;
@@ -2008,7 +2117,9 @@ export async function runAllChainAutopilot({
         const activeSourceReservation = refillSourceReservation(activeJob, sourceReservations);
         if (!activeSourceReservation.accepted) {
           preview = blockedRefillPreview(activeJob, "source_inventory_reserved");
-          steps.push(commandStep(`treasury_refill_preview:${job.jobId}:${method}:source_inventory_reserved`, [], preview));
+          steps.push(
+            commandStep(`treasury_refill_preview:${job.jobId}:${method}:source_inventory_reserved`, [], preview),
+          );
           break;
         }
         execution = await runJsonStep({
@@ -2028,10 +2139,7 @@ export async function runAllChainAutopilot({
           timeoutMs,
           steps,
         });
-        if (
-          refillSourceDebitLikely(execution) ||
-          refillSourceDebitIndeterminate(execution, { activeMethod: method })
-        ) {
+        if (refillSourceDebitLikely(execution) || refillSourceDebitIndeterminate(execution, { activeMethod: method })) {
           debitSourceReservation = activeSourceReservation;
         }
         if (!refillExecutionRetryable(execution, { activeMethod: method })) break;
@@ -2048,7 +2156,11 @@ export async function runAllChainAutopilot({
           });
           const attemptReason = refillRouteAttemptReason(nextPreview, { method: retryMethod });
           if (attemptReason) routeAttemptReasons.push(attemptReason);
-          if (refillPreparationReady(nextPreview.json) || !refillPreviewRetryable(nextPreview, { activeMethod: retryMethod })) break;
+          if (
+            refillPreparationReady(nextPreview.json) ||
+            !refillPreviewRetryable(nextPreview, { activeMethod: retryMethod })
+          )
+            break;
         }
         if (!nextPreview) break;
         preview = nextPreview;
@@ -2112,16 +2224,19 @@ export async function runAllChainAutopilot({
   };
 
   if (write) {
-    await writeAutopilotLatest(dataDir, buildAutopilotProgressReport({
-      execute,
-      observedAt: new Date().toISOString(),
-      autopilotRunId,
-      chains,
-      phase: "refill_complete",
-      summary: refillSummary,
-      refillExecutions,
-      steps,
-    }));
+    await writeAutopilotLatest(
+      dataDir,
+      buildAutopilotProgressReport({
+        execute,
+        observedAt: new Date().toISOString(),
+        autopilotRunId,
+        chains,
+        phase: "refill_complete",
+        summary: refillSummary,
+        refillExecutions,
+        steps,
+      }),
+    );
   }
 
   if (stopAfterRefill) {
@@ -2165,26 +2280,30 @@ export async function runAllChainAutopilot({
 
   const canaryBudgetVerdict = allowLiveCapableExecution
     ? await evaluateAutopilotDiscretionaryBudget("probe", {
-      discretionaryBudgetCategory: "probe",
-      observedAt,
-      now: observedAt,
-    })
+        discretionaryBudgetCategory: "probe",
+        observedAt,
+        now: observedAt,
+      })
     : { allowed: false, blockers: [], runningTotalUsd: 0 };
   const allowProbeExecution = allowLiveCapableExecution && canaryBudgetVerdict.allowed && enableDexProbeExecution;
   const canarySweepResult = await runJsonStep({
     name: "live_canary_sweep",
-    args: appendFlag([
-      "src/cli/run-live-canary-sweep.mjs",
-      "--json",
-      "--write",
-      `--chains=${chains.join(",")}`,
-      `--limit=${canaryLimit}`,
-      `--max-executed-candidates=${canaryMaxExecutedCandidates}`,
-      `--max-broadcast-steps=${canaryMaxBroadcastSteps}`,
-      `--max-recent-broadcasts=${canaryMaxRecentBroadcasts}`,
-      `--recent-broadcast-window-ms=${canaryRecentBroadcastWindowMs}`,
-      `--timeout-ms=${canaryTimeoutMs}`,
-    ], "--execute", allowProbeExecution),
+    args: appendFlag(
+      [
+        "src/cli/run-live-canary-sweep.mjs",
+        "--json",
+        "--write",
+        `--chains=${chains.join(",")}`,
+        `--limit=${canaryLimit}`,
+        `--max-executed-candidates=${canaryMaxExecutedCandidates}`,
+        `--max-broadcast-steps=${canaryMaxBroadcastSteps}`,
+        `--max-recent-broadcasts=${canaryMaxRecentBroadcasts}`,
+        `--recent-broadcast-window-ms=${canaryRecentBroadcastWindowMs}`,
+        `--timeout-ms=${canaryTimeoutMs}`,
+      ],
+      "--execute",
+      allowProbeExecution,
+    ),
     runCommandImpl,
     cwd,
     timeoutMs: canaryTimeoutMs,
@@ -2238,12 +2357,11 @@ export async function runAllChainAutopilot({
 
   const destinationRepresentativeResult = await runJsonStep({
     name: "destination_representative_autopilot",
-    args: appendFlag([
-      "src/cli/run-destination-representative-autopilot.mjs",
-      "--json",
-      "--write",
-      `--timeout-ms=${timeoutMs}`,
-    ], "--execute", allowLiveCapableExecution),
+    args: appendFlag(
+      ["src/cli/run-destination-representative-autopilot.mjs", "--json", "--write", `--timeout-ms=${timeoutMs}`],
+      "--execute",
+      allowLiveCapableExecution,
+    ),
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -2252,12 +2370,11 @@ export async function runAllChainAutopilot({
 
   const portfolioResult = await runJsonStep({
     name: "merkl_portfolio_orchestrator",
-    args: appendFlag([
-      "src/cli/run-merkl-portfolio-orchestrator.mjs",
-      "--json",
-      "--write",
-      `--timeout-ms=${timeoutMs}`,
-    ], "--execute", allowLiveCapableExecution),
+    args: appendFlag(
+      ["src/cli/run-merkl-portfolio-orchestrator.mjs", "--json", "--write", `--timeout-ms=${timeoutMs}`],
+      "--execute",
+      allowLiveCapableExecution,
+    ),
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -2266,12 +2383,11 @@ export async function runAllChainAutopilot({
 
   const merklCanaryResult = await runJsonStep({
     name: "merkl_canary_autopilot",
-    args: appendFlag([
-      "src/cli/run-merkl-canary-autopilot.mjs",
-      "--json",
-      "--write",
-      `--timeout-ms=${timeoutMs}`,
-    ], "--execute", allowLiveCapableExecution),
+    args: appendFlag(
+      ["src/cli/run-merkl-canary-autopilot.mjs", "--json", "--write", `--timeout-ms=${timeoutMs}`],
+      "--execute",
+      allowLiveCapableExecution,
+    ),
     runCommandImpl,
     cwd,
     timeoutMs,
@@ -2295,7 +2411,10 @@ export async function runAllChainAutopilot({
     timeoutMs: Math.min(30_000, timeoutMs),
     steps,
   });
-  const handoffAmountSats = wrappedBtcHandoffAmountSats(preDispatchSurfacesResult.json, preDispatchInventoryResult.json);
+  const handoffAmountSats = wrappedBtcHandoffAmountSats(
+    preDispatchSurfacesResult.json,
+    preDispatchInventoryResult.json,
+  );
   let wrappedBtcHandoffPreview = null;
   let wrappedBtcHandoffExecution = null;
   if (handoffAmountSats) {
@@ -2339,7 +2458,8 @@ export async function runAllChainAutopilot({
 
   const strategyDispatchResult = await runJsonStep({
     name: "strategy_catalog_dispatch",
-    args: appendFlag([
+    args: appendFlag(
+      [
         "src/cli/run-strategy-catalog-dispatcher.mjs",
         "--json",
         "--compact",
@@ -2350,14 +2470,21 @@ export async function runAllChainAutopilot({
         "--orchestrator-source=all_chain_autopilot",
         `--orchestrator-run-id=${autopilotRunId}`,
         `--command-timeout-ms=${dispatchTimeoutMs}`,
-      ], "--execute", allowLiveStrategyDispatch),
+      ],
+      "--execute",
+      allowLiveStrategyDispatch,
+    ),
     runCommandImpl,
     cwd,
     timeoutMs: dispatchTimeoutMs,
     steps,
   });
 
-  const paybackArgs = appendFlag(["src/cli/run-payback-scheduler.mjs", "--json", "--write", "--once"], "--execute", allowLiveCapableExecution);
+  const paybackArgs = appendFlag(
+    ["src/cli/run-payback-scheduler.mjs", "--json", "--write", "--once"],
+    "--execute",
+    allowLiveCapableExecution,
+  );
   const paybackResult = await runJsonStep({
     name: "payback_scheduler",
     args: paybackArgs,
@@ -2439,17 +2566,20 @@ export async function runAllChainAutopilot({
   };
 
   const hardFailures = steps.filter((step) => !step.ok && !stepIsRecoverable(step, steps));
-  const blockedSteps = steps.filter((step) => !step.ok || ["blocked", "carry", "hold", "skipped"].includes(stepStatus(step)));
+  const blockedSteps = steps.filter(
+    (step) => !step.ok || ["blocked", "carry", "hold", "skipped"].includes(stepStatus(step)),
+  );
   const report = {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
     autopilotRunId,
     mode: execute ? "execute" : "preview",
-    status: hardFailures.length > 0
-      ? "error"
-      : blockedSteps.length > 0 || liveExecutionGate.blockedReason
-        ? "completed_with_blockers"
-        : "completed",
+    status:
+      hardFailures.length > 0
+        ? "error"
+        : blockedSteps.length > 0 || liveExecutionGate.blockedReason
+          ? "completed_with_blockers"
+          : "completed",
     phase: "completed",
     blockedReason: hardFailures[0]?.error?.message || null,
     chains,

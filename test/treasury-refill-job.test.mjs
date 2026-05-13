@@ -12,7 +12,16 @@ function planFixture(decision = "REVIEW_REFILL_PLAN") {
     decision,
     inventory: {
       native: [{ chain: "base", actual: "10000000000000000", actualDecimal: 0.01, estimatedUsd: 22 }],
-      tokens: [{ chain: "base", actual: "50000", actualDecimal: 0.0005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 35 }],
+      tokens: [
+        {
+          chain: "base",
+          actual: "50000",
+          actualDecimal: 0.0005,
+          token: "0x0555",
+          ticker: "wBTC.OFT",
+          estimatedUsd: 35,
+        },
+      ],
     },
     actions: [
       {
@@ -49,10 +58,19 @@ test("refill jobs are deterministic and carry execution constraints", () => {
   assert.equal(jobs.jobs[0].constraints.requireEmergencyStopClear, true);
   assert.equal(jobs.jobs[0].executionMethod, "same_chain_token_to_native_swap");
   assert.equal(jobs.jobs[1].executionMethod, "same_chain_native_to_token_swap");
-  assert.equal(jobs.jobs[0].candidateMethods.some((item) => item.method === "same_chain_token_to_native_swap"), true);
-  assert.equal(jobs.jobs[0].candidateMethods.find((item) => item.method === "same_chain_token_to_native_swap").source.chain, "base");
+  assert.equal(
+    jobs.jobs[0].candidateMethods.some((item) => item.method === "same_chain_token_to_native_swap"),
+    true,
+  );
+  assert.equal(
+    jobs.jobs[0].candidateMethods.find((item) => item.method === "same_chain_token_to_native_swap").source.chain,
+    "base",
+  );
   assert.equal(jobs.jobs[0].fundingSource.selectionStatus, "ready");
-  assert.equal(jobs.jobs[0].jobId, buildTreasuryRefillJobs({ plan: planFixture(), policy, fundingSourcePlan }).jobs[0].jobId);
+  assert.equal(
+    jobs.jobs[0].jobId,
+    buildTreasuryRefillJobs({ plan: planFixture(), policy, fundingSourcePlan }).jobs[0].jobId,
+  );
 });
 
 test("refill jobs stop requiring policy review when plan is refill-ready", () => {
@@ -300,7 +318,8 @@ test("capital manager matched transfers do not treat transport route alpha as th
       },
       selections: [
         {
-          resourceKey: "base:0x0555e30da8f98308edb960aa94c0db47230d2b9c:from:bob:0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+          resourceKey:
+            "base:0x0555e30da8f98308edb960aa94c0db47230d2b9c:from:bob:0x0555e30da8f98308edb960aa94c0db47230d2b9c",
           actionType: "refill_token",
           chain: "base",
           token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
@@ -460,7 +479,16 @@ test("refill jobs use route candidates that match each action chain instead of o
     ],
     inventory: {
       native: [{ chain: "base", actualDecimal: 0.005 }],
-      tokens: [{ chain: "base", actual: "5000", actualDecimal: 0.00005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 3.5 }],
+      tokens: [
+        {
+          chain: "base",
+          actual: "5000",
+          actualDecimal: 0.00005,
+          token: "0x0555",
+          ticker: "wBTC.OFT",
+          estimatedUsd: 3.5,
+        },
+      ],
     },
   };
   const fundingSourcePlan = buildFundingSourcePlan({
@@ -547,9 +575,18 @@ test("refill jobs use route candidates that match each action chain instead of o
   assert.equal(jobs.jobs[0].systemEconomics.routeKey, "base:0x0555->bera:0x0555");
   assert.equal(jobs.jobs[1].chain, "soneium");
   assert.equal(jobs.jobs[1].systemEconomics.routeKey, "base:0x0555->soneium:0x0555");
-  assert.notEqual(jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd, jobs.jobs[1].systemEconomics.effectiveSystemNetPnlUsd);
-  assert.equal(jobs.jobs[0].systemEconomics.executionRefillExpectedCostUsd, jobs.jobs[0].fundingSource.expectedExecutionRefillCostUsd);
-  assert.equal(jobs.jobs[1].systemEconomics.executionRefillExpectedCostUsd, jobs.jobs[1].fundingSource.expectedExecutionRefillCostUsd);
+  assert.notEqual(
+    jobs.jobs[0].systemEconomics.effectiveSystemNetPnlUsd,
+    jobs.jobs[1].systemEconomics.effectiveSystemNetPnlUsd,
+  );
+  assert.equal(
+    jobs.jobs[0].systemEconomics.executionRefillExpectedCostUsd,
+    jobs.jobs[0].fundingSource.expectedExecutionRefillCostUsd,
+  );
+  assert.equal(
+    jobs.jobs[1].systemEconomics.executionRefillExpectedCostUsd,
+    jobs.jobs[1].fundingSource.expectedExecutionRefillCostUsd,
+  );
 });
 
 test("treasury refill jobs shrink same-chain token-to-token yield refill to source-limited partial target", () => {
@@ -605,6 +642,68 @@ test("treasury refill jobs shrink same-chain token-to-token yield refill to sour
   assert.equal(jobs.jobs[0].estimatedAssetValueUsd < 67.807303, true);
   assert.equal(jobs.jobs[0].estimatedAssetValueUsd > 20, true);
   assert.equal(BigInt(jobs.jobs[0].targetAmount) < 67_807_303n, true);
+});
+
+test("treasury refill jobs prefer same-family stable sources for stable target refills", () => {
+  const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+  const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const baseApxUsd = "0xd993935e13851dd7517af10687ec7e5022127228";
+  const plan = {
+    ...planFixture("REFILL_REQUIRED"),
+    inventory: {
+      native: [
+        {
+          chain: "base",
+          actual: "1000000000000000",
+          actualDecimal: 0.001,
+          estimatedUsd: 2,
+        },
+      ],
+      tokens: [
+        {
+          chain: "base",
+          actual: "281820",
+          actualDecimal: 0.0028182,
+          token: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
+          ticker: "wBTC.OFT",
+          family: "wrapped_btc",
+          estimatedUsd: 228,
+        },
+        {
+          chain: "base",
+          actual: "29376610",
+          actualDecimal: 29.37661,
+          token: baseUsdc,
+          ticker: "USDC",
+          family: "stablecoin",
+          estimatedUsd: 29.37661,
+        },
+      ],
+    },
+    actions: [
+      {
+        type: "refill_token",
+        chain: "base",
+        ticker: "apxUSD",
+        token: baseApxUsd,
+        refillAmount: "10000000000000000000",
+        refillAmountDecimal: 10,
+        refillEstimatedUsd: 10,
+        rationale: "Pendle apxUSD YT tiny-canary entry inventory on Base.",
+        strategyPolicy: {
+          id: "pendle_yt_canary_entry_refill",
+          strategyType: "pendle_yt_canary",
+          perTradeCapUsd: 10,
+        },
+      },
+    ],
+  };
+  const fundingSourcePlan = buildFundingSourcePlan({ plan, policy });
+  const jobs = buildTreasuryRefillJobs({ plan, policy, fundingSourcePlan });
+
+  assert.equal(jobs.jobs[0].executionMethod, "same_chain_token_to_token_swap");
+  assert.equal(jobs.jobs[0].fundingSource.source.token, baseUsdc);
+  assert.equal(jobs.jobs[0].fundingSource.source.ticker, "USDC");
 });
 
 test("refill jobs combine pending overflow review with non-ready funding-source reasons", () => {
@@ -673,7 +772,16 @@ test("refill jobs combine pending overflow review with non-ready funding-source 
     ],
     inventory: {
       native: [{ chain: "base", actualDecimal: 0.005 }],
-      tokens: [{ chain: "base", actual: "5000", actualDecimal: 0.00005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 3.5 }],
+      tokens: [
+        {
+          chain: "base",
+          actual: "5000",
+          actualDecimal: 0.00005,
+          token: "0x0555",
+          ticker: "wBTC.OFT",
+          estimatedUsd: 3.5,
+        },
+      ],
     },
   };
   const fundingSourcePlan = buildFundingSourcePlan({
@@ -700,9 +808,18 @@ test("refill jobs combine pending overflow review with non-ready funding-source 
   assert.equal(jobs.summary.manualReviewJobCount, 1);
   assert.equal(jobs.summary.autoQueuedJobCount, 4);
   assert.equal(jobs.jobs.filter((job) => job.requiresManualReview).length, 1);
-  assert.equal(jobs.jobs.some((job) => job.reviewReasons.includes("too_many_pending_refills")), true);
-  assert.equal(jobs.jobs.some((job) => job.reviewReasons.includes("too_many_pending_refills")), true);
-  assert.equal(jobs.jobs.every((job) => !job.reviewReasons.includes("cross_chain_native_refill_executor_missing")), true);
+  assert.equal(
+    jobs.jobs.some((job) => job.reviewReasons.includes("too_many_pending_refills")),
+    true,
+  );
+  assert.equal(
+    jobs.jobs.some((job) => job.reviewReasons.includes("too_many_pending_refills")),
+    true,
+  );
+  assert.equal(
+    jobs.jobs.every((job) => !job.reviewReasons.includes("cross_chain_native_refill_executor_missing")),
+    true,
+  );
 });
 
 test("refill jobs apply daily cost cap to ranked overflow instead of blocking every job", () => {
@@ -754,7 +871,16 @@ test("refill jobs apply daily cost cap to ranked overflow instead of blocking ev
     ],
     inventory: {
       native: [{ chain: "base", actualDecimal: 0.005 }],
-      tokens: [{ chain: "base", actual: "50000", actualDecimal: 0.0005, token: "0x0555", ticker: "wBTC.OFT", estimatedUsd: 35 }],
+      tokens: [
+        {
+          chain: "base",
+          actual: "50000",
+          actualDecimal: 0.0005,
+          token: "0x0555",
+          ticker: "wBTC.OFT",
+          estimatedUsd: 35,
+        },
+      ],
     },
   };
   const fundingSourcePlan = buildFundingSourcePlan({ plan, policy });
@@ -762,9 +888,20 @@ test("refill jobs apply daily cost cap to ranked overflow instead of blocking ev
 
   assert.equal(jobs.summary.autoQueuedJobCount > 0, true);
   assert.equal(jobs.summary.manualReviewJobCount > 0, true);
-  assert.equal(jobs.jobs.some((job) => !job.requiresManualReview), true);
-  assert.equal(jobs.jobs.some((job) => job.reviewReasons.includes("refill_cost_above_daily_cap")), true);
-  assert.equal(jobs.jobs.every((job) => job.reviewReasons.filter((reason) => reason === "refill_cost_above_daily_cap").length <= 1), true);
+  assert.equal(
+    jobs.jobs.some((job) => !job.requiresManualReview),
+    true,
+  );
+  assert.equal(
+    jobs.jobs.some((job) => job.reviewReasons.includes("refill_cost_above_daily_cap")),
+    true,
+  );
+  assert.equal(
+    jobs.jobs.every(
+      (job) => job.reviewReasons.filter((reason) => reason === "refill_cost_above_daily_cap").length <= 1,
+    ),
+    true,
+  );
 });
 
 test("refill jobs prefer higher-net fallback route context over weaker local matches", () => {
@@ -776,7 +913,15 @@ test("refill jobs prefer higher-net fallback route context over weaker local mat
     decision: "REVIEW_REFILL_PLAN",
     inventory: {
       native: [{ chain: "base", actual: "200000000000000000", actualDecimal: 0.2, estimatedUsd: 400 }],
-      tokens: [{ chain: "base", actual: "863020", actualDecimal: 0.86302, token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", ticker: "USDC" }],
+      tokens: [
+        {
+          chain: "base",
+          actual: "863020",
+          actualDecimal: 0.86302,
+          token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          ticker: "USDC",
+        },
+      ],
     },
     reasons: ["refill_cost_above_daily_cap", "too_many_pending_refills"],
     actions: [
@@ -788,7 +933,8 @@ test("refill jobs prefer higher-net fallback route context over weaker local mat
         refillAmount: "299136980",
         refillAmountDecimal: 299.13698,
         refillEstimatedUsd: 299.13698,
-        rationale: "Positive Base USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
+        rationale:
+          "Positive Base USDC->native BTC offramp candidate needs source-token inventory before exact-gas validation can graduate it.",
       },
     ],
   };
