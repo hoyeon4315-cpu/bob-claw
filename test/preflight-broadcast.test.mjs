@@ -40,6 +40,58 @@ function cleanDispatchPayload({ readyForLiveBroadcast = true } = {}) {
   };
 }
 
+function signerHealthPayload() {
+  return {
+    readiness: {
+      readyForBroadcast: true,
+      telemetryComplete: true,
+      limitations: [],
+    },
+  };
+}
+
+function walletInventoryRefreshPayload({
+  totalUsd = 818.25,
+  source = "live_scan",
+  walletCoverage = "full_rpc",
+  assetUniverseStatus = "closed",
+  scanErrorCount = 0,
+  unknownAssetBalanceCount = 0,
+} = {}) {
+  return {
+    address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    observedAt: "2026-05-09T00:00:00.000Z",
+    source,
+    totalUsd,
+    summary: {
+      walletCoverage,
+      assetUniverseStatus,
+      scanErrorCount,
+      unknownAssetBalanceCount,
+    },
+  };
+}
+
+function walletHoldingsPayload({
+  totalUsd = 818.25,
+  staleItemCount = 0,
+  stalePriceItemCount = 0,
+  out = null,
+} = {}) {
+  const payload = {
+    pending: false,
+    totalUsd,
+    staleItemCount,
+    stalePriceItemCount,
+    assetMetadataCoverage: {
+      freshnessCoveragePct: 1,
+      divergenceWarnCount: 0,
+      divergenceBlockCount: 0,
+    },
+  };
+  return out ? { ...payload, out } : payload;
+}
+
 function preflightRunner({ readyForLiveBroadcast = true } = {}) {
   const commands = [];
   return {
@@ -47,28 +99,9 @@ function preflightRunner({ readyForLiveBroadcast = true } = {}) {
     runCommandImpl: async ({ step, command, args }) => {
       commands.push([command, ...args].join(" "));
       if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") {
-        return commandResult({
-          readiness: {
-            readyForBroadcast: true,
-            telemetryComplete: true,
-            limitations: [],
-          },
-        });
-      }
+      if (step.id === "signer_health") return commandResult(signerHealthPayload());
       if (step.id === "wallet_inventory_refresh") {
-        return commandResult({
-          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-          observedAt: "2026-05-09T00:00:00.000Z",
-          source: "live_scan",
-          totalUsd: 360.98,
-          summary: {
-            walletCoverage: "full_rpc",
-            assetUniverseStatus: "closed",
-            scanErrorCount: 0,
-            unknownAssetBalanceCount: 0,
-          },
-        });
+        return commandResult(walletInventoryRefreshPayload({ totalUsd: 360.98 }));
       }
       if (step.id === "wallet_holdings") {
         return commandResult(
@@ -78,17 +111,7 @@ function preflightRunner({ readyForLiveBroadcast = true } = {}) {
             totalUsd: 360.98,
           },
           {
-            walletPayload: {
-              pending: false,
-              totalUsd: 360.98,
-              staleItemCount: 0,
-              stalePriceItemCount: 0,
-              assetMetadataCoverage: {
-                freshnessCoveragePct: 1,
-                divergenceWarnCount: 0,
-                divergenceBlockCount: 0,
-              },
-            },
+            walletPayload: walletHoldingsPayload({ totalUsd: 360.98 }),
           },
         );
       }
@@ -176,29 +199,8 @@ test("preflight-broadcast reads wallet freshness from the emitted wallet payload
   const runner = {
     runCommandImpl: async ({ step }) => {
       if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") {
-        return commandResult({
-          readiness: {
-            readyForBroadcast: true,
-            telemetryComplete: true,
-            limitations: [],
-          },
-        });
-      }
-      if (step.id === "wallet_inventory_refresh") {
-        return commandResult({
-          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-          observedAt: "2026-05-09T00:00:00.000Z",
-          source: "live_scan",
-          totalUsd: 818.25,
-          summary: {
-            walletCoverage: "full_rpc",
-            assetUniverseStatus: "closed",
-            scanErrorCount: 0,
-            unknownAssetBalanceCount: 0,
-          },
-        });
-      }
+      if (step.id === "signer_health") return commandResult(signerHealthPayload());
+      if (step.id === "wallet_inventory_refresh") return commandResult(walletInventoryRefreshPayload());
       if (step.id === "wallet_holdings") {
         return commandResult(
           {
@@ -242,29 +244,8 @@ test("preflight-broadcast allows fresh wallet balances when only price metadata 
   const runner = {
     runCommandImpl: async ({ step }) => {
       if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") {
-        return commandResult({
-          readiness: {
-            readyForBroadcast: true,
-            telemetryComplete: true,
-            limitations: [],
-          },
-        });
-      }
-      if (step.id === "wallet_inventory_refresh") {
-        return commandResult({
-          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-          observedAt: "2026-05-09T00:00:00.000Z",
-          source: "live_scan",
-          totalUsd: 818.25,
-          summary: {
-            walletCoverage: "full_rpc",
-            assetUniverseStatus: "closed",
-            scanErrorCount: 0,
-            unknownAssetBalanceCount: 0,
-          },
-        });
-      }
+      if (step.id === "signer_health") return commandResult(signerHealthPayload());
+      if (step.id === "wallet_inventory_refresh") return commandResult(walletInventoryRefreshPayload());
       if (step.id === "wallet_holdings") {
         return commandResult(
           {
@@ -273,17 +254,7 @@ test("preflight-broadcast allows fresh wallet balances when only price metadata 
             totalUsd: 818.25,
           },
           {
-            walletPayload: {
-              pending: false,
-              totalUsd: 818.25,
-              staleItemCount: 0,
-              stalePriceItemCount: 43,
-              assetMetadataCoverage: {
-                freshnessCoveragePct: 1,
-                divergenceWarnCount: 0,
-                divergenceBlockCount: 0,
-              },
-            },
+            walletPayload: walletHoldingsPayload({ stalePriceItemCount: 43 }),
           },
         );
       }
@@ -313,28 +284,15 @@ test("preflight-broadcast blocks when wallet inventory refresh is not live exact
   const runner = {
     runCommandImpl: async ({ step }) => {
       if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") {
-        return commandResult({
-          readiness: {
-            readyForBroadcast: true,
-            telemetryComplete: true,
-            limitations: [],
-          },
-        });
-      }
+      if (step.id === "signer_health") return commandResult(signerHealthPayload());
       if (step.id === "wallet_inventory_refresh") {
-        return commandResult({
-          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-          observedAt: "2026-05-09T00:00:00.000Z",
+        return commandResult(walletInventoryRefreshPayload({
           source: "stored_treasury_snapshot",
-          totalUsd: 818.25,
-          summary: {
-            walletCoverage: "partial_supported",
-            assetUniverseStatus: "open",
-            scanErrorCount: 1,
-            unknownAssetBalanceCount: 2,
-          },
-        });
+          walletCoverage: "partial_supported",
+          assetUniverseStatus: "open",
+          scanErrorCount: 1,
+          unknownAssetBalanceCount: 2,
+        }));
       }
       throw new Error(`unexpected step ${step.id}`);
     },
