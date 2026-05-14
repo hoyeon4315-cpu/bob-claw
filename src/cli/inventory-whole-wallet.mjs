@@ -5,9 +5,16 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
+import { PRIMARY_OPERATOR_BTC_ADDRESS } from "../config/operator-btc-addresses.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { emptyPricesUsd, getCoinGeckoPricesUsd, latestPriceSnapshot, mergeMissingPricesUsd, pricesFromSnapshot } from "../market/prices.mjs";
+import {
+  emptyPricesUsd,
+  getCoinGeckoPricesUsd,
+  latestPriceSnapshot,
+  mergeMissingPricesUsd,
+  pricesFromSnapshot,
+} from "../market/prices.mjs";
 import { readSignerHealth, signerClientTimeoutMs, signerSocketPath } from "../executor/signer/client.mjs";
 import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
 import { scanWholeWalletInventory } from "../treasury/whole-wallet-scan.mjs";
@@ -33,7 +40,12 @@ function parseArgs(argv) {
     json: flags.has("--json"),
     externalAddressScan: flags.has("--external-address-scan"),
     address: options.address || null,
-    families: options.families ? options.families.split(",").map((item) => item.trim()).filter(Boolean) : null,
+    families: options.families
+      ? options.families
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : null,
   };
 }
 
@@ -46,8 +58,7 @@ function hasPositiveEstimatedWalletUsd(inventory = null) {
 }
 
 export function shouldUseStoredWholeWalletFallback(liveInventory = null, treasurySnapshot = null) {
-  const liveHoldingsCount =
-    (liveInventory?.summary?.nativeCount ?? 0) + (liveInventory?.summary?.tokenCount ?? 0);
+  const liveHoldingsCount = (liveInventory?.summary?.nativeCount ?? 0) + (liveInventory?.summary?.tokenCount ?? 0);
   const liveErrors = liveInventory?.summary?.scanErrorCount ?? 0;
   const liveHasValue = hasPositiveEstimatedWalletUsd(liveInventory);
   const storedHasValue = hasPositiveEstimatedWalletUsd(treasurySnapshot);
@@ -90,9 +101,10 @@ export function materializeWholeWalletInventory(liveInventory = null, treasurySn
     })),
     scanErrors: liveInventory?.scanErrors || [],
     summary: {
-      chainCount:
-        new Set([...(treasurySnapshot?.native || []).map((item) => item.chain), ...(treasurySnapshot?.tokens || []).map((item) => item.chain)])
-          .size,
+      chainCount: new Set([
+        ...(treasurySnapshot?.native || []).map((item) => item.chain),
+        ...(treasurySnapshot?.tokens || []).map((item) => item.chain),
+      ]).size,
       nativeCount: treasurySnapshot?.native?.length ?? 0,
       tokenCount: treasurySnapshot?.tokens?.length ?? 0,
       scanErrorCount: liveInventory?.summary?.scanErrorCount ?? 0,
@@ -128,15 +140,18 @@ export async function resolveInventoryPrices({
   return mergeMissingPricesUsd(livePrices, localPrices);
 }
 
-async function resolveBitcoinAddress() {
+export async function resolveBitcoinAddress({
+  signerHealthReader = readSignerHealth,
+  fallbackAddress = PRIMARY_OPERATOR_BTC_ADDRESS,
+} = {}) {
   try {
-    const health = await readSignerHealth({
+    const health = await signerHealthReader({
       socketPath: signerSocketPath(),
       timeoutMs: signerClientTimeoutMs(),
     });
-    return health?.addresses?.bitcoin || null;
+    return health?.addresses?.bitcoin || fallbackAddress || null;
   } catch {
-    return null;
+    return fallbackAddress || null;
   }
 }
 
@@ -162,12 +177,7 @@ async function main() {
     : null;
   const ledgerEvents = await readJsonl(config.dataDir, "merkl-portfolio-positions").catch(() => []);
   const ledgerPositions = activeProtocolPositions(ledgerEvents);
-  const [
-    receiptReconciliations,
-    signerAuditRecords,
-    inboundEvents,
-    protocolPositionMarks,
-  ] = await Promise.all([
+  const [receiptReconciliations, signerAuditRecords, inboundEvents, protocolPositionMarks] = await Promise.all([
     readJsonl(config.dataDir, "receipt-reconciliations").catch(() => []),
     readJsonl("logs", "signer-audit").catch(() => []),
     readJsonl(config.dataDir, "treasury/inbound-events").catch(() => []),
@@ -200,7 +210,9 @@ async function main() {
       readJsonl(config.dataDir, "treasury/pending-whitelist").catch(() => []),
     ]);
     const seenAutoKeys = new Set(existingAutoReg.map((item) => `${item.chain}:${(item.address || "").toLowerCase()}`));
-    const seenPendingKeys = new Set(existingPending.map((item) => `${item.chain}:${(item.address || item.token || "").toLowerCase()}`));
+    const seenPendingKeys = new Set(
+      existingPending.map((item) => `${item.chain}:${(item.address || item.token || "").toLowerCase()}`),
+    );
     let autoRegistered = 0;
     let pendingStaged = 0;
     for (const candidate of liveInventory.erc4626PendingWhitelist) {
@@ -221,7 +233,9 @@ async function main() {
       console.log(`erc4626AutoRegistered: ${autoRegistered} vault token(s) auto-registered (known underlying)`);
     }
     if (pendingStaged > 0) {
-      console.log(`erc4626PendingWhitelist: ${pendingStaged} vault token(s) staged for manual review (unknown underlying)`);
+      console.log(
+        `erc4626PendingWhitelist: ${pendingStaged} vault token(s) staged for manual review (unknown underlying)`,
+      );
     }
   }
 
@@ -240,8 +254,12 @@ async function main() {
   if (Number.isFinite(inventory.summary.externalUnclassifiedUsd)) {
     console.log(`externalUnclassifiedUsd=${inventory.summary.externalUnclassifiedUsd.toFixed(4)}`);
   }
-  console.log(`native=${inventory.summary.nativeCount} tokens=${inventory.summary.tokenCount} scanErrors=${inventory.summary.scanErrorCount}`);
-  console.log(`assetUniverse=${inventory.summary.assetUniverseStatus || "inactive"} targets=${inventory.summary.assetUniverseTargetCount ?? "n/a"} unknown=${inventory.summary.assetUniverseUnknownTargetCount ?? "n/a"}`);
+  console.log(
+    `native=${inventory.summary.nativeCount} tokens=${inventory.summary.tokenCount} scanErrors=${inventory.summary.scanErrorCount}`,
+  );
+  console.log(
+    `assetUniverse=${inventory.summary.assetUniverseStatus || "inactive"} targets=${inventory.summary.assetUniverseTargetCount ?? "n/a"} unknown=${inventory.summary.assetUniverseUnknownTargetCount ?? "n/a"}`,
+  );
   if (inventory.summary.unknownAssetBalanceCount > 0) {
     console.log(`unknownAssetBalances=${inventory.summary.unknownAssetBalanceCount}`);
   }

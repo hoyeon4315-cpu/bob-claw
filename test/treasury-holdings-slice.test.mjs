@@ -194,6 +194,39 @@ test("treasury holdings prefer fresh whole-wallet inventory when address scan da
   );
 });
 
+test("treasury holdings keep live native BTC fresh through dashboard generation latency", () => {
+  const holdings = buildTreasuryHoldingsSlice([], {
+    generatedAt: "2026-05-14T00:19:22.240Z",
+    wholeWalletRecords: [
+      {
+        observedAt: "2026-05-14T00:17:10.398Z",
+        native: [
+          {
+            chain: "bitcoin",
+            ticker: "BTC",
+            actualDecimal: 0.00233967,
+            estimatedUsd: 185.95931127,
+          },
+        ],
+        tokenBalances: [],
+        summary: {
+          chainCount: 1,
+          walletCoverage: "full_rpc",
+          scanErrorCount: 0,
+        },
+        scanErrors: [],
+      },
+    ],
+  });
+
+  const btc = holdings.items.find((item) => item.chain === "bitcoin" && item.sym === "btc");
+  assert.ok(btc, "expected native BTC item");
+  assert.equal(btc.freshness, "fresh");
+  assert.equal(btc.confidence, "rpc_inferred");
+  assert.equal(btc.priceSource.name, "chainlink:btc_usd");
+  assert.equal(holdings.totalUsd, 185.95931127);
+});
+
 test("treasury holdings ignore cached Zerion full-wallet coverage for live totals", () => {
   const holdings = buildTreasuryHoldingsSlice([], {
     generatedAt: "2026-04-26T07:05:00.000Z",
