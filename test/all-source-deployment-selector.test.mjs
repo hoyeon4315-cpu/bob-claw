@@ -812,6 +812,7 @@ test("selector uses vault underlying whitelist and exact live inventory blocker 
     (item) => item.source === "merkl" && item.opportunityId === "17563083078147412604",
   );
   assert.ok(candidate);
+  assert.equal(candidate.asset, "USDC");
   assert.equal(candidate.rewardHaircut, 0);
   assert.equal(candidate.notionalUsd, 20);
   assert.ok(candidate.expectedRealizedNetUsd < 0);
@@ -822,6 +823,7 @@ test("selector uses vault underlying whitelist and exact live inventory blocker 
   assert.ok(candidate.blockers.includes("same_tick_refill_expected_net_non_positive"));
   assert.equal(candidate.blockers.includes("tiny_canary_resize_above_cap:need_$39_cap_$25"), false);
   assert.equal(candidate.routeRefillBinding.status, "same_tick_refill_ready");
+  assert.equal(candidate.routeRefillBinding.sameTickRefill.asset, "USDC");
   assert.equal(candidate.routeRefillBinding.sameTickRefill.selectedMethod, "same_chain_native_to_token_swap");
   assert.ok(candidate.routeRefillBinding.sameTickRefill.expectedExecutionRefillCostUsd > 0.04);
   assert.equal(candidate.signerIntentAvailability.reason, "same_tick_refill_expected_net_non_positive");

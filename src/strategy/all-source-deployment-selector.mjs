@@ -237,25 +237,32 @@ function liveInventoryProof({ capitalManagerRefill, chain, asset, tokenAddress, 
 
 function inventorySnapshotForSelector(capitalManagerRefill = {}) {
   return {
-    native: uniqueInventoryRows([
-      ...array(capitalManagerRefill.capitalPlan?.inventory?.native),
-      ...array(capitalManagerRefill.inventory?.native),
-      ...array(capitalManagerRefill.fundingSourcePlan?.inventory?.native),
-    ], "native"),
-    tokens: uniqueInventoryRows([
-      ...array(capitalManagerRefill.capitalPlan?.inventory?.tokens),
-      ...array(capitalManagerRefill.inventory?.tokens),
-      ...array(capitalManagerRefill.fundingSourcePlan?.inventory?.tokens),
-    ], "token"),
+    native: uniqueInventoryRows(
+      [
+        ...array(capitalManagerRefill.capitalPlan?.inventory?.native),
+        ...array(capitalManagerRefill.inventory?.native),
+        ...array(capitalManagerRefill.fundingSourcePlan?.inventory?.native),
+      ],
+      "native",
+    ),
+    tokens: uniqueInventoryRows(
+      [
+        ...array(capitalManagerRefill.capitalPlan?.inventory?.tokens),
+        ...array(capitalManagerRefill.inventory?.tokens),
+        ...array(capitalManagerRefill.fundingSourcePlan?.inventory?.tokens),
+      ],
+      "token",
+    ),
   };
 }
 
 function uniqueInventoryRows(rows = [], kind = "token") {
   const seen = new Set();
   return array(rows).filter((row) => {
-    const key = kind === "native"
-      ? `${normalizeChain(row?.chain)}:native`
-      : `${normalizeChain(row?.chain)}:${String(row?.token || row?.address || row?.ticker || row?.symbol || "").toLowerCase()}`;
+    const key =
+      kind === "native"
+        ? `${normalizeChain(row?.chain)}:native`
+        : `${normalizeChain(row?.chain)}:${String(row?.token || row?.address || row?.ticker || row?.symbol || "").toLowerCase()}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -484,9 +491,7 @@ function maxTinyCanaryNotionalUsd({ strategyId, chain, activeCapitalUsd }) {
 function removeResolvedMerklBlockers(blockers, { inventoryReady, rewardExitProofReady, rewardExitProofStatus }) {
   return unique(blockers).filter((blocker) => {
     if (inventoryReady && /inventory|current_inventory_entry_route_required/.test(blocker)) return false;
-    if (
-      /inventory_unknown|inventory_missing|current_inventory_entry_route_required/.test(blocker)
-    ) {
+    if (/inventory_unknown|inventory_missing|current_inventory_entry_route_required/.test(blocker)) {
       return false;
     }
     if (blocker === "reward_exit_liquidity_unproven" && (rewardExitProofReady || rewardExitProofStatus === "failed")) {
@@ -498,7 +503,9 @@ function removeResolvedMerklBlockers(blockers, { inventoryReady, rewardExitProof
 }
 
 function merklUnderlyingEntryWhitelisted(item = {}) {
-  const whitelist = new Set(array(MERKL_AUTO_ENTRY_POLICY.whitelistedEntrySymbols).map((value) => String(value).toUpperCase()));
+  const whitelist = new Set(
+    array(MERKL_AUTO_ENTRY_POLICY.whitelistedEntrySymbols).map((value) => String(value).toUpperCase()),
+  );
   const symbols = unique([
     item.protocolBindingPlan?.resolvedBinding?.assetSymbol,
     item.protocolBinding?.assetSymbol,
@@ -532,7 +539,12 @@ function merklExecutableBindingBlockers({ item = {}, merklOpportunity = {} } = {
   return ["merkl_drop_campaign_entry_contract_missing", "protocol_binding_identifier_has_no_code"];
 }
 
-function merklSignerIntentAvailability({ item = {}, inventoryProof = {}, blockers = [], blockingReasonOverride = null } = {}) {
+function merklSignerIntentAvailability({
+  item = {},
+  inventoryProof = {},
+  blockers = [],
+  blockingReasonOverride = null,
+} = {}) {
   const bindingPlan = item.protocolBindingPlan || {};
   const bindingKind = bindingPlan.bindingKind || null;
   const intentType = resolveIntentType(bindingKind);
@@ -685,7 +697,9 @@ function normalizeMerklCandidates({
     const merklOpportunity = opportunities.get(String(item.opportunityId)) || {};
     const strategyId = item.mappedStrategyId || campaign.strategyId || "gateway_native_asset_conversion_sleeve";
     const chain = item.chain || campaign.chain;
-    const asset = first(item.entryAssets) || campaign.asset || campaign.rewardToken || "unknown";
+    const bindingAssetSymbol =
+      item.protocolBindingPlan?.resolvedBinding?.assetSymbol || merklOpportunity.protocolBinding?.assetSymbol || null;
+    const asset = bindingAssetSymbol || first(item.entryAssets) || campaign.asset || campaign.rewardToken || "unknown";
     const assetAddress =
       item.protocolBindingPlan?.resolvedBinding?.assetAddress || merklOpportunity.protocolBinding?.assetAddress || null;
     const initialNotionalUsd = campaign.operatorPositionUsd ?? item.notionalUsd ?? 0;
@@ -733,9 +747,13 @@ function normalizeMerklCandidates({
         requiredUsd: notionalUsd,
       }),
     );
-    const shortfallUsd = Math.max(0, round(notionalUsd - finiteNumber(effectiveInventoryProof.estimatedUsd, 0), 6) ?? 0);
+    const shortfallUsd = Math.max(
+      0,
+      round(notionalUsd - finiteNumber(effectiveInventoryProof.estimatedUsd, 0), 6) ?? 0,
+    );
     const sameTickRefillSelection =
-      effectiveInventoryProof.ready === false && effectiveInventoryProof.reason === "live_inventory_below_required_notional"
+      effectiveInventoryProof.ready === false &&
+      effectiveInventoryProof.reason === "live_inventory_below_required_notional"
         ? selectorSameTickRefillProbe({
             capitalManagerRefill,
             chain,
@@ -811,7 +829,7 @@ function normalizeMerklCandidates({
               ? "ready"
               : sameTickRefillReady
                 ? "same_tick_refill_ready"
-              : "inventory_or_refill_required",
+                : "inventory_or_refill_required",
           ready: effectiveInventoryProof.ready === true || item.executionReadiness?.status === "inventory_ready",
           capabilityGaps:
             effectiveInventoryProof.ready === true || sameTickRefillReady ? [] : array(item.capabilityGaps),
@@ -825,7 +843,7 @@ function normalizeMerklCandidates({
         refillBridgeGasSlippageClaimSwapExitCostUsd: totalCostUsd,
         p90CostFloorUsd: sameTickRefillReady
           ? totalCostUsd
-          : campaign.tinyCanaryEvStatus?.roundTripCostUsd ?? totalCostUsd,
+          : (campaign.tinyCanaryEvStatus?.roundTripCostUsd ?? totalCostUsd),
         expectedRealizedNetUsd: expectedNetUsd,
         blockers,
         signerIntentAvailability,
