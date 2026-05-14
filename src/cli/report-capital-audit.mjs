@@ -23,12 +23,19 @@ function formatUsd(value) {
   return Number.isFinite(value) ? value.toFixed(6) : "n/a";
 }
 
+function ignoredTreasuryAddressesForCurrentCapital() {
+  return !config.estimateFrom && config.verifyRecipient ? [config.verifyRecipient] : [];
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const inputs = await collectCapitalAuditInputs({
     dataDir: config.dataDir,
   });
-  const report = buildCapitalAuditReport(inputs);
+  const report = buildCapitalAuditReport({
+    ...inputs,
+    ignoredTreasuryAddresses: ignoredTreasuryAddressesForCurrentCapital(),
+  });
 
   if (args.write) {
     const outputPath = join(config.dataDir, "capital-audit.json");

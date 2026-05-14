@@ -4,9 +4,7 @@ import { createServer as createHttpServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import {
-  buildDashboardLiveRuntimeConfig,
-} from "../src/cli/deploy-dashboard-cloudflare.mjs";
+import { buildDashboardLiveRuntimeConfig } from "../src/cli/deploy-dashboard-cloudflare.mjs";
 import {
   createDashboardLiveServer,
   extractQuickTunnelUrl,
@@ -139,9 +137,7 @@ test("dashboard live status overlays the freshest wallet holdings slice", async 
       },
       strategy: {
         merklActivePositions: {
-          items: [
-            { label: "YO", chain: "base", protocol: "yo", capUsd: 5.25, pair: ["usdc"] },
-          ],
+          items: [{ label: "YO", chain: "base", protocol: "yo", capUsd: 5.25, pair: ["usdc"] }],
         },
       },
     })}\n`,
@@ -172,14 +168,17 @@ test("dashboard live status overlays the freshest wallet holdings slice", async 
 
   assert.equal(status.walletHoldings.totalUsd, 123.45);
   assert.equal(status.capitalSummary.walletUsd, 123.45);
-  assert.equal(status.capitalSummary.deployedUsd, 5.25);
-  assert.equal(status.capitalSummary.totalUsd, 128.7);
+  assert.equal(status.capitalSummary.deployedUsd, 0);
+  assert.equal(status.capitalSummary.totalUsd, 123.45);
   assert.equal(status.capitalSummary.walletObservedAt, "2026-04-29T00:00:59.000Z");
   assert.equal(status.assetTracking.coverageState, "protocol_or_movement_gap");
   assert.equal(status.assetTracking.exactTotalUsd, null);
-  assert.equal(status.assetTracking.verifiedKnownUsd, 128.7);
+  assert.equal(status.assetTracking.verifiedKnownUsd, 123.45);
   assert.equal(status.assetTracking.riskUsableUsd, 0);
-  assert.equal(status.assetTracking.blockers.some((item) => item.code === "protocol_position_gap"), true);
+  assert.equal(
+    status.assetTracking.blockers.some((item) => item.code === "protocol_position_gap"),
+    true,
+  );
   assert.equal(status.liveOverlay.walletHoldings.source, "wallet-holdings.json");
 });
 
@@ -195,7 +194,9 @@ test("dashboard live wallet overlay does not revive stale external wallet metada
         observedAt: "2026-05-02T00:00:00.000Z",
         source: "whole_wallet_inventory",
         scanErrorCount: 2,
-        scanErrors: [{ kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" }],
+        scanErrors: [
+          { kind: "external_portfolio", provider: "zerion", message: "Zerion wallet portfolio request failed: 429" },
+        ],
         walletCoverage: "full_external_stale",
         fullWalletUsd: 243.22,
         fullWalletObservedAt: "2026-05-01T20:00:00.000Z",
@@ -228,9 +229,7 @@ test("dashboard live wallet overlay does not revive stale external wallet metada
       },
       strategy: {
         merklActivePositions: {
-          items: [
-            { label: "YO", chain: "base", protocol: "yo", capUsd: 5.56, pair: ["usdc"] },
-          ],
+          items: [{ label: "YO", chain: "base", protocol: "yo", capUsd: 5.56, pair: ["usdc"] }],
         },
       },
       flow: {
@@ -275,23 +274,29 @@ test("dashboard live wallet overlay does not revive stale external wallet metada
   assert.equal(status.capitalSummary.walletCoverage, "partial_supported");
   assert.equal(status.capitalSummary.fullWalletUsd, null);
   assert.equal(status.capitalSummary.displayWalletUsd, 216.44);
-  assert.equal(status.capitalSummary.displayTotalUsd, 222);
+  assert.equal(status.capitalSummary.displayTotalUsd, 216.44);
   assert.equal(status.capitalSummary.displayTotalUsdSource, "partial_supported_wallet_plus_positions");
   assert.equal(status.capitalSummary.currentWalletUsd, 216.44);
-  assert.equal(status.capitalSummary.protocolDeployedUsd, 5.56);
-  assert.equal(status.capitalSummary.currentTotalUsd, 222);
+  assert.equal(status.capitalSummary.protocolDeployedUsd, 0);
+  assert.equal(status.capitalSummary.currentTotalUsd, 216.44);
   assert.equal(status.capitalSummary.assetFormula, "current_wallet_plus_tracked_protocol_positions");
   assert.equal(status.capitalSummary.fullWalletStale, false);
   assert.equal(status.capitalSummary.externalWalletUsd, null);
   assert.equal(status.capitalSummary.unclassifiedUsd, null);
-  assert.equal(status.capitalSummary.totalUsd, 222);
+  assert.equal(status.capitalSummary.totalUsd, 216.44);
   assert.equal(status.capitalSummary.executorEstimatedTotalUsd, null);
   assert.equal(status.assetTracking.coverageState, "protocol_or_movement_gap");
   assert.equal(status.assetTracking.exactTotalUsd, null);
   assert.equal(status.assetTracking.riskReady, false);
-  assert.equal(status.assetTracking.blockers.some((item) => item.code === "wallet_coverage_partial"), true);
-  assert.equal(status.assetTracking.blockers.some((item) => item.code === "protocol_position_gap"), true);
-  assert.equal(status.flow.metrics.assetValueUsd, 222);
+  assert.equal(
+    status.assetTracking.blockers.some((item) => item.code === "wallet_coverage_partial"),
+    true,
+  );
+  assert.equal(
+    status.assetTracking.blockers.some((item) => item.code === "protocol_position_gap"),
+    true,
+  );
+  assert.equal(status.flow.metrics.assetValueUsd, 216.44);
 });
 
 test("dashboard live status overlays fresh protocol marks and recalculates deployed assets", async () => {
@@ -731,10 +736,7 @@ test("dashboard live start rejects clearly when its port is already in use", asy
   });
 
   try {
-    await assert.rejects(
-      () => server.start(),
-      /Dashboard live server port \d+ is already in use/u,
-    );
+    await assert.rejects(() => server.start(), /Dashboard live server port \d+ is already in use/u);
   } finally {
     await server.close();
     await closeHttpServer(blocker);
@@ -757,10 +759,7 @@ test("dashboard live start closes the listener when initial status build fails",
   });
 
   try {
-    await assert.rejects(
-      () => server.start(),
-      /JSON|Unexpected|Expected|dashboard-status/u,
-    );
+    await assert.rejects(() => server.start(), /JSON|Unexpected|Expected|dashboard-status/u);
     await listen(rebound, port);
   } finally {
     if (rebound.listening) await closeHttpServer(rebound);

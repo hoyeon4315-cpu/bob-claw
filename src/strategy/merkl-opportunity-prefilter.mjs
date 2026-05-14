@@ -29,10 +29,18 @@ function executionSurfaceSupported(surface, policy) {
 function buildOverfitFlags(opportunity, policy) {
   const flags = [];
   if ((opportunity.liveCampaigns || 0) <= 1) flags.push("single_campaign_surface");
-  if (Number.isFinite(opportunity.campaignRemainingHours) && opportunity.campaignRemainingHours < policy.entry.minHoursRemainingForScaleUp) {
+  if (
+    Number.isFinite(opportunity.campaignRemainingHours) &&
+    opportunity.campaignRemainingHours < policy.entry.minHoursRemainingForScaleUp
+  ) {
     flags.push("campaign_window_short_for_scale");
   }
-  if (Number.isFinite(opportunity.tvlUsd) && Number.isFinite(opportunity.aprPct) && opportunity.tvlUsd < 1_000_000 && opportunity.aprPct >= 20) {
+  if (
+    Number.isFinite(opportunity.tvlUsd) &&
+    Number.isFinite(opportunity.aprPct) &&
+    opportunity.tvlUsd < 1_000_000 &&
+    opportunity.aprPct >= 20
+  ) {
     flags.push("low_tvl_high_apr");
   }
   if (opportunity.hasPointRewards) flags.push("point_program_dependency");
@@ -49,10 +57,15 @@ function buildOverfitFlags(opportunity, policy) {
 function hardBlockersForOpportunity(opportunity, policy) {
   const blockers = [];
   if (!opportunity.btcPaybackCompatible) blockers.push("btc_return_path_not_supported");
-  if (opportunity.status !== "LIVE" || (opportunity.liveCampaigns || 0) < policy.entry.minLiveCampaignCount) blockers.push("campaign_not_live");
+  if (opportunity.status !== "LIVE" || (opportunity.liveCampaigns || 0) < policy.entry.minLiveCampaignCount)
+    blockers.push("campaign_not_live");
   if (opportunity.family === "non_core_asset") blockers.push("family_not_supported");
-  if (policy.entry.hardRejectRewardTokenTypes.some((kind) => opportunity.rewardTokenTypes.includes(kind))) blockers.push("point_reward_program");
-  if (Number.isFinite(opportunity.campaignRemainingHours) && opportunity.campaignRemainingHours < policy.entry.minHoursRemainingForNewEntry) {
+  if (policy.entry.hardRejectRewardTokenTypes.some((kind) => opportunity.rewardTokenTypes.includes(kind)))
+    blockers.push("point_reward_program");
+  if (
+    Number.isFinite(opportunity.campaignRemainingHours) &&
+    opportunity.campaignRemainingHours < policy.entry.minHoursRemainingForNewEntry
+  ) {
     blockers.push("campaign_too_close_to_end");
   }
   if (Number.isFinite(opportunity.tvlUsd) && opportunity.tvlUsd < minTvlForFamily(opportunity.family, policy)) {
@@ -80,7 +93,10 @@ function scoreOpportunity(opportunity, { hardBlockers = [], watchReasons = [], o
   if (opportunity.hasSupportedAssetExposure) score += weights.coreAssetFamily;
   if (opportunity.mappedStrategyId) score += weights.supportedStrategyMapping;
   if (chainEligibleForEntry(opportunity.chain, policy)) score += weights.chainInCoreScope;
-  if (Number.isFinite(opportunity.campaignRemainingHours) && opportunity.campaignRemainingHours >= policy.entry.minHoursRemainingForScaleUp) {
+  if (
+    Number.isFinite(opportunity.campaignRemainingHours) &&
+    opportunity.campaignRemainingHours >= policy.entry.minHoursRemainingForScaleUp
+  ) {
     score += weights.sufficientDuration;
   }
   if (Number.isFinite(opportunity.tvlUsd) && opportunity.tvlUsd >= minTvlForFamily(opportunity.family, policy)) {
@@ -92,7 +108,10 @@ function scoreOpportunity(opportunity, { hardBlockers = [], watchReasons = [], o
   if (!opportunity.hasPointRewards) score += weights.rewardTokenIsTransferable;
 
   if ((opportunity.liveCampaigns || 0) <= 1) score -= weights.singleCampaignPenalty;
-  if (Number.isFinite(opportunity.campaignRemainingHours) && opportunity.campaignRemainingHours < policy.entry.minHoursRemainingForScaleUp) {
+  if (
+    Number.isFinite(opportunity.campaignRemainingHours) &&
+    opportunity.campaignRemainingHours < policy.entry.minHoursRemainingForScaleUp
+  ) {
     score -= weights.shortDurationPenalty;
   }
   if (overfitFlags.includes("incentive_dominant")) score -= weights.incentiveDominancePenalty;
@@ -111,14 +130,22 @@ function overfitRiskLevel(flags = []) {
   return flags.length ? "low" : "minimal";
 }
 
-export function evaluateMerklOpportunity(opportunity, { policy, operatingCapitalUsd } = {}) {
+function operatingCapitalExplicitlyUnavailable(options = {}) {
+  return (
+    Object.hasOwn(options, "operatingCapitalUsd") &&
+    (options.operatingCapitalUsd == null || !Number.isFinite(Number(options.operatingCapitalUsd)))
+  );
+}
+
+export function evaluateMerklOpportunity(opportunity, options = {}) {
+  const { policy, operatingCapitalUsd } = options;
   const resolvedPolicy = policy || selectMerklOpportunityPolicy(operatingCapitalUsd);
   const hardBlockers = hardBlockersForOpportunity(opportunity, resolvedPolicy);
+  if (operatingCapitalExplicitlyUnavailable(options)) hardBlockers.push("operating_capital_unavailable");
   const watchReasons = watchReasonsForOpportunity(opportunity, resolvedPolicy);
   const overfitFlags = buildOverfitFlags(opportunity, resolvedPolicy);
   const score = scoreOpportunity(opportunity, { hardBlockers, watchReasons, overfitFlags }, resolvedPolicy);
-  const decision =
-    hardBlockers.length > 0 ? "blocked" : watchReasons.length > 0 ? "watch" : "candidate";
+  const decision = hardBlockers.length > 0 ? "blocked" : watchReasons.length > 0 ? "watch" : "candidate";
 
   return {
     ...opportunity,
@@ -135,5 +162,7 @@ export function evaluateMerklOpportunity(opportunity, { policy, operatingCapital
 
 export function evaluateMerklOpportunities(opportunities = [], { policy, operatingCapitalUsd } = {}) {
   const resolvedPolicy = policy || selectMerklOpportunityPolicy(operatingCapitalUsd);
-  return (opportunities || []).map((item) => evaluateMerklOpportunity(item, { policy: resolvedPolicy }));
+  return (opportunities || []).map((item) =>
+    evaluateMerklOpportunity(item, { policy: resolvedPolicy, operatingCapitalUsd }),
+  );
 }

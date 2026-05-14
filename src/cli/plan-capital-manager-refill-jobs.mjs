@@ -39,6 +39,9 @@ export function parseArgs(argv) {
     write: flags.has("--write"),
     refreshInventory: flags.has("--refresh-inventory"),
     includeInactive: flags.has("--include-inactive"),
+    allowDashboardSnapshotFallback: flags.has("--allow-dashboard-snapshot-fallback"),
+    allowRecordedWholeWalletInventory: flags.has("--allow-recorded-whole-wallet-inventory"),
+    allowStoredInventoryFallback: flags.has("--allow-stored-inventory-fallback"),
     address: options.address || null,
   };
 }
@@ -52,6 +55,7 @@ function serializeError(error) {
 
 export async function resolveCapitalManagerTreasuryInventory({
   refreshInventory = false,
+  allowStoredSnapshotFallback = false,
   context = {},
   policy,
   address,
@@ -72,7 +76,7 @@ export async function resolveCapitalManagerTreasuryInventory({
       policy,
       address,
       prices,
-      continueOnError: Boolean(fallbackInventory),
+      continueOnError: allowStoredSnapshotFallback && Boolean(fallbackInventory),
       fallbackInventory,
     });
     return {
@@ -81,7 +85,7 @@ export async function resolveCapitalManagerTreasuryInventory({
       inventoryRefreshError: null,
     };
   } catch (error) {
-    if (!fallbackInventory) throw error;
+    if (!allowStoredSnapshotFallback || !fallbackInventory) throw error;
     return {
       treasuryInventory: fallbackInventory,
       inventorySource: "stored_snapshot_fallback",
@@ -116,7 +120,9 @@ async function readJsonIfExists(path) {
 }
 
 function normalizeAssetName(value) {
-  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function unitsFromActualDecimal(amount, decimals) {
@@ -127,16 +133,10 @@ function unitsFromActualDecimal(amount, decimals) {
 
 function resolveDashboardWalletItemToken(chain, item = {}) {
   if (item.family === "native") return ZERO_TOKEN;
-  const targets = new Set([
-    normalizeAssetName(item.name),
-    normalizeAssetName(item.sym),
-  ].filter(Boolean));
+  const targets = new Set([normalizeAssetName(item.name), normalizeAssetName(item.sym)].filter(Boolean));
   for (const definition of knownWholeWalletTokenTargets({ chain })) {
     const asset = tokenAsset(chain, definition.token);
-    const labels = new Set([
-      normalizeAssetName(definition.ticker),
-      normalizeAssetName(asset.ticker),
-    ].filter(Boolean));
+    const labels = new Set([normalizeAssetName(definition.ticker), normalizeAssetName(asset.ticker)].filter(Boolean));
     if ([...targets].some((label) => labels.has(label))) {
       return definition.token;
     }
@@ -178,9 +178,71 @@ function mergeWholeWalletSources(primary = null, dashboard = null) {
   };
 }
 
+export function buildCurrentWholeWalletInventory({
+  treasuryInventory = null,
+  recordedWholeWalletInventory = null,
+  dashboardStatus = null,
+  allowRecordedWholeWalletInventory = false,
+  allowDashboardSnapshotFallback = false,
+} = {}) {
+  const liveTreasuryInventory = treasuryInventory
+    ? {
+        native: treasuryInventory.native || [],
+        tokenBalances: treasuryInventory.tokens || [],
+      }
+    : { native: [], tokenBalances: [] };
+  const recordedInventory = allowRecordedWholeWalletInventory ? recordedWholeWalletInventory : null;
+  const dashboardInventory = allowDashboardSnapshotFallback
+    ? dashboardWalletInventoryFromStatus(dashboardStatus)
+    : null;
+
+  return mergeWholeWalletSources(mergeWholeWalletSources(liveTreasuryInventory, recordedInventory), dashboardInventory);
+}
+
+function normalizeAddress(value) {
+  return String(value || "").toLowerCase();
+}
+
+export function defaultAddressIsUnconfigured(resolved = {}, args = {}, runtimeConfig = config) {
+  return (
+    !args.address &&
+    !runtimeConfig.estimateFrom &&
+    normalizeAddress(resolved?.address) === normalizeAddress(runtimeConfig.verifyRecipient)
+  );
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const resolved = await resolveOperationalAddress({ explicitAddress: args.address, dataDir: config.dataDir });
+  if (defaultAddressIsUnconfigured(resolved, args)) {
+    const now = new Date().toISOString();
+    const result = {
+      schemaVersion: 1,
+      observedAt: now,
+      address: null,
+      decision: "DATA_UNAVAILABLE",
+      requiresManualReview: true,
+      summary: {
+        jobCount: 0,
+        autoQueuedJobCount: 0,
+        manualReviewJobCount: 0,
+      },
+      jobs: [],
+      inventorySource: null,
+      inventoryRefreshError: {
+        name: "MissingOperationalAddress",
+        message: "current capital live scan requires BOB_CLAW_ESTIMATE_FROM or --address",
+      },
+      blockers: ["operator_evm_address_missing"],
+    };
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log("decision=DATA_UNAVAILABLE");
+    console.log("blocker=operator_evm_address_missing");
+    return;
+  }
   const context = await resolveShadowCycleContext({
     dataDir: config.dataDir,
     explicitAddress: resolved.address,
@@ -189,19 +251,24 @@ async function main() {
   const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
   const prices = await resolveCapitalManagerPrices({ dataDir: config.dataDir });
   const strategyCaps = listStrategyCaps({ includeInactive: args.includeInactive }) || [];
-  const {
-    treasuryInventory,
-    inventorySource,
-    inventoryRefreshError,
-  } = await resolveCapitalManagerTreasuryInventory({
-    refreshInventory: args.refreshInventory,
+  const { treasuryInventory, inventorySource, inventoryRefreshError } = await resolveCapitalManagerTreasuryInventory({
+    refreshInventory: true,
+    allowStoredSnapshotFallback: args.allowStoredInventoryFallback,
     context,
     policy,
     address: resolved.address,
     prices,
   });
 
-  const [quotes, readinessRecords, readinessFailures, scoreSnapshot, wholeWalletInventoryRecords, bootstrapSnapshot, dashboardStatus] = await Promise.all([
+  const [
+    quotes,
+    readinessRecords,
+    readinessFailures,
+    scoreSnapshot,
+    wholeWalletInventoryRecords,
+    bootstrapSnapshot,
+    dashboardStatus,
+  ] = await Promise.all([
     readJsonl(config.dataDir, "gateway-quotes"),
     readJsonl(config.dataDir, "estimator-wallet-readiness"),
     readJsonl(config.dataDir, "estimator-wallet-readiness-failures"),
@@ -226,10 +293,13 @@ async function main() {
   );
   const routeDemand = buildTreasuryRouteDemand({ routePlan, inventory: treasuryInventory, policy });
   const routeContext = selectFundingRouteContext(routePlan);
-  const wholeWalletInventory = mergeWholeWalletSources(
-    latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, resolved.address),
-    dashboardWalletInventoryFromStatus(dashboardStatus),
-  );
+  const wholeWalletInventory = buildCurrentWholeWalletInventory({
+    treasuryInventory,
+    recordedWholeWalletInventory: latestWholeWalletInventoryForAddress(wholeWalletInventoryRecords, resolved.address),
+    dashboardStatus,
+    allowRecordedWholeWalletInventory: args.allowRecordedWholeWalletInventory,
+    allowDashboardSnapshotFallback: args.allowDashboardSnapshotFallback,
+  });
 
   const result = buildCapitalManagerRefillJobs({
     strategyCaps,
@@ -256,13 +326,19 @@ async function main() {
   }
 
   if (args.json) {
-    console.log(JSON.stringify({
-      ...result,
-      inventorySource,
-        inventoryRefreshError,
-        routeDemandSignalCount: (routeDemand?.signals || []).length,
-        bootstrapObservedAt: bootstrapSnapshot?.generatedAt || null,
-      }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...result,
+          inventorySource,
+          inventoryRefreshError,
+          routeDemandSignalCount: (routeDemand?.signals || []).length,
+          bootstrapObservedAt: bootstrapSnapshot?.generatedAt || null,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
