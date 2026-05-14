@@ -17,6 +17,17 @@ export const ALL_SOURCE_DEPLOYMENT_SOURCES = Object.freeze([
 
 const SOURCE_PRIORITY = new Map(ALL_SOURCE_DEPLOYMENT_SOURCES.map((source, index) => [source, index]));
 
+export const DEPLOYMENT_SELECTOR_FAMILIES = Object.freeze([
+  "pendle",
+  "merkl",
+  "defillama",
+  "stable_carry",
+  "btc_wrapper_lending",
+  "tokenized_gold_reserve",
+  "radar",
+  "strategy_catalog",
+]);
+
 function finiteNumber(value, fallback = null) {
   if (value === null || value === undefined || value === "") return fallback;
   const number = Number(value);
@@ -824,6 +835,292 @@ function sourceCoverage(candidates) {
   });
 }
 
+function lowerText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.toLowerCase();
+  try {
+    return JSON.stringify(value).toLowerCase();
+  } catch {
+    return String(value).toLowerCase();
+  }
+}
+
+function familySetForSurface(surface = {}) {
+  const text = lowerText(surface);
+  const families = new Set();
+  if (surface.source === "defillama") return ["defillama"];
+  if (surface.source === "radar_campaign") return ["radar"];
+  if (surface.source === "pendle" || surface.pendleYt || /pendle|pendle-yt|yt-canary/.test(text)) {
+    families.add("pendle");
+  }
+  if (surface.source === "merkl" || /merkl/.test(text)) families.add("merkl");
+  if (surface.source === "defillama" || /defillama/.test(text)) families.add("defillama");
+  if (surface.source === "stable_carry" || /stablecarry|stable_treasury_carry|stablecoin|usdc|usdt|dai/.test(text)) {
+    families.add("stable_carry");
+  }
+  if (surface.source === "btc_wrapper_lending" || /wrapped.?btc|btc_wrappers|cbbtc|wbtc|moonwell/.test(text)) {
+    families.add("btc_wrapper_lending");
+  }
+  if (surface.source === "tokenized_gold_reserve" || /tokenized.*(gold|reserve)|xaut|paxg|reserve_sleeve/.test(text)) {
+    families.add("tokenized_gold_reserve");
+  }
+  if (surface.source === "radar_campaign" || /radar/.test(text)) families.add("radar");
+  if (surface.source === "strategy_catalog" || surface.catalogSurface === true) families.add("strategy_catalog");
+  return [...families].filter((family) => DEPLOYMENT_SELECTOR_FAMILIES.includes(family));
+}
+
+function emptyFamilyCoverageRow(family) {
+  return {
+    family,
+    discoveredCandidateCount: 0,
+    activePositionCount: 0,
+    unreconciledBroadcastCount: 0,
+    evPositiveCandidateCount: 0,
+    policyEligibleCandidateCount: 0,
+    signerIntentReadyCount: 0,
+    receiptReadyCount: 0,
+    capitalAuditReadyCount: 0,
+    selectedAction: "observe",
+    firstBlockingReason: "NO_SURFACE_EVIDENCE",
+    actionCandidates: [],
+  };
+}
+
+function familyCoverageMap() {
+  return new Map(DEPLOYMENT_SELECTOR_FAMILIES.map((family) => [family, emptyFamilyCoverageRow(family)]));
+}
+
+function addAction(row, action) {
+  if (action && !row.actionCandidates.includes(action)) row.actionCandidates.push(action);
+}
+
+function addFamilySurface(rows, family, fields = {}) {
+  const row = rows.get(family);
+  if (!row) return;
+  row.discoveredCandidateCount += finiteNumber(fields.discoveredCandidateCount, 0);
+  row.activePositionCount += finiteNumber(fields.activePositionCount, 0);
+  row.unreconciledBroadcastCount += finiteNumber(fields.unreconciledBroadcastCount, 0);
+  row.evPositiveCandidateCount += finiteNumber(fields.evPositiveCandidateCount, 0);
+  row.policyEligibleCandidateCount += finiteNumber(fields.policyEligibleCandidateCount, 0);
+  row.signerIntentReadyCount += finiteNumber(fields.signerIntentReadyCount, 0);
+  row.receiptReadyCount += finiteNumber(fields.receiptReadyCount, 0);
+  row.capitalAuditReadyCount += finiteNumber(fields.capitalAuditReadyCount, 0);
+  for (const action of array(fields.actionCandidates)) addAction(row, action);
+  if (fields.blockingReason && row.firstBlockingReason === "NO_SURFACE_EVIDENCE") {
+    row.firstBlockingReason = fields.blockingReason;
+  }
+}
+
+function firstCandidateBlocker(candidate) {
+  return first(
+    [...array(candidate.blockers), ...array(candidate.capResult?.blockers), ...array(candidate.policyResult?.blockers)],
+    null,
+  );
+}
+
+function addCandidateFamilyCoverage(rows, candidate) {
+  const families = familySetForSurface(candidate);
+  const isPolicyEligible = candidatePolicyEligible(candidate);
+  for (const family of families) {
+    addFamilySurface(rows, family, {
+      discoveredCandidateCount: 1,
+      evPositiveCandidateCount: finiteNumber(candidate.expectedRealizedNetUsd, -1) > 0 ? 1 : 0,
+      policyEligibleCandidateCount: isPolicyEligible ? 1 : 0,
+      signerIntentReadyCount: candidate.signerIntentAvailability?.ready === true ? 1 : 0,
+      receiptReadyCount: candidate.receiptCapitalAuditPath?.capitalAuditRequired === true ? 1 : 0,
+      capitalAuditReadyCount:
+        candidate.receiptCapitalAuditPath?.capitalAuditRequired === true &&
+        !array(candidate.blockers).some((blocker) => /receipt|capital.?audit/i.test(blocker))
+          ? 1
+          : 0,
+      blockingReason: firstCandidateBlocker(candidate),
+      actionCandidates: isPolicyEligible ? ["policy_attempt"] : ["refill_or_increase"],
+    });
+  }
+}
+
+function addMerklQueueFamilyCoverage(rows, merklQueue = {}) {
+  for (const item of array(merklQueue.queue)) {
+    const families = familySetForSurface({ ...item, source: "merkl" });
+    for (const family of families) {
+      addFamilySurface(rows, family, {
+        discoveredCandidateCount: 1,
+        activePositionCount: item.executionReadiness?.openPosition ? 1 : 0,
+        blockingReason: first(
+          [...array(item.autoEntry?.blockers), ...array(item.capabilityGaps)],
+          item.executionReadiness?.status,
+        ),
+        actionCandidates: item.executionReadiness?.openPosition
+          ? ["hold", "exit", "unwind", "claim"]
+          : ["refill_or_increase"],
+      });
+    }
+  }
+  const pendleSummaryCount = Math.max(
+    finiteNumber(merklQueue.summary?.pendleYtCount, 0),
+    finiteNumber(merklQueue.summary?.byStrategy?.["pendle-yt-canary"], 0),
+  );
+  if (pendleSummaryCount > 0) {
+    addFamilySurface(rows, "pendle", {
+      discoveredCandidateCount: pendleSummaryCount,
+      signerIntentReadyCount: finiteNumber(merklQueue.summary?.pendleYtCanaryReadyCount, 0),
+      blockingReason: "NO_POLICY_ELIGIBLE_TRADE",
+      actionCandidates: ["refill_or_increase"],
+    });
+  }
+}
+
+function addCampaignAwareFamilyCoverage(rows, campaignAware = {}) {
+  for (const candidate of array(campaignAware.candidates)) {
+    const families = familySetForSurface(candidate);
+    for (const family of families) {
+      addFamilySurface(rows, family, {
+        discoveredCandidateCount: 1,
+        evPositiveCandidateCount: finiteNumber(candidate.operatorExpectedNetProfitUsd, -1) > 0 ? 1 : 0,
+        blockingReason: first(candidate.blockers, candidate.entryStatus || null),
+        actionCandidates: ["refill_or_increase"],
+      });
+    }
+  }
+}
+
+function strategyCatalogRows(strategyCatalog = {}) {
+  return [
+    ...array(strategyCatalog.btcFamilies),
+    ...array(strategyCatalog.ethBranches),
+    ...array(strategyCatalog.entries),
+    ...array(strategyCatalog.strategies),
+  ];
+}
+
+function addCatalogFamilyCoverage(rows, strategyCatalog = {}) {
+  for (const row of strategyCatalogRows(strategyCatalog)) {
+    const families = familySetForSurface({ ...row, catalogSurface: true });
+    for (const family of families) {
+      addFamilySurface(rows, family, {
+        discoveredCandidateCount: 1,
+        blockingReason: first(row.blockers, row.status || null),
+        actionCandidates: ["refill_or_increase"],
+      });
+    }
+  }
+}
+
+function addAllocatorFamilyCoverage(rows, allocatorCore = {}) {
+  for (const candidate of array(allocatorCore.candidates)) {
+    const families = familySetForSurface(candidate);
+    for (const family of families) {
+      addFamilySurface(rows, family, {
+        discoveredCandidateCount: 1,
+        evPositiveCandidateCount: finiteNumber(candidate.expectedRealizedNetUsd, -1) > 0 ? 1 : 0,
+        blockingReason: first(candidate.blockers, candidate.status || null),
+        actionCandidates: ["refill_or_increase"],
+      });
+    }
+  }
+}
+
+function addRadarFamilyCoverage(rows, radarBoard = {}) {
+  const radarRows = [
+    ...array(radarBoard.candidates),
+    ...array(radarBoard.opportunities),
+    ...array(radarBoard.executable),
+  ];
+  for (const candidate of radarRows) {
+    addFamilySurface(rows, "radar", {
+      discoveredCandidateCount: 1,
+      evPositiveCandidateCount: finiteNumber(candidate.expectedRealizedNetUsd, -1) > 0 ? 1 : 0,
+      blockingReason: first(candidate.blockers, candidate.status || null),
+      actionCandidates: ["refill_or_increase"],
+    });
+  }
+}
+
+function unreconciledSurface(record) {
+  const text = lowerText(record);
+  return /no_receipt|unreconciled|unmatched/.test(text) || (record?.broadcast?.txHash && !record?.receipt);
+}
+
+function activePositionSurface(record) {
+  const text = lowerText(record);
+  return /active|open|verified_current|position_open/.test(text) && /position|protocol|mark|vault/.test(text);
+}
+
+function addAuditAndPositionFamilyCoverage(
+  rows,
+  { capitalAudit = {}, signerAuditRecords = [], protocolPositionMarks = [] },
+) {
+  const auditSurfaces = [
+    ...array(capitalAudit.issues),
+    ...array(capitalAudit.transactions),
+    ...array(capitalAudit.broadcastBreakdown),
+    ...array(signerAuditRecords),
+  ];
+  for (const surface of auditSurfaces) {
+    const families = familySetForSurface(surface);
+    for (const family of families) {
+      const unreconciled = unreconciledSurface(surface);
+      addFamilySurface(rows, family, {
+        discoveredCandidateCount: 1,
+        unreconciledBroadcastCount: unreconciled ? 1 : 0,
+        blockingReason: unreconciled ? "NO_RECEIPT_RECONCILIATION" : firstCandidateBlocker(surface),
+        actionCandidates: unreconciled ? ["reconcile_receipt"] : ["hold"],
+      });
+    }
+  }
+  for (const mark of array(protocolPositionMarks)) {
+    const families = familySetForSurface(mark);
+    for (const family of families) {
+      const active = activePositionSurface(mark);
+      addFamilySurface(rows, family, {
+        discoveredCandidateCount: 1,
+        activePositionCount: active ? 1 : 0,
+        blockingReason: active ? "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED" : firstCandidateBlocker(mark),
+        actionCandidates: active ? ["hold", "exit", "unwind", "claim"] : ["reconcile_receipt"],
+      });
+    }
+  }
+}
+
+function finalizeFamilyCoverage(rows, selectedCandidate) {
+  const selectedFamilies = new Set(selectedCandidate ? familySetForSurface(selectedCandidate) : []);
+  return DEPLOYMENT_SELECTOR_FAMILIES.map((family) => {
+    const row = rows.get(family);
+    if (selectedFamilies.has(family)) {
+      row.selectedAction = selectedCandidate?.signerIntentAvailability?.ready
+        ? "signer_intent_ready"
+        : "policy_attempt";
+      row.firstBlockingReason = selectedCandidate?.policyResult?.decision === "ALLOW" ? null : row.firstBlockingReason;
+    } else if (row.unreconciledBroadcastCount > 0) {
+      row.selectedAction = "reconcile_receipt";
+      row.firstBlockingReason = "NO_RECEIPT_RECONCILIATION";
+    } else if (row.activePositionCount > 0 && row.policyEligibleCandidateCount === 0) {
+      row.selectedAction = "hold_or_health_action";
+      row.firstBlockingReason = "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED";
+    } else if (row.policyEligibleCandidateCount > 0) {
+      row.selectedAction = "policy_attempt_ready";
+    } else if (row.evPositiveCandidateCount > 0) {
+      row.selectedAction = "resolve_policy_or_signer_blockers";
+    } else if (row.discoveredCandidateCount > 0) {
+      row.selectedAction = "resolve_blockers";
+      if (row.firstBlockingReason === "NO_SURFACE_EVIDENCE") row.firstBlockingReason = "NO_POLICY_ELIGIBLE_TRADE";
+    }
+    return row;
+  });
+}
+
+function buildFamilyCoverage(candidates, options = {}, selectedCandidate = null) {
+  const rows = familyCoverageMap();
+  for (const candidate of candidates) addCandidateFamilyCoverage(rows, candidate);
+  addMerklQueueFamilyCoverage(rows, options.merklQueue);
+  addCampaignAwareFamilyCoverage(rows, options.campaignAware);
+  addCatalogFamilyCoverage(rows, options.strategyCatalog);
+  addAllocatorFamilyCoverage(rows, options.allocatorCore);
+  addRadarFamilyCoverage(rows, options.radarBoard);
+  addAuditAndPositionFamilyCoverage(rows, options);
+  return finalizeFamilyCoverage(rows, selectedCandidate);
+}
+
 function capitalUtilization({ capitalAudit = {}, unifiedCapital = {} }) {
   const totalUsd =
     unifiedCapital.halt === true
@@ -914,11 +1211,13 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       ? "selector_policy_attempt_only_no_signer_execute"
       : `policy_blocked:${first(selectedCandidate.policyResult?.blockers, "unknown")}`
     : "no_positive_ev_policy_eligible_candidate";
+  const familyCoverage = buildFamilyCoverage(candidates, options, selectedCandidate);
 
   return {
     generatedAt: now,
     status: policyAttempted ? "POLICY_ATTEMPTED" : "NO_TRADE",
     sourceCoverage: sourceCoverage(candidates),
+    familyCoverage,
     capitalTruth: {
       capitalAuditGeneratedAt: options.capitalAudit?.generatedAt || null,
       currentNativeBtcSats: options.capitalAudit?.summary?.currentNativeBtcSats ?? null,

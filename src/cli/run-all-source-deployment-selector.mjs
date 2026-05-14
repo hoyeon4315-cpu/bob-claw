@@ -97,6 +97,8 @@ async function collectFreshInputs({ timeout }) {
   ]);
   return {
     capitalAudit,
+    signerAuditRecords: capitalAuditInputs.signerAuditRecords || [],
+    protocolPositionMarks: capitalAuditInputs.protocolPositionMarks || [],
     unifiedCapital,
     killStatus,
     merklOpportunities,

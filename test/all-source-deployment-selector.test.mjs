@@ -346,3 +346,148 @@ test("all-source selector resolves live Merkl inventory and converts PRETGE rewa
   assert.equal(merkl.blockers.includes("reward_exit_liquidity_unproven"), false);
   assert.equal(report.selection.status, "NO_TRADE");
 });
+
+test("family surface report keeps Pendle visible when pendle-yt-canary has queue or audit evidence", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: {
+        summary: {
+          queueCount: 11,
+          byStrategy: { "pendle-yt-canary": 11 },
+          pendleYtCount: 13,
+          pendleYtCanaryReadyCount: 1,
+        },
+        queue: [],
+      },
+      campaignAware: { candidates: [] },
+      capitalAudit: {
+        summary: { currentNativeBtcUsd: 190, issueCount: 1 },
+        issues: [
+          {
+            strategyId: "pendle-yt-canary",
+            category: "pendle_yt_entry",
+            result: "no_receipt",
+          },
+        ],
+      },
+      signerAuditRecords: [
+        {
+          strategyId: "pendle-yt-canary",
+          chain: "base",
+          lifecycle: { stage: "broadcast_submitted" },
+          broadcast: { txHash: "0xpendle" },
+        },
+      ],
+      protocolPositionMarks: [],
+      policyEvaluator: async () => {
+        throw new Error("Pendle queue/audit evidence should not imply policy eligibility");
+      },
+    }),
+  );
+
+  const pendle = report.familyCoverage.find((row) => row.family === "pendle");
+  assert.ok(pendle);
+  assert.ok(pendle.discoveredCandidateCount >= 13);
+  assert.equal(pendle.unreconciledBroadcastCount, 2);
+  assert.equal(pendle.policyEligibleCandidateCount, 0);
+  assert.equal(pendle.selectedAction, "reconcile_receipt");
+  assert.equal(pendle.firstBlockingReason, "NO_RECEIPT_RECONCILIATION");
+});
+
+test("family surface report does not call blocked Radar DefiLlama Merkl stable BTC gold or catalog surfaces NO_CANDIDATE", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: {
+        summary: { queueCount: 2 },
+        queue: [
+          {
+            queueId: "merkl:stable",
+            opportunityId: "stable-op",
+            chain: "base",
+            protocolId: "morpho",
+            family: "stable_treasury_carry",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            executionSurface: "stableCarry",
+            entryAssets: ["USDC"],
+            protocolBindingPlan: { status: "binding_ready" },
+            executionReadiness: { status: "inventory_unknown", executorSupported: true },
+            autoEntry: { status: "blocked", blockers: ["inventory_unknown"] },
+          },
+        ],
+      },
+      campaignAware: {
+        candidates: [
+          {
+            opportunityId: "stable-op",
+            chain: "base",
+            protocol: "morpho",
+            displayedApr: 5,
+            expectedHoldDays: 7,
+            operatorPositionUsd: 10,
+            estimatedGasClaimSwapBridgeCostUsd: 0.03,
+            blockers: ["inventory_unknown"],
+          },
+        ],
+      },
+      allocatorCore: {
+        candidates: [
+          {
+            id: "wrapped-btc-loop-base-moonwell",
+            chain: "base",
+            protocols: ["moonwell"],
+            assetFamily: "btc_wrappers",
+            blockers: ["health_factor_unmeasured"],
+          },
+        ],
+      },
+      radarBoard: {
+        candidates: [
+          {
+            id: "radar-1",
+            strategyId: "radar-live-canary",
+            chain: "base",
+            protocol: "aerodrome",
+            blockers: ["reward_exit_liquidity_unproven"],
+          },
+        ],
+      },
+      strategyCatalog: {
+        btcFamilies: [
+          { id: "wrapped-btc-loop-base-moonwell", status: "blocked", blockers: ["hf_missing"] },
+          { id: "tokenized_gold_rotation", status: "blocked", blockers: ["deterministic_unwind_required"] },
+        ],
+        entries: [{ id: "catalog-only-lane", status: "blocked", blockers: ["executor_missing"] }],
+        strategies: [],
+        ethBranches: [],
+      },
+      defiLlamaPools: [
+        {
+          chain: "Base",
+          project: "morpho",
+          symbol: "USDC",
+          pool: "defillama-pool",
+          tvlUsd: 1_000_000,
+          apy: 5,
+        },
+      ],
+      policyEvaluator: async () => {
+        throw new Error("Blocked family surfaces should not reach policy");
+      },
+    }),
+  );
+
+  for (const family of [
+    "radar",
+    "defillama",
+    "merkl",
+    "stable_carry",
+    "btc_wrapper_lending",
+    "tokenized_gold_reserve",
+    "strategy_catalog",
+  ]) {
+    const row = report.familyCoverage.find((entry) => entry.family === family);
+    assert.ok(row, family);
+    assert.ok(row.discoveredCandidateCount > 0, family);
+    assert.notEqual(row.firstBlockingReason, "NO_CANDIDATE", family);
+  }
+});
