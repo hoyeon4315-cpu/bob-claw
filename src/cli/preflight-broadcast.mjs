@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultRunCommand } from "../session/shadow-refresh-runner.mjs";
 
@@ -100,7 +100,9 @@ function evaluateKillStatus(payload) {
       state: halted ? "HALTED" : "RUNNING",
       activeReason: payload?.activeReason || null,
     },
-    blocker: halted ? blocker("kill_status", "kill_switch_halted", { activeReason: payload?.activeReason || null }) : null,
+    blocker: halted
+      ? blocker("kill_status", "kill_switch_halted", { activeReason: payload?.activeReason || null })
+      : null,
   };
 }
 
@@ -114,27 +116,38 @@ function evaluateSignerHealth(payload) {
       limitations: payload?.readiness?.limitations || [],
       cause: payload?.cause || null,
     },
-    blocker: readyForBroadcast ? null : blocker("signer_health", "signer_not_ready_for_broadcast", {
-      cause: payload?.cause || null,
-      limitations: payload?.readiness?.limitations || [],
-    }),
+    blocker: readyForBroadcast
+      ? null
+      : blocker("signer_health", "signer_not_ready_for_broadcast", {
+          cause: payload?.cause || null,
+          limitations: payload?.readiness?.limitations || [],
+        }),
   };
 }
 
-async function evaluateWalletHoldings(payload, {
-  commandResult = null,
-  walletPayloadPath = join(process.cwd(), "dashboard", "public", "wallet-holdings.json"),
-} = {}) {
-  const wallet = commandResult?.walletPayload || await readJsonIfExists(walletPayloadPath) || payload || {};
+async function evaluateWalletHoldings(
+  payload,
+  { commandResult = null, walletPayloadPath = join(process.cwd(), "dashboard", "public", "wallet-holdings.json") } = {},
+) {
+  const commandWalletPath = commandResult?.out ? resolve(process.cwd(), commandResult.out) : null;
+  const wallet =
+    commandResult?.walletPayload ||
+    (commandWalletPath ? await readJsonIfExists(commandWalletPath) : null) ||
+    (await readJsonIfExists(walletPayloadPath)) ||
+    payload ||
+    {};
   const totalUsd = finiteNumber(wallet.totalUsd ?? payload?.totalUsd);
   const freshnessCoveragePct = finiteNumber(
-    wallet.assetMetadataCoverage?.freshnessCoveragePct ??
-      payload?.freshnessCoveragePct,
+    wallet.assetMetadataCoverage?.freshnessCoveragePct ?? payload?.freshnessCoveragePct,
   );
   const staleItemCount = Number(wallet.staleItemCount ?? payload?.staleItemCount ?? 0);
   const stalePriceItemCount = Number(wallet.stalePriceItemCount ?? payload?.stalePriceItemCount ?? 0);
-  const divergenceWarnCount = Number(wallet.assetMetadataCoverage?.divergenceWarnCount ?? payload?.divergenceWarnCount ?? 0);
-  const divergenceBlockCount = Number(wallet.assetMetadataCoverage?.divergenceBlockCount ?? payload?.divergenceBlockCount ?? 0);
+  const divergenceWarnCount = Number(
+    wallet.assetMetadataCoverage?.divergenceWarnCount ?? payload?.divergenceWarnCount ?? 0,
+  );
+  const divergenceBlockCount = Number(
+    wallet.assetMetadataCoverage?.divergenceBlockCount ?? payload?.divergenceBlockCount ?? 0,
+  );
   const pending = wallet.pending === true || payload?.pending === true;
   const ok =
     pending === false &&
@@ -155,15 +168,17 @@ async function evaluateWalletHoldings(payload, {
       divergenceWarnCount,
       divergenceBlockCount,
     },
-    blocker: ok ? null : blocker("wallet_holdings", "wallet_holdings_not_fresh_or_divergent", {
-      totalUsd,
-      pending,
-      freshnessPct: freshnessCoveragePct,
-      staleItemCount,
-      stalePriceItemCount,
-      divergenceWarnCount,
-      divergenceBlockCount,
-    }),
+    blocker: ok
+      ? null
+      : blocker("wallet_holdings", "wallet_holdings_not_fresh_or_divergent", {
+          totalUsd,
+          pending,
+          freshnessPct: freshnessCoveragePct,
+          staleItemCount,
+          stalePriceItemCount,
+          divergenceWarnCount,
+          divergenceBlockCount,
+        }),
   };
 }
 
@@ -247,14 +262,10 @@ async function evaluateStep(step, payload, options) {
   };
 }
 
-async function runStep(step, {
-  runCommandImpl,
-  commandTimeoutMs,
-  cwd = process.cwd(),
-  env = process.env,
-  target,
-  walletPayloadPath,
-} = {}) {
+async function runStep(
+  step,
+  { runCommandImpl, commandTimeoutMs, cwd = process.cwd(), env = process.env, target, walletPayloadPath } = {},
+) {
   const result = await runCommandImpl({
     command: step.command,
     args: step.args,
@@ -295,7 +306,7 @@ async function runStep(step, {
     };
   }
   const evaluated = await evaluateStep(step, payload, {
-    commandResult: result,
+    commandResult: payload && typeof payload === "object" ? { ...result, ...payload } : result,
     target,
     walletPayloadPath,
   });

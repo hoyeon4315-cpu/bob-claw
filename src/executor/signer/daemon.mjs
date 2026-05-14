@@ -17,6 +17,7 @@ import { notifyLiveTransaction } from "./transaction-alerts.mjs";
 import { createBtcLocalKeySigner } from "./btc-local-signer.mjs";
 import { createEvmLocalKeySigner } from "./evm-local-signer.mjs";
 import { normalizeExecutionIntent } from "./signer-interface.mjs";
+import { resolveDefaultHeartbeatPath, resolveDefaultSignerSocketPath } from "../runtime-paths.mjs";
 import { writeHeartbeat } from "../watchdog/heartbeat.mjs";
 import { checkKillSwitch, resolveKillSwitchPath } from "../policy/kill-switch.mjs";
 import { loadRuntimeRiskContext } from "../runtime/risk-context.mjs";
@@ -32,8 +33,8 @@ export function parseArgs(argv) {
       }),
   );
   return {
-    socketPath: options["socket-path"] || getEnv("EXECUTOR_SIGNER_SOCKET_PATH", "./state/executor-signer.sock"),
-    heartbeatPath: options["heartbeat-path"] || getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
+    socketPath: options["socket-path"] || getEnv("EXECUTOR_SIGNER_SOCKET_PATH", resolveDefaultSignerSocketPath()),
+    heartbeatPath: options["heartbeat-path"] || getEnv("EXECUTOR_HEARTBEAT_PATH", resolveDefaultHeartbeatPath()),
     heartbeatIntervalMs: getNumberEnv("EXECUTOR_HEARTBEAT_INTERVAL_MS", 15_000),
     killSwitchPath: resolveKillSwitchPath(),
     activeBudgetUsd: null,
@@ -85,10 +86,7 @@ function serializeReceipt(receipt) {
 
 function mergeCurrentAllocations(primary = null, fallback = null) {
   const out = {};
-  const keys = new Set([
-    ...Object.keys(fallback || {}),
-    ...Object.keys(primary || {}),
-  ]);
+  const keys = new Set([...Object.keys(fallback || {}), ...Object.keys(primary || {})]);
   for (const key of keys) {
     const primaryValue = primary?.[key];
     const fallbackValue = fallback?.[key];
@@ -154,9 +152,7 @@ export async function handleIntentCommand({
       runtimeRiskContext?.currentAllocations,
     ),
     totalOperatingCapitalUsd:
-      metadataRiskContext?.totalOperatingCapitalUsd ??
-      runtimeRiskContext?.totalOperatingCapitalUsd ??
-      null,
+      metadataRiskContext?.totalOperatingCapitalUsd ?? runtimeRiskContext?.totalOperatingCapitalUsd ?? null,
   };
   const policy = await evaluateIntentPolicies({
     intent,
@@ -242,11 +238,11 @@ export async function handleIntentCommand({
         buildSignerAuditRecord({
           intent,
           policyVerdict: "approved",
-        lifecycle: {
-          stage: "broadcasted",
-          txHash: broadcast.txHash,
-          signer: signed.metadata || null,
-        },
+          lifecycle: {
+            stage: "broadcasted",
+            txHash: broadcast.txHash,
+            signer: signed.metadata || null,
+          },
           broadcast,
         }),
         { rootDir: cwd },
@@ -537,17 +533,22 @@ export async function startSignerDaemon() {
   });
 
   await writeDaemonHeartbeat();
-  const heartbeatTimer = setInterval(() => {
-    writeDaemonHeartbeat().catch(() => {});
-  }, Math.max(1_000, args.heartbeatIntervalMs));
+  const heartbeatTimer = setInterval(
+    () => {
+      writeDaemonHeartbeat().catch(() => {});
+    },
+    Math.max(1_000, args.heartbeatIntervalMs),
+  );
   heartbeatTimer.unref();
   const startupBtcInfo = await readAddressInfoOrNull(() => signers.btc.getAddressInfo("bitcoin"));
-  console.log(JSON.stringify({
-    status: "listening",
-    socketPath,
-    btcAddress: startupBtcInfo?.address || null,
-    btcAddressType: startupBtcInfo?.addressType || null,
-  }));
+  console.log(
+    JSON.stringify({
+      status: "listening",
+      socketPath,
+      btcAddress: startupBtcInfo?.address || null,
+      btcAddressType: startupBtcInfo?.addressType || null,
+    }),
+  );
 
   const shutdown = async () => {
     clearInterval(heartbeatTimer);

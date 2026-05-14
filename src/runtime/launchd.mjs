@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { getEnv } from "../config/env.mjs";
+import { resolveDefaultHeartbeatPath, resolveDefaultSignerSocketPath } from "../executor/runtime-paths.mjs";
 import { resolveNodeExecutable } from "./node-path.mjs";
 
 const DEFAULT_PATH_ENV = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin";
@@ -163,8 +164,8 @@ async function inspectLaunchAgentEnvironmentKeys(spec, plistPresent, readFileImp
   const missingEnvironmentKeys = expectedEnvironmentKeys.filter(
     (key) => !plistText.includes(`<key>${xmlEscape(key)}</key>`),
   );
-  const unexpectedForbiddenEnvironmentKeys = forbiddenEnvironmentKeys.filter(
-    (key) => plistText.includes(`<key>${xmlEscape(key)}</key>`),
+  const unexpectedForbiddenEnvironmentKeys = forbiddenEnvironmentKeys.filter((key) =>
+    plistText.includes(`<key>${xmlEscape(key)}</key>`),
   );
   return {
     expectedEnvironmentKeys,
@@ -191,9 +192,24 @@ export function buildExecutorLaunchAgentSpecs({
     HOME: homeDir,
     ...launchdSafeEnvironment(),
   };
+  const runtimeEnvironment = {
+    EXECUTOR_SIGNER_SOCKET_PATH: getEnv(
+      "EXECUTOR_SIGNER_SOCKET_PATH",
+      resolveDefaultSignerSocketPath({ cwd: resolvedRootDir, homeDir }),
+    ),
+    EXECUTOR_HEARTBEAT_PATH: getEnv(
+      "EXECUTOR_HEARTBEAT_PATH",
+      resolveDefaultHeartbeatPath({ cwd: resolvedRootDir, homeDir }),
+    ),
+  };
   const signerEnvironment = {
     ...sharedEnvironment,
+    ...runtimeEnvironment,
     ...signerKeyPathLaunchdEnvironment(),
+  };
+  const watchdogEnvironment = {
+    ...sharedEnvironment,
+    ...runtimeEnvironment,
   };
   const nonSignerForbidden = forbiddenLaunchdEnvironmentKeys(SIGNER_KEY_PATH_ENV_KEYS);
   return [
@@ -224,7 +240,7 @@ export function buildExecutorLaunchAgentSpecs({
       stderrPath: join(resolvedLogDir, "executor-watchdog.err.log"),
       workingDirectory: resolvedRootDir,
       programArguments: [resolvedNodePath, resolve(resolvedRootDir, "src/cli/run-executor-watchdog.mjs")],
-      environmentVariables: sharedEnvironment,
+      environmentVariables: watchdogEnvironment,
       forbiddenEnvironmentKeys: nonSignerForbidden,
       runAtLoad: true,
       keepAlive: true,

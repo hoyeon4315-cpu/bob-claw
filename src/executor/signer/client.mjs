@@ -1,10 +1,11 @@
 import net from "node:net";
 import { getEnv, getNumberEnv } from "../../config/env.mjs";
+import { DEFAULT_SIGNER_SOCKET_RELATIVE_PATH, resolveDefaultSignerSocketPath } from "../runtime-paths.mjs";
 
-export const DEFAULT_SIGNER_SOCKET_PATH = "./state/executor-signer.sock";
+export const DEFAULT_SIGNER_SOCKET_PATH = DEFAULT_SIGNER_SOCKET_RELATIVE_PATH;
 
 export function signerSocketPath() {
-  return getEnv("EXECUTOR_SIGNER_SOCKET_PATH", DEFAULT_SIGNER_SOCKET_PATH);
+  return getEnv("EXECUTOR_SIGNER_SOCKET_PATH", resolveDefaultSignerSocketPath());
 }
 
 export function signerClientTimeoutMs() {

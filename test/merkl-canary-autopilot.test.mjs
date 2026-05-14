@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildLiveMerklInventorySnapshot,
   buildMerklCanaryOpportunityIntent,
   evaluateMerklCanaryOpportunityPolicy,
   merklExecutionErrorReport,
@@ -53,6 +54,53 @@ test("sizes Merkl canary amount to the committed tiny cap and inventory", () => 
   assert.equal(sizing.status, "ready");
   assert.equal(sizing.amount, "414771");
   assert.equal(sizing.amountUsd, 0.414771);
+});
+
+test("live Merkl inventory refresh prefers a positive Pendle entry token over the zero underlying asset row", async () => {
+  const item = queueItem({
+    chain: "base",
+    protocolId: "pendle",
+    mappedStrategyId: "pendle-yt-canary",
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "pendle_yt_buy_sell_redeem",
+      resolvedBinding: {
+        marketAddress: "0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+        ytTokenAddress: "0xf90c9350ed4a91121167ad40a79ec5852c6018e2",
+        assetAddress: "0xd993935e13851dd7517af10687ec7e5022127228",
+        entryTokenAddresses: [
+          "0xd993935e13851dd7517af10687ec7e5022127228",
+          "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        ],
+      },
+    },
+    executionReadiness: {
+      status: "inventory_unknown",
+      matchedToken: null,
+      matchedNative: {
+        asset: "ETH",
+        actual: "1000000000000000",
+        estimatedUsd: 2,
+      },
+    },
+  });
+
+  const inventory = await buildLiveMerklInventorySnapshot({
+    queueItem: item,
+    senderAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    readErc20BalanceImpl: async (chain, token) => ({
+      balance: token.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? 25262222885n : 0n,
+      rpcUrl: "https://mainnet.base.org",
+    }),
+    readNativeBalanceImpl: async () => ({
+      balanceWei: 1000000000000000n,
+      rpcUrl: "https://mainnet.base.org",
+    }),
+  });
+
+  assert.equal(inventory.tokens[0].token, "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+  assert.equal(inventory.tokens[0].ticker, "USDC");
+  assert.equal(inventory.tokens[0].actual, "25262222885");
 });
 
 test("uses committed graduation ladder as the live canary sizing cap", () => {
@@ -898,7 +946,7 @@ test("refreshes execute sizing from the matched entry token for Pendle SDK zaps"
     readNativeBalanceImpl: async () => ({ balanceWei: 1000000000000000n, rpcUrl: "https://mainnet.base.org" }),
   });
 
-  assert.deepEqual(readTokens, [usdc]);
+  assert.deepEqual(readTokens, [usdc, apxUsd]);
   assert.equal(refreshed.queueItem.executionReadiness.status, "inventory_ready");
   assert.equal(refreshed.queueItem.executionReadiness.matchedToken.token, usdc);
   assert.equal(refreshed.sizing.status, "ready");

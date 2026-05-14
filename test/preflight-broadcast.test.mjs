@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { runPreflightBroadcastCli } from "../src/cli/preflight-broadcast.mjs";
 
@@ -133,4 +136,75 @@ test("preflight-broadcast blocks when dispatch dry-run is not live-broadcast rea
   assert.equal(payload.blockers[0].reason, "dispatch_not_ready_for_live_broadcast");
   assert.equal(payload.summary.dispatch.readyForPolicyDispatch, true);
   assert.equal(payload.summary.dispatch.readyForLiveBroadcast, false);
+});
+
+test("preflight-broadcast reads wallet freshness from the emitted wallet payload file", async () => {
+  const fixtureRoot = await mkdir(join(tmpdir(), `bob-claw-preflight-wallet-${Date.now()}`), { recursive: true });
+  const walletPath = join(fixtureRoot, "data", "dashboard-live", "wallet-holdings.json");
+  await mkdir(join(fixtureRoot, "data", "dashboard-live"), { recursive: true });
+  await writeFile(
+    walletPath,
+    JSON.stringify({
+      pending: false,
+      totalUsd: 818.25,
+      staleItemCount: 0,
+      stalePriceItemCount: 0,
+      assetMetadataCoverage: {
+        freshnessCoveragePct: 1,
+        divergenceWarnCount: 0,
+        divergenceBlockCount: 0,
+      },
+    }),
+    "utf8",
+  );
+
+  const runner = {
+    runCommandImpl: async ({ step }) => {
+      if (step.id === "kill_status") return commandResult({ halted: false });
+      if (step.id === "signer_health") {
+        return commandResult({
+          readiness: {
+            readyForBroadcast: true,
+            telemetryComplete: true,
+            limitations: [],
+          },
+        });
+      }
+      if (step.id === "wallet_holdings") {
+        return commandResult(
+          {
+            ok: true,
+            pending: false,
+            totalUsd: 818.25,
+            out: "data/dashboard-live/wallet-holdings.json",
+          },
+          {
+            out: "data/dashboard-live/wallet-holdings.json",
+          },
+        );
+      }
+      if (step.id === "payback_status") {
+        return commandResult({
+          policy: { minPaybackSats: 5000 },
+          payback: { accumulatorPendingSats: 100, scheduler: { minimumPaybackProgress: { minPaybackSats: 5000 } } },
+        });
+      }
+      if (step.id === "dispatch_dry_run") return commandResult(cleanDispatchPayload());
+      throw new Error(`unexpected step ${step.id}`);
+    },
+  };
+
+  const previousCwd = process.cwd();
+  process.chdir(fixtureRoot);
+  try {
+    const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
+      runCommandImpl: runner.runCommandImpl,
+      now: "2026-05-09T00:00:00.000Z",
+    });
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.stages[2].status, "passed");
+    assert.equal(payload.summary.wallet.freshnessPct, 1);
+  } finally {
+    process.chdir(previousCwd);
+  }
 });

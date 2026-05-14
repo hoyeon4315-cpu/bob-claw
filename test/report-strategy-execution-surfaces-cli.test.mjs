@@ -3,9 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import {
-  loadStrategyExecutionSurfaceInputs,
-} from "../src/cli/report-strategy-execution-surfaces.mjs";
+import { loadStrategyExecutionSurfaceInputs } from "../src/cli/report-strategy-execution-surfaces.mjs";
 
 test("strategy execution surface CLI loads lightweight snapshots without full dashboard rebuild", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-surfaces-cli-"));
@@ -33,15 +31,28 @@ test("strategy execution surface CLI loads lightweight snapshots without full da
     "utf8",
   );
   await writeFile(join(dataDir, "gateway-scores.json"), `${JSON.stringify({ scores: [] })}\n`, "utf8");
-  await writeFile(join(dataDir, "treasury-inventory.jsonl"), `${JSON.stringify({ observedAt: "old", tokens: [] })}\n${JSON.stringify(latestTreasury)}\n`, "utf8");
+  await writeFile(
+    join(dataDir, "treasury-inventory.jsonl"),
+    `${JSON.stringify({ observedAt: "old", tokens: [] })}\n${JSON.stringify(latestTreasury)}\n`,
+    "utf8",
+  );
   await writeFile(join(dataDir, "phase3-strategy-validation.json"), `${JSON.stringify({ validations: [] })}\n`, "utf8");
-  await writeFile(join(dataDir, "wrapped-btc-lending-loop-slice.json"), `${JSON.stringify({ strategy: { id: "wrapped-btc-loop-base-moonwell" } })}\n`, "utf8");
-  await writeFile(join(dataDir, "merkl-canary-queue.json"), `${JSON.stringify({ summary: { queueCount: 0 }, queue: [] })}\n`, "utf8");
+  await writeFile(
+    join(dataDir, "wrapped-btc-lending-loop-slice.json"),
+    `${JSON.stringify({ strategy: { id: "wrapped-btc-loop-base-moonwell" } })}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(dataDir, "merkl-canary-queue.json"),
+    `${JSON.stringify({ summary: { queueCount: 0 }, queue: [] })}\n`,
+    "utf8",
+  );
 
   const inputs = await loadStrategyExecutionSurfaceInputs({
     dataDir,
     readSignerAuditLogImpl: async () => [],
     readTriangleArtifactsImpl: async () => ({}),
+    loadLiveInventory: false,
   });
 
   assert.equal(inputs.dashboardStatus.overall.liveTrading, "ALLOWED");

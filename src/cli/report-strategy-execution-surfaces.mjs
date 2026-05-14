@@ -3,6 +3,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
+import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { readLatestJsonlRecord } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
@@ -10,6 +11,12 @@ import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
 import { buildSliceDryRunSummary } from "../strategy/slice-dryrun-summary-builder.mjs";
+import {
+  resolveCapitalManagerPrices,
+  resolveCapitalManagerTreasuryInventory,
+} from "./plan-capital-manager-refill-jobs.mjs";
+import { resolveShadowCycleContext } from "../session/shadow-cycle-context.mjs";
+import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 
 const IS_MAIN = process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false;
 
@@ -24,6 +31,11 @@ export async function loadStrategyExecutionSurfaceInputs({
   dataDir = config.dataDir,
   readSignerAuditLogImpl = readSignerAuditLog,
   readTriangleArtifactsImpl = readTriangleArtifacts,
+  resolveOperationalAddressImpl = resolveOperationalAddress,
+  resolveShadowCycleContextImpl = resolveShadowCycleContext,
+  resolveCapitalManagerPricesImpl = resolveCapitalManagerPrices,
+  resolveCapitalManagerTreasuryInventoryImpl = resolveCapitalManagerTreasuryInventory,
+  loadLiveInventory = true,
 } = {}) {
   const [
     dashboardStatus,
@@ -78,6 +90,29 @@ export async function loadStrategyExecutionSurfaceInputs({
       }
     : wrappedBtcLendingLoopSlice;
 
+  let liveTreasuryInventorySnapshot = null;
+  if (loadLiveInventory) {
+    const resolved = await resolveOperationalAddressImpl({
+      dataDir,
+      configuredAddress: config.estimateFrom,
+    });
+    const context = await resolveShadowCycleContextImpl({
+      dataDir,
+      explicitAddress: resolved.address,
+      configuredAddress: config.estimateFrom,
+    });
+    const prices = await resolveCapitalManagerPricesImpl({ dataDir });
+    const policy = validateTreasuryPolicy(buildDefaultTreasuryPolicy());
+    const inventory = await resolveCapitalManagerTreasuryInventoryImpl({
+      refreshInventory: true,
+      context,
+      policy,
+      address: resolved.address,
+      prices,
+    });
+    liveTreasuryInventorySnapshot = inventory.treasuryInventory || null;
+  }
+
   return {
     dashboardStatus: hydratedDashboardStatus,
     state: {
@@ -93,6 +128,7 @@ export async function loadStrategyExecutionSurfaceInputs({
       merklCanaryQueue,
       merklCanaryAutopilotLatest,
       autonomousDiscoveryBoard,
+      liveTreasuryInventorySnapshot,
     },
   };
 }

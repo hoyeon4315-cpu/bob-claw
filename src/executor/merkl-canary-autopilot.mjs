@@ -72,6 +72,20 @@ function bindingKind(queueItem = {}) {
   return queueItem.protocolBindingPlan?.bindingKind || null;
 }
 
+function uniqueAddresses(values = []) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values) {
+    const normalized = String(value || "")
+      .trim()
+      .toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(value);
+  }
+  return out;
+}
+
 function displayedAprPct(queueItem = {}) {
   return finite(
     queueItem.effectiveAprPct ?? queueItem.displayedAprPct ?? queueItem.aprPct ?? queueItem.apr ?? queueItem.apy,
@@ -690,8 +704,23 @@ export async function buildLiveMerklInventorySnapshot({
   const binding = queueItem.protocolBindingPlan?.resolvedBinding || {};
   const priorToken = queueItem.executionReadiness?.matchedToken || null;
   const priorNative = queueItem.executionReadiness?.matchedNative || null;
-  const liveTokenAddress = priorToken?.token || binding.assetAddress;
-  const tokenBalance = await readErc20BalanceImpl(queueItem.chain, liveTokenAddress, senderAddress);
+  const tokenCandidates = uniqueAddresses([
+    priorToken?.token,
+    binding.assetAddress,
+    ...(binding.entryTokenAddresses || []),
+    ...(binding.sdkInputTokenAddresses || []),
+    ...(binding.syInputTokenAddresses || []),
+  ]);
+  const tokenBalances = await Promise.all(
+    tokenCandidates.map(async (token) => ({
+      token,
+      balance: await readErc20BalanceImpl(queueItem.chain, token, senderAddress),
+    })),
+  );
+  const chosenTokenBalance =
+    tokenBalances.find((entry) => BigInt(entry.balance.balance || 0) > 0n) || tokenBalances[0] || null;
+  if (!chosenTokenBalance) throw new Error("No entry token address available for live inventory refresh");
+  const liveTokenAddress = chosenTokenBalance.token;
   const nativeBalance = await readNativeBalanceImpl(queueItem.chain, senderAddress);
   const liveTokenAsset = tokenAsset(queueItem.chain, liveTokenAddress);
   return {
@@ -717,14 +746,14 @@ export async function buildLiveMerklInventorySnapshot({
         chain: queueItem.chain,
         token: liveTokenAddress,
         ticker: priorToken?.ticker || liveTokenAsset.ticker,
-        actual: tokenBalance.balance.toString(),
+        actual: chosenTokenBalance.balance.balance.toString(),
         actualDecimal: priorToken?.actualDecimal ?? null,
         estimatedUsd: scaledUsdEstimate({
           priorUnits: priorToken?.actual,
           priorUsd: priorToken?.estimatedUsd,
-          liveUnits: tokenBalance.balance.toString(),
+          liveUnits: chosenTokenBalance.balance.balance.toString(),
         }),
-        rpcUrl: tokenBalance.rpcUrl || null,
+        rpcUrl: chosenTokenBalance.balance.rpcUrl || null,
       },
     ],
   };
