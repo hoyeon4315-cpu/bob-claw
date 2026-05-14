@@ -10,7 +10,7 @@ function latestByObservedAt(records = []) {
 }
 
 const WHOLE_WALLET_PREFERENCE_WINDOW_MS = 15 * 60 * 1000;
-const SOURCE_FRESH_MAX_AGE_MS = 60 * 1000;
+const SOURCE_FRESH_MAX_AGE_MS = 15 * 60 * 1000;
 const PRICE_FRESH_MAX_AGE_MS = 5 * 60 * 1000;
 const PRICE_DIVERGENCE_WARN_PCT = 1;
 const PRICE_DIVERGENCE_BLOCK_PCT = 3;
@@ -54,11 +54,11 @@ function priceSourceKindForEntry(entry = {}, family = "") {
   if (valuationKind === "erc4626_preview") {
     return { name: "erc4626_preview_underlying_chainlink_oracle", type: "erc4626_underlying_preview" };
   }
-  if (["eth", "weth"].includes(symbol) || family === "native") {
-    return { name: "chainlink:eth_usd", type: "chainlink_onchain_feed" };
-  }
   if (["btc", "wbtc", "cbbtc", "unibtc", "solvbtc"].includes(symbol)) {
     return { name: "chainlink:btc_usd", type: "chainlink_onchain_feed" };
+  }
+  if (["eth", "weth"].includes(symbol) || family === "native") {
+    return { name: "chainlink:eth_usd", type: "chainlink_onchain_feed" };
   }
   if (["usdc", "usdt", "ousdt", "rlusd", "usdc.e"].includes(symbol) || /(?:usdc|usdt|rlusd)/u.test(symbol)) {
     return { name: "chainlink:usd_stable", type: "chainlink_onchain_feed" };

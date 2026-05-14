@@ -3,8 +3,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { PRIMARY_OPERATOR_BTC_ADDRESS } from "../src/config/operator-btc-addresses.mjs";
 import {
   materializeWholeWalletInventory,
+  resolveBitcoinAddress,
   resolveInventoryPrices,
   shouldUseStoredWholeWalletFallback,
 } from "../src/cli/inventory-whole-wallet.mjs";
@@ -25,10 +27,26 @@ test("whole-wallet inventory falls back to stored treasury snapshot when live sc
     observedAt: "2026-04-18T01:50:48.773Z",
     address: "0xabc",
     native: [
-      { chain: "bob", asset: "ETH", token: "0x0", actual: "100", actualDecimal: 0.1, estimatedUsd: 12.5, rpcUrl: "https://rpc.gobob.xyz" },
+      {
+        chain: "bob",
+        asset: "ETH",
+        token: "0x0",
+        actual: "100",
+        actualDecimal: 0.1,
+        estimatedUsd: 12.5,
+        rpcUrl: "https://rpc.gobob.xyz",
+      },
     ],
     tokens: [
-      { chain: "bob", ticker: "wBTC.OFT", token: "0x0555", actual: "200", actualDecimal: 0.000002, estimatedUsd: 0.15, rpcUrl: "https://rpc.gobob.xyz" },
+      {
+        chain: "bob",
+        ticker: "wBTC.OFT",
+        token: "0x0555",
+        actual: "200",
+        actualDecimal: 0.000002,
+        estimatedUsd: 0.15,
+        rpcUrl: "https://rpc.gobob.xyz",
+      },
     ],
     summary: {
       estimatedWalletUsd: 12.65,
@@ -71,23 +89,47 @@ test("whole-wallet inventory keeps live scan when it already has value", () => {
   assert.equal(inventory.summary.tokenCount, 1);
 });
 
+test("whole-wallet inventory uses signer BTC address when signer health is available", async () => {
+  const signerAddress = "bc1psigneraddress000000000000000000000000000000000000000000000000";
+  const address = await resolveBitcoinAddress({
+    signerHealthReader: async () => ({ addresses: { bitcoin: signerAddress } }),
+    fallbackAddress: PRIMARY_OPERATOR_BTC_ADDRESS,
+  });
+
+  assert.equal(address, signerAddress);
+});
+
+test("whole-wallet inventory falls back to approved operator BTC address when signer health is unavailable", async () => {
+  const address = await resolveBitcoinAddress({
+    signerHealthReader: async () => {
+      throw new Error("signer health unavailable");
+    },
+    fallbackAddress: PRIMARY_OPERATOR_BTC_ADDRESS,
+  });
+
+  assert.equal(address, PRIMARY_OPERATOR_BTC_ADDRESS);
+});
+
 test("inventory price resolver fills missing live prices from latest local snapshot", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-inventory-prices-"));
-  await writeFile(join(dataDir, "price-snapshot.json"), JSON.stringify({
-    schemaVersion: 1,
-    observedAt: "2026-05-06T08:00:00.000Z",
-    btcUsd: 81000,
-    tokenByKey: {
-      btc: 81000,
-      wbtc: 80950,
-      ethereum: 2300,
-      usd_stable: 1,
-    },
-    nativeByChain: {
-      base: 2300,
-      ethereum: 2300,
-    },
-  }));
+  await writeFile(
+    join(dataDir, "price-snapshot.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      observedAt: "2026-05-06T08:00:00.000Z",
+      btcUsd: 81000,
+      tokenByKey: {
+        btc: 81000,
+        wbtc: 80950,
+        ethereum: 2300,
+        usd_stable: 1,
+      },
+      nativeByChain: {
+        base: 2300,
+        ethereum: 2300,
+      },
+    }),
+  );
 
   const prices = await resolveInventoryPrices({
     dataDir,
