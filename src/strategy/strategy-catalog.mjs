@@ -67,10 +67,20 @@ function normalizeGatewayStatus(edgeViability = null) {
 
 function normalizeMixedLoopStatus(summary = null) {
   if (!summary) return "unobserved";
-  if (summary.profitableClosedLoopCount > 0 && !(summary.bestLoop?.blockers || []).length) return "candidate_for_validation";
+  if (summary.profitableClosedLoopCount > 0 && !(summary.bestLoop?.blockers || []).length)
+    return "candidate_for_validation";
   if (summary.bestLoop || summary.closestLoop) return "measured_below_policy";
-  if ((summary.exactAssetPairCount || 0) > 0 || (summary.entryCount || 0) > 0 || (summary.exitCount || 0) > 0) return "thin_coverage";
+  if ((summary.exactAssetPairCount || 0) > 0 || (summary.entryCount || 0) > 0 || (summary.exitCount || 0) > 0)
+    return "thin_coverage";
   return "unobserved";
+}
+
+function normalizeGoldRouteStatus(gold = null) {
+  if (!gold) return "unobserved";
+  if (gold.liveEligible === true && !gold.blocker) return "candidate_for_validation";
+  if (gold.routeAvailable === true) return "thin_coverage";
+  if (gold.blocker) return "unobserved";
+  return "analysis_only";
 }
 
 function normalizeRevalidatedCatalogStatus(statusNew = null, fallbackStatus = null) {
@@ -134,10 +144,8 @@ function applyLaneReclassification(entry, lane = null) {
       ...(entry.evidence || {}),
       revalidatedRouteKey: lane.evidenceRouteKey || null,
       revalidatedAmount: lane.evidenceAmount || null,
-      netPnlMeasuredUsd:
-        finite(lane.netPnlMeasuredUsd) ?? finite(entry.evidence?.netPnlMeasuredUsd),
-      gasSlippageVarianceUsd:
-        finite(lane.gasSlippageVarianceUsd) ?? finite(entry.evidence?.gasSlippageVarianceUsd),
+      netPnlMeasuredUsd: finite(lane.netPnlMeasuredUsd) ?? finite(entry.evidence?.netPnlMeasuredUsd),
+      gasSlippageVarianceUsd: finite(lane.gasSlippageVarianceUsd) ?? finite(entry.evidence?.gasSlippageVarianceUsd),
     },
     revalidation: {
       statusOld: lane.statusOld || null,
@@ -241,11 +249,7 @@ function sharedInfrastructure() {
   return [
     {
       kind: "route_inventory_and_scoring",
-      surfaces: [
-        "src/cli/verify-gateway.mjs",
-        "src/cli/score-gateway.mjs",
-        "src/status/dashboard-status.mjs",
-      ],
+      surfaces: ["src/cli/verify-gateway.mjs", "src/cli/score-gateway.mjs", "src/status/dashboard-status.mjs"],
     },
     {
       kind: "profitability_and_strategy_summary",
@@ -282,15 +286,16 @@ function summarizeTriangleArtifact(profile, artifact = null) {
     profileLabel: profile.label,
     sampleCount: latestExecution?.sampleCount || artifact?.analysis?.sampleCount || artifact?.latest?.totalSamples || 0,
     bestRoute: latestExecution?.bestRoute || artifact?.latest?.summary?.bestRoute || null,
-    bestNetPct: finite(latestExecution?.bestNetPct ?? artifact?.analysis?.overallBest?.max ?? artifact?.latest?.summary?.bestNetPct),
-    verdict:
-      latestExecution
-        ? latestExecution.meetsPolicy > 0
-          ? "latest_flash_policy_ready"
-          : latestExecution.profitableAfterFlash > 0
-            ? "flash_positive_but_below_policy"
-            : "latest_flash_negative"
-        : artifact?.analysis?.verdict || null,
+    bestNetPct: finite(
+      latestExecution?.bestNetPct ?? artifact?.analysis?.overallBest?.max ?? artifact?.latest?.summary?.bestNetPct,
+    ),
+    verdict: latestExecution
+      ? latestExecution.meetsPolicy > 0
+        ? "latest_flash_policy_ready"
+        : latestExecution.profitableAfterFlash > 0
+          ? "flash_positive_but_below_policy"
+          : "latest_flash_negative"
+      : artifact?.analysis?.verdict || null,
     supportsContractSimulation: profile.supportsContractSimulation,
   };
 }
@@ -302,6 +307,7 @@ export function buildStrategyCatalog({
   laneReclassification = null,
 } = {}) {
   const strategy = dashboardStatus?.strategy || {};
+  const gatewayGoldReadiness = strategy.gatewayGoldReadiness || dashboardStatus?.gateway?.goldRouteReadiness || null;
   const trackMap = new Map((strategy.strategyTracks?.tracks || []).map((track) => [track.kind, track]));
   const laneMap = laneById(laneReclassification);
   const edgeViability = strategy.edgeViability || null;
@@ -312,7 +318,10 @@ export function buildStrategyCatalog({
   const btcTriangleProfile = getTriangleProfile("base-btc");
   const ethMixedTriangleProfile = getTriangleProfile("base-eth-btc-mixed");
   const btcTriangleStatus = normalizeTriangleStatus(btcTriangleProfile, triangleArtifacts[btcTriangleProfile.id]);
-  const ethMixedTriangleStatus = normalizeTriangleStatus(ethMixedTriangleProfile, triangleArtifacts[ethMixedTriangleProfile.id]);
+  const ethMixedTriangleStatus = normalizeTriangleStatus(
+    ethMixedTriangleProfile,
+    triangleArtifacts[ethMixedTriangleProfile.id],
+  );
 
   const btcFamilies = [
     {
@@ -371,6 +380,36 @@ export function buildStrategyCatalog({
       ],
     },
     {
+      id: "tokenized_gold_rotation",
+      label: "Tokenized gold rotation",
+      status: normalizeGoldRouteStatus(gatewayGoldReadiness),
+      reason:
+        gatewayGoldReadiness?.blocker ||
+        (gatewayGoldReadiness?.liveEligible
+          ? "gateway_gold_round_trip_quote_available"
+          : "gateway_gold_readiness_unmeasured"),
+      evidence: {
+        bestGoldAsset: gatewayGoldReadiness?.bestGoldAsset || null,
+        routeAvailable: gatewayGoldReadiness?.routeAvailable === true,
+        liveEligible: gatewayGoldReadiness?.liveEligible === true,
+        roundTripCostBtc: finite(gatewayGoldReadiness?.roundTripCostBtc),
+        roundTripCostUsd: finite(gatewayGoldReadiness?.roundTripCostUsd),
+        slippageBps: finite(gatewayGoldReadiness?.slippageBps),
+        minViableCanarySizeSats: gatewayGoldReadiness?.minViableCanarySizeSats || null,
+        preflightAttempted: gatewayGoldReadiness?.preflight?.attempted === true,
+        successfulQuoteAttempts: gatewayGoldReadiness?.preflight?.successfulAttemptCount ?? 0,
+      },
+      ethApplicability: {
+        classification: "gateway_xaut_or_paxg_round_trip_required",
+        note: "Gold rotation is live-capable only when entry route, exit quote/liquidity, BTC return path, EV, caps, kill-switch, and signer policy all clear.",
+      },
+      commands: [
+        "npm run report:gateway-gold-readiness -- --write",
+        "npm run report:strategy-catalog -- --json",
+        "npm run status:dashboard",
+      ],
+    },
+    {
       id: "defillama-yield-portfolio",
       label: "DefiLlama yield portfolio rotation",
       status: "analysis_only",
@@ -380,10 +419,7 @@ export function buildStrategyCatalog({
         autoExecute: false,
         note: "Evaluates top DefiLlama yield pools across Gateway destinations. Admit OFF until receipt-backed validation.",
       },
-      commands: [
-        "npm run snapshot:defillama -- --write",
-        "npm run report:strategy-catalog -- --write",
-      ],
+      commands: ["npm run snapshot:defillama -- --write", "npm run report:strategy-catalog -- --write"],
     },
     {
       id: "triangular_flash_btc",
@@ -433,7 +469,9 @@ export function buildStrategyCatalog({
       reason:
         ethMixedLoops.bestLoop?.blockers?.[0] ||
         ethMixedLoops.closestLoop?.blockers?.[0] ||
-        ((ethMixedLoops.entryCount || 0) > 0 || (ethMixedLoops.exitCount || 0) > 0 ? "observed_mixed_eth_legs" : "no_mixed_eth_legs"),
+        ((ethMixedLoops.entryCount || 0) > 0 || (ethMixedLoops.exitCount || 0) > 0
+          ? "observed_mixed_eth_legs"
+          : "no_mixed_eth_legs"),
       evidence: {
         entryCount: ethMixedLoops.entryCount || 0,
         exitCount: ethMixedLoops.exitCount || 0,
@@ -452,9 +490,7 @@ export function buildStrategyCatalog({
       label: "ETH DEX spread / mixed triangle branch",
       status: ethMixedTriangleStatus.status === "analysis_only" ? "analysis_only" : "measured_below_policy",
       reason:
-        ethMixedTriangleStatus.sampleCount > 0
-          ? "mixed_triangle_samples_recorded"
-          : "mixed_triangle_profile_ready",
+        ethMixedTriangleStatus.sampleCount > 0 ? "mixed_triangle_samples_recorded" : "mixed_triangle_profile_ready",
       evidence: summarizeTriangleArtifact(ethMixedTriangleProfile, triangleArtifacts[ethMixedTriangleProfile.id]),
       commands: [
         `npm run collect:triangular-spreads -- --once --profile=${ethMixedTriangleProfile.id}`,
@@ -494,9 +530,7 @@ export function buildStrategyCatalog({
     policy: {
       liveTrading: dashboardStatus?.overall?.liveTrading || "BLOCKED",
       policyLiveTrading:
-        dashboardStatus?.overall?.lanePolicy?.policyLiveTrading ||
-        dashboardStatus?.overall?.liveTrading ||
-        "BLOCKED",
+        dashboardStatus?.overall?.lanePolicy?.policyLiveTrading || dashboardStatus?.overall?.liveTrading || "BLOCKED",
       laneStage: dashboardStatus?.overall?.lanePolicy?.stage || null,
       laneCandidateId: dashboardStatus?.overall?.lanePolicy?.candidateId || null,
       blockers: dashboardStatus?.overall?.blockers || [],
@@ -509,6 +543,7 @@ export function buildStrategyCatalog({
       coverage: "implemented_strategy_families_only",
       includes: [
         "currently implemented BTC family lanes",
+        "tokenized gold Gateway route readiness lane",
         "currently implemented ETH branch lanes",
       ],
       excludes: [

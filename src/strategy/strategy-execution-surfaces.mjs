@@ -1,10 +1,7 @@
 import { buildStrategyCatalog } from "./strategy-catalog.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { OPERATOR_COOLDOWN_WAIVERS } from "../config/operator-waivers.mjs";
-import {
-  computeTinyCanaryMinProfitablePositionUsd,
-  resolveTinyCanaryExpectedHoldDays,
-} from "../config/sizing.mjs";
+import { computeTinyCanaryMinProfitablePositionUsd, resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
 import { evaluateNonPrimaryEntryPolicy } from "./non-primary-entry-policy.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
@@ -24,7 +21,9 @@ function compact(values = []) {
 }
 
 function normalizeAddress(value = "") {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function unitsArePositive(value = "0") {
@@ -50,9 +49,11 @@ function unitsMeetRequired({ actualUnits = "0", requiredUnits = null }) {
 }
 
 function latestTreasuryInventoryRecord(records = []) {
-  return [...(records || [])]
-    .filter(Boolean)
-    .sort((left, right) => String(right.observedAt || "").localeCompare(String(left.observedAt || "")))[0] || null;
+  return (
+    [...(records || [])]
+      .filter(Boolean)
+      .sort((left, right) => String(right.observedAt || "").localeCompare(String(left.observedAt || "")))[0] || null
+  );
 }
 
 function timestampMs(value = null) {
@@ -69,9 +70,11 @@ function ageMs(value = null, now = new Date().toISOString()) {
 
 function findBaseCbBtcCollateral(treasuryInventoryRecords = []) {
   const latest = latestTreasuryInventoryRecord(treasuryInventoryRecords);
-  const token = (latest?.tokens || []).find(
-    (entry) => String(entry?.chain || "").toLowerCase() === "base" && normalizeAddress(entry?.token) === BASE_CBBTC_TOKEN,
-  ) || null;
+  const token =
+    (latest?.tokens || []).find(
+      (entry) =>
+        String(entry?.chain || "").toLowerCase() === "base" && normalizeAddress(entry?.token) === BASE_CBBTC_TOKEN,
+    ) || null;
   const actualUnits = token?.actual || "0";
   return {
     observedAt: latest?.observedAt || null,
@@ -85,7 +88,9 @@ function findBaseCbBtcCollateral(treasuryInventoryRecords = []) {
 }
 
 function commandScript(command) {
-  const match = String(command || "").trim().match(/^npm run\s+([^\s]+)/);
+  const match = String(command || "")
+    .trim()
+    .match(/^npm run\s+([^\s]+)/);
   return match?.[1] || null;
 }
 
@@ -101,19 +106,14 @@ function liveTradingAllowed(policy = null) {
 }
 
 function baseLiveTradingAllowed(policy = null) {
-  return LIVE_TRADING_ALLOWED.has(
-    String(policy?.policyLiveTrading || policy?.liveTrading || "").trim(),
-  );
+  return LIVE_TRADING_ALLOWED.has(String(policy?.policyLiveTrading || policy?.liveTrading || "").trim());
 }
 
 function flashLiveAllowed(policy = null) {
   return FLASH_LIVE_ALLOWED.has(String(policy?.flashLiveAdmission || "").trim());
 }
 
-function selectExecutionModeFromPolicy({
-  rawLiveEligible = false,
-  fallbackMode = "dry_run",
-} = {}) {
+function selectExecutionModeFromPolicy({ rawLiveEligible = false, fallbackMode = "dry_run" } = {}) {
   if (!rawLiveEligible) {
     return {
       currentLiveEligible: false,
@@ -175,7 +175,10 @@ function wrappedBtcLoopLiveCapUsd(baseCbBtcCollateral = null) {
   const configuredTinyCapUsd = caps.tinyLivePerTxUsd || caps.perTxUsd || 25;
   const collateralUsd = Number(baseCbBtcCollateral?.estimatedUsd ?? 0);
   if (collateralUsd >= MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD) {
-    return Math.max(MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD, Math.min(configuredTinyCapUsd, Math.floor(collateralUsd * 0.95 * 100) / 100));
+    return Math.max(
+      MIN_WRAPPED_BTC_LOOP_LIVE_CAP_USD,
+      Math.min(configuredTinyCapUsd, Math.floor(collateralUsd * 0.95 * 100) / 100),
+    );
   }
   return configuredTinyCapUsd;
 }
@@ -217,8 +220,7 @@ function wrappedBtcLoopRecentSignerActivity(records = [], { now = new Date().toI
     recent.push(record);
     txHashes.add(txHash);
   }
-  const latest = recent
-    .sort((left, right) => timestampMs(right.timestamp) - timestampMs(left.timestamp))[0] || null;
+  const latest = recent.sort((left, right) => timestampMs(right.timestamp) - timestampMs(left.timestamp))[0] || null;
   return {
     recentTxCount: txHashes.size,
     latestAt: latest?.timestamp || null,
@@ -236,16 +238,17 @@ function wrappedBtcLoopSignerActivityAfter(records = [], { since = null } = {}) 
       stage: null,
     };
   }
-  const consumedRecord = (records || [])
-    .filter((record) => {
-      if (record?.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
-      const stage = signerAuditRecordStage(record);
-      if (!["signed", "broadcasted", "confirmed"].includes(stage)) return false;
-      if (!signerAuditRecordTxHash(record)) return false;
-      const recordMs = timestampMs(record.timestamp);
-      return recordMs !== null && recordMs > sinceMs;
-    })
-    .sort((left, right) => timestampMs(left.timestamp) - timestampMs(right.timestamp))[0] || null;
+  const consumedRecord =
+    (records || [])
+      .filter((record) => {
+        if (record?.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
+        const stage = signerAuditRecordStage(record);
+        if (!["signed", "broadcasted", "confirmed"].includes(stage)) return false;
+        if (!signerAuditRecordTxHash(record)) return false;
+        const recordMs = timestampMs(record.timestamp);
+        return recordMs !== null && recordMs > sinceMs;
+      })
+      .sort((left, right) => timestampMs(left.timestamp) - timestampMs(right.timestamp))[0] || null;
   return {
     consumed: Boolean(consumedRecord),
     consumedAt: consumedRecord?.timestamp || null,
@@ -280,17 +283,18 @@ function resolveWrappedBtcLoopCooldownWaiver({
   };
   if (!wrappedBtcLoopProofIsSuccess(liveProof)) return base;
   const nowMs = timestampMs(now);
-  const waiver = (waivers || []).find((entry) => {
-    if (!entry || entry.enabled === false) return false;
-    if (entry.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
-    if (entry.scope !== WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_SCOPE) return false;
-    if (!proofObservedAtMatches(entry, liveProof)) return false;
-    const approvedMs = timestampMs(entry.operatorApprovedAt);
-    const expiresMs = timestampMs(entry.expiresAt);
-    if (nowMs === null || approvedMs === null || expiresMs === null) return false;
-    if (nowMs < approvedMs || nowMs > expiresMs) return false;
-    return Number(entry.maxUses ?? 1) === 1;
-  }) || null;
+  const waiver =
+    (waivers || []).find((entry) => {
+      if (!entry || entry.enabled === false) return false;
+      if (entry.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return false;
+      if (entry.scope !== WRAPPED_BTC_LOOP_LIVE_PROOF_COOLDOWN_SCOPE) return false;
+      if (!proofObservedAtMatches(entry, liveProof)) return false;
+      const approvedMs = timestampMs(entry.operatorApprovedAt);
+      const expiresMs = timestampMs(entry.expiresAt);
+      if (nowMs === null || approvedMs === null || expiresMs === null) return false;
+      if (nowMs < approvedMs || nowMs > expiresMs) return false;
+      return Number(entry.maxUses ?? 1) === 1;
+    }) || null;
   if (!waiver) return base;
   const consumed = wrappedBtcLoopSignerActivityAfter(signerAuditRecords, {
     since: waiver.operatorApprovedAt,
@@ -407,10 +411,7 @@ function wrappedBtcLoopCommands(mode, { livePerTradeCapUsd = null } = {}) {
       ].join(" "),
     ];
   }
-  return [
-    "npm run report:wrapped-btc-loop -- --json",
-    "npm run report:wrapped-btc-loop-dry-run -- --json",
-  ];
+  return ["npm run report:wrapped-btc-loop -- --json", "npm run report:wrapped-btc-loop-dry-run -- --json"];
 }
 
 function buildWrappedBtcLoopExecutorSurface({
@@ -448,7 +449,14 @@ function buildWrappedBtcLoopExecutorSurface({
     operatorCooldownWaivers,
     now,
   });
-  const rawLiveEligible = liveAllowed && validationPassed && bindingReady && dryRunRecorded && collateralReady && !liveRunControl.blocked && expectedNetReady;
+  const rawLiveEligible =
+    liveAllowed &&
+    validationPassed &&
+    bindingReady &&
+    dryRunRecorded &&
+    collateralReady &&
+    !liveRunControl.blocked &&
+    expectedNetReady;
   const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "dry_run",
@@ -463,7 +471,11 @@ function buildWrappedBtcLoopExecutorSurface({
     expectedNetReady ? null : "expected_net_unmeasured",
   ]);
   const currentLiveEligible = mode.currentLiveEligible && runtimeLiveAllowed;
-  const selectedMode = currentLiveEligible ? mode.selectedMode : mode.selectedMode === "live" ? "dry_run" : mode.selectedMode;
+  const selectedMode = currentLiveEligible
+    ? mode.selectedMode
+    : mode.selectedMode === "live"
+      ? "dry_run"
+      : mode.selectedMode;
   return {
     id: strategy.id,
     label: strategy.label || "Wrapped BTC lending loop (Base / Moonwell)",
@@ -493,7 +505,8 @@ function buildWrappedBtcLoopExecutorSurface({
       estimatedNetCarryBtc: null,
       estimatedNetCarryUsd: wrappedBtcLendingLoopSlice?.pnl?.estimated?.valueUsd ?? null,
       realizedNetCarryBtc: null,
-      realizedNetCarryUsd: validation?.evidence?.realizedNetCarryUsd ?? wrappedBtcLendingLoopSlice?.pnl?.realized?.valueUsd ?? null,
+      realizedNetCarryUsd:
+        validation?.evidence?.realizedNetCarryUsd ?? wrappedBtcLendingLoopSlice?.pnl?.realized?.valueUsd ?? null,
       liveRunControl,
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
@@ -558,7 +571,10 @@ function merklExpectedHoldDays(candidate = null) {
 function merklExitPathReady(candidate = null) {
   const bindingKind = String(candidate?.protocolBindingPlan?.bindingKind || "");
   const actions = candidate?.protocolBindingPlan?.canaryActions || [];
-  return /withdraw|redeem/u.test(bindingKind) || actions.some((action) => /withdraw|redeem|unwind/u.test(String(action || "")));
+  return (
+    /withdraw|redeem/u.test(bindingKind) ||
+    actions.some((action) => /withdraw|redeem|unwind/u.test(String(action || "")))
+  );
 }
 
 function merklPolicyPreviewBlockers(candidate = null) {
@@ -635,22 +651,29 @@ function merklAutopilotLatestBlockers(latest = null) {
 function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCanaryAutopilotLatest = null } = {}) {
   const summary = merklCanaryQueue?.summary || {};
   const queue = merklCanaryQueue?.queue || [];
-  const topReady = queue.find((item) =>
-    item?.autoEntry?.autoExecute === true &&
-    item?.executionReadiness?.status === "inventory_ready" &&
-    (item?.capabilityGaps || []).length === 0,
-  ) || queue.find((item) => item?.queueStatus === "ready_for_tiny_live_canary") || null;
+  const topReady =
+    queue.find(
+      (item) =>
+        item?.autoEntry?.autoExecute === true &&
+        item?.executionReadiness?.status === "inventory_ready" &&
+        (item?.capabilityGaps || []).length === 0,
+    ) ||
+    queue.find((item) => item?.queueStatus === "ready_for_tiny_live_canary") ||
+    null;
   if (!merklCanaryQueue && !topReady) return null;
   const liveAllowed = baseLiveTradingAllowed(policy);
   const policyPreviewBlockers = merklPolicyPreviewBlockers(topReady);
   const latestAutopilotBlockers = merklAutopilotLatestBlockers(merklCanaryAutopilotLatest);
   const blockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
-    (summary.autoExecutableNowCount ?? 0) > 0 ? null : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
+    (summary.autoExecutableNowCount ?? 0) > 0
+      ? null
+      : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
     ...policyPreviewBlockers,
     ...latestAutopilotBlockers,
   ]);
-  const rawLiveEligible = liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady) && blockers.length === 0;
+  const rawLiveEligible =
+    liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady) && blockers.length === 0;
   const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "analysis",
@@ -775,8 +798,36 @@ function buildSurface(entry, { group, policy }) {
         selectedCommands: withScripts(selectedCommands),
       };
     }
+    case "tokenized_gold_rotation": {
+      const rawLiveEligible =
+        entry.evidence?.liveEligible === true && entry.status === "candidate_for_validation" && liveAllowed;
+      const currentLiveEligible = rawLiveEligible;
+      const selectedMode = currentLiveEligible ? "live" : "analysis";
+      const selectedCommands = entry.commands || [];
+      const blockers = compact([
+        entry.reason,
+        ...liveAdmissionBlockers({
+          entry,
+          liveAllowed,
+          statusRequired: "candidate_for_validation",
+        }),
+      ]);
+      return {
+        ...shared,
+        capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
+        runnerKind: "command_sequence",
+        liveCapable: true,
+        currentLiveEligible,
+        selectedMode,
+        fallbackReason: currentLiveEligible ? null : blockers[0] || "gateway_gold_preflight_required",
+        missingCapabilities: blockers.filter((blocker) => blocker !== "live_trading_blocked"),
+        liveAdmissionBlockers: currentLiveEligible ? [] : blockers,
+        selectedCommands: withScripts(selectedCommands),
+      };
+    }
     case "triangular_flash_btc": {
-      const rawLiveEligible = entry.status === "candidate_for_validation" && baseLiveTradingAllowed(policy) && flashAllowed;
+      const rawLiveEligible =
+        entry.status === "candidate_for_validation" && baseLiveTradingAllowed(policy) && flashAllowed;
       const mode = selectExecutionModeFromPolicy({
         rawLiveEligible,
         fallbackMode: "dry_run",
@@ -786,11 +837,11 @@ function buildSurface(entry, { group, policy }) {
       const selectedCommands = triangleCommands(entry, selectedMode);
       const blockers = compact([
         ...liveAdmissionBlockers({
-        entry,
-        liveAllowed,
-        flashAllowed,
-        requiresFlash: true,
-        statusRequired: "candidate_for_validation",
+          entry,
+          liveAllowed,
+          flashAllowed,
+          requiresFlash: true,
+          statusRequired: "candidate_for_validation",
         }),
       ]);
       return {
@@ -877,7 +928,8 @@ function buildSurface(entry, { group, policy }) {
       };
     }
     case "eth_mixed_flash": {
-      const rawLiveEligible = entry.status === "candidate_for_validation" && baseLiveTradingAllowed(policy) && flashAllowed;
+      const rawLiveEligible =
+        entry.status === "candidate_for_validation" && baseLiveTradingAllowed(policy) && flashAllowed;
       const mode = selectExecutionModeFromPolicy({
         rawLiveEligible,
         fallbackMode: "dry_run",
@@ -887,12 +939,12 @@ function buildSurface(entry, { group, policy }) {
       const selectedCommands = mixedFlashCommands(entry, selectedMode);
       const blockers = compact([
         ...liveAdmissionBlockers({
-        entry,
-        liveAllowed,
-        flashAllowed,
-        requiresFlash: true,
-        statusRequired: "candidate_for_validation",
-        extra: ["contract_not_generalized"],
+          entry,
+          liveAllowed,
+          flashAllowed,
+          requiresFlash: true,
+          statusRequired: "candidate_for_validation",
+          extra: ["contract_not_generalized"],
         }),
       ]);
       return {
@@ -964,8 +1016,12 @@ export function buildStrategyExecutionSurfaces({
 } = {}) {
   const catalog = buildStrategyCatalog({ dashboardStatus, state, triangleArtifacts });
   const strategies = [
-    ...(catalog.btcFamilies || []).map((entry) => buildSurface(entry, { group: "btcFamilies", policy: catalog.policy })),
-    ...(catalog.ethBranches || []).map((entry) => buildSurface(entry, { group: "ethBranches", policy: catalog.policy })),
+    ...(catalog.btcFamilies || []).map((entry) =>
+      buildSurface(entry, { group: "btcFamilies", policy: catalog.policy }),
+    ),
+    ...(catalog.ethBranches || []).map((entry) =>
+      buildSurface(entry, { group: "ethBranches", policy: catalog.policy }),
+    ),
     buildWrappedBtcLoopExecutorSurface({
       policy: catalog.policy,
       phase3Validation: artifacts.phase3StrategyValidation || null,
@@ -981,7 +1037,9 @@ export function buildStrategyExecutionSurfaces({
       merklCanaryQueue: artifacts.merklCanaryQueue || null,
       merklCanaryAutopilotLatest: artifacts.merklCanaryAutopilotLatest || null,
     }),
-  ].filter(Boolean).map(withReportingOnlyAdvice);
+  ]
+    .filter(Boolean)
+    .map(withReportingOnlyAdvice);
   const bucketCounts = strategies.reduce((counts, strategy) => {
     counts[strategy.capabilityBucket] = (counts[strategy.capabilityBucket] || 0) + 1;
     return counts;
@@ -999,7 +1057,8 @@ export function buildStrategyExecutionSurfaces({
       strategyCount: strategies.length,
       runnableCount: runnableStrategies.length,
       liveEligibleCount: strategies.filter((strategy) => strategy.currentLiveEligible).length,
-      missingExecutorCount: strategies.filter((strategy) => strategy.capabilityBucket === "missing_executor_adapter").length,
+      missingExecutorCount: strategies.filter((strategy) => strategy.capabilityBucket === "missing_executor_adapter")
+        .length,
       bucketCounts,
       selectedModeCounts,
       topRunnableId: runnableStrategies[0]?.id || null,

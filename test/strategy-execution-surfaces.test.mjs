@@ -14,6 +14,17 @@ function dashboardStatusFixture() {
         measuredNetLoopCount: 0,
         profitableExactCount: 0,
       },
+      gatewayGoldReadiness: {
+        routeAvailable: true,
+        bestGoldAsset: "XAUT",
+        blocker: "gateway_gold_exit_quote_preflight_failed",
+        blockers: ["gateway_gold_exit_quote_preflight_failed"],
+        liveEligible: false,
+        preflight: {
+          attempted: true,
+          successfulAttemptCount: 0,
+        },
+      },
       btcProxySpreads: {
         opportunityCount: 2,
         policyReadyCount: 0,
@@ -86,12 +97,13 @@ test("execution surfaces classify missing runners separately from runnable obser
   const gateway = report.strategies.find((strategy) => strategy.id === "gateway_wrapped_btc_loops");
   const proxy = report.strategies.find((strategy) => strategy.id === "btc_proxy_spreads");
   const stable = report.strategies.find((strategy) => strategy.id === "stablecoin_entry_exit_loops");
+  const gold = report.strategies.find((strategy) => strategy.id === "tokenized_gold_rotation");
   const ethGateway = report.strategies.find((strategy) => strategy.id === "eth_family_gateway");
   const ethMixedStable = report.strategies.find((strategy) => strategy.id === "eth_mixed_stable_loops");
   const btcFlash = report.strategies.find((strategy) => strategy.id === "triangular_flash_btc");
 
   assert.equal(gateway.capabilityBucket, "dry_run_or_shadow_only");
-   assert.equal(gateway.liveCapable, true);
+  assert.equal(gateway.liveCapable, true);
   assert.equal(gateway.selectedMode, "shadow");
   assert.equal(gateway.fallbackReason, "route_specific_executor_inputs_required");
   assert.equal(gateway.liveAdmissionBlockers.includes("route_specific_executor_inputs_required"), true);
@@ -104,13 +116,34 @@ test("execution surfaces classify missing runners separately from runnable obser
   assert.equal(ethGateway.fallbackReason, "multichain_eth_surface_unconfirmed");
   assert.equal(ethGateway.liveAdmissionBlockers.includes("live_trading_blocked"), true);
   assert.equal(ethGateway.liveAdmissionBlockers.includes("multichain_eth_surface_unconfirmed"), true);
-  assert.equal(ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-onramp"), true);
-  assert.equal(ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-offramp"), true);
+  assert.equal(
+    ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-onramp"),
+    true,
+  );
+  assert.equal(
+    ethGateway.selectedCommands.some((command) => command.script === "executor:gateway-btc-offramp"),
+    true,
+  );
   assert.equal(stable.capabilityBucket, "dry_run_or_shadow_only");
   assert.equal(stable.fallbackReason, "analysis_probe_only");
-  assert.equal(stable.selectedCommands.some((command) => command.script === "report:lane-reclassification"), true);
+  assert.equal(
+    stable.selectedCommands.some((command) => command.script === "report:lane-reclassification"),
+    true,
+  );
+  assert.equal(gold.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(gold.liveCapable, true);
+  assert.equal(gold.selectedMode, "analysis");
+  assert.equal(gold.fallbackReason, "gateway_gold_exit_quote_preflight_failed");
+  assert.equal(gold.liveAdmissionBlockers.includes("gateway_gold_exit_quote_preflight_failed"), true);
+  assert.equal(
+    gold.selectedCommands.some((command) => command.script === "report:gateway-gold-readiness"),
+    true,
+  );
   assert.equal(ethMixedStable.capabilityBucket, "dry_run_or_shadow_only");
-  assert.equal(ethMixedStable.selectedCommands.some((command) => command.script === "analyze:ethereum-routes"), true);
+  assert.equal(
+    ethMixedStable.selectedCommands.some((command) => command.script === "analyze:ethereum-routes"),
+    true,
+  );
   assert.equal(btcFlash.selectedMode, "dry_run");
   assert.equal(btcFlash.currentLiveEligible, false);
   assert.equal(btcFlash.liveAdmissionBlockers.includes("flash_live_admission_blocked"), true);
@@ -555,7 +588,10 @@ test("Merkl surface does not mark policy-blocked tiny entries as executable now"
   assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
   assert.equal(merkl.selectedMode, "analysis");
   assert.equal(merkl.liveAdmissionBlockers.includes("position_below_min_position_usd"), false);
-  assert.equal(merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")), true);
+  assert.equal(
+    merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")),
+    true,
+  );
 });
 
 test("Merkl surface uses latest autopilot EV blocker after sizing and policy preview", () => {

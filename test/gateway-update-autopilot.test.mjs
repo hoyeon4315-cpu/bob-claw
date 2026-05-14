@@ -39,13 +39,17 @@ test("gateway update autopilot refresh plan stays bounded and planning-only", ()
     plan.steps.map((step) => step.script),
     [
       "verify:gateway:asset-coverage",
+      "report:gateway-gold-readiness",
       "scan:quote-surface",
       "scan:quote-surface",
       "report:autonomous-discovery-board",
       "report:strategy-snapshot",
     ],
   );
-  assert.equal(plan.steps.every((step) => step.command.startsWith("npm run ")), true);
+  assert.equal(
+    plan.steps.every((step) => step.command.startsWith("npm run ")),
+    true,
+  );
 });
 
 test("gateway update autopilot summary retains latest planning-only pnl surface", () => {

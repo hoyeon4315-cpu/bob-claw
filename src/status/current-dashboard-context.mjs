@@ -309,6 +309,7 @@ export async function buildCurrentDashboardContext({
     gasFailures,
     updateSnapshots,
     updateAlerts,
+    gatewayGoldReadiness,
     dexFailures,
     gasEstimateFailures,
     shadowCycle,
@@ -378,6 +379,7 @@ export async function buildCurrentDashboardContext({
     readJsonl(dataDir, "gas-snapshot-failures"),
     readJsonl(dataDir, "gateway-update-snapshots"),
     readJsonl(dataDir, "gateway-update-alerts"),
+    readJsonIfExists(join(dataDir, "gateway-gold-readiness-latest.json")),
     readJsonl(dataDir, "dex-quote-failures"),
     readJsonl(dataDir, "gateway-gas-estimate-failures"),
     readJsonIfExists(join(dataDir, "shadow-cycle-latest.json")),
@@ -490,6 +492,7 @@ export async function buildCurrentDashboardContext({
       priceSnapshots: state.priceSnapshots || [],
       updateSnapshots,
       updateAlerts,
+      gatewayGoldReadiness,
       scoreSnapshot: state.scoreSnapshot || null,
       dexQuotes: state.dexQuotes || [],
       dexFailures,
@@ -638,10 +641,7 @@ export async function buildCurrentDashboardContext({
         })),
       }
     : null;
-  const protocolPositionEvents = [
-    ...merklPositionEvents,
-    ...protocolPositionEventsFromSignerAudit(signerAuditRecords),
-  ];
+  const protocolPositionEvents = [...merklPositionEvents, ...protocolPositionEventsFromSignerAudit(signerAuditRecords)];
   const activeMerklProtocolPositions = activeProtocolPositions(protocolPositionEvents);
   const merklPositionDisplayEvents =
     activeMerklProtocolPositions.length > 0 ? activeMerklProtocolPositions : protocolPositionEvents;
@@ -1213,6 +1213,7 @@ export async function buildCurrentDashboardContext({
       gasFailures,
       updateSnapshots,
       updateAlerts,
+      gatewayGoldReadiness,
       dexFailures,
       gasEstimateFailures,
       shadowCycle,

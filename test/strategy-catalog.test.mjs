@@ -10,6 +10,17 @@ test("strategy catalog maps BTC families and ETH branches into operator statuses
         liveTrading: "BLOCKED",
       },
       strategy: {
+        gatewayGoldReadiness: {
+          routeAvailable: true,
+          bestGoldAsset: "XAUT",
+          blocker: "gateway_gold_exit_quote_preflight_failed",
+          blockers: ["gateway_gold_exit_quote_preflight_failed"],
+          liveEligible: false,
+          preflight: {
+            attempted: true,
+            successfulAttemptCount: 0,
+          },
+        },
         edgeViability: {
           verdict: { code: "positive_but_below_policy" },
           measuredNetLoopCount: 2,
@@ -115,10 +126,28 @@ test("strategy catalog maps BTC families and ETH branches into operator statuses
 
   assert.equal(catalog.policy.liveTrading, "BLOCKED");
   assert.equal(catalog.policy.ethereumL1, "allowed_when_positive_ev");
-  assert.equal(catalog.btcFamilies.find((entry) => entry.id === "gateway_wrapped_btc_loops").status, "measured_below_policy");
-  assert.equal(catalog.btcFamilies.find((entry) => entry.id === "btc_proxy_spreads").status, "candidate_for_validation");
+  assert.equal(catalog.btcFamilies.find((entry) => entry.id === "tokenized_gold_rotation").status, "thin_coverage");
+  assert.equal(
+    catalog.btcFamilies.find((entry) => entry.id === "tokenized_gold_rotation").reason,
+    "gateway_gold_exit_quote_preflight_failed",
+  );
+  assert.equal(
+    catalog.btcFamilies.find((entry) => entry.id === "tokenized_gold_rotation").evidence.bestGoldAsset,
+    "XAUT",
+  );
+  assert.equal(
+    catalog.btcFamilies.find((entry) => entry.id === "gateway_wrapped_btc_loops").status,
+    "measured_below_policy",
+  );
+  assert.equal(
+    catalog.btcFamilies.find((entry) => entry.id === "btc_proxy_spreads").status,
+    "candidate_for_validation",
+  );
   assert.equal(catalog.ethBranches.find((entry) => entry.id === "eth_family_gateway").status, "unobserved");
-  assert.equal(catalog.ethBranches.find((entry) => entry.id === "eth_mixed_stable_loops").status, "candidate_for_validation");
+  assert.equal(
+    catalog.ethBranches.find((entry) => entry.id === "eth_mixed_stable_loops").status,
+    "candidate_for_validation",
+  );
   assert.equal(catalog.ethBranches.find((entry) => entry.id === "eth_mixed_flash").status, "analysis_only");
 });
 

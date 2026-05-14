@@ -1,5 +1,9 @@
 import { summarizeAutonomousDiscoveryBoard } from "./autonomous-discovery-board.mjs";
-import { OFFICIAL_GATEWAY_DESTINATION_CHAINS, OFFICIAL_GATEWAY_ROUTE_CHAINS, summarizeOfficialGatewayRouteSurface } from "./autonomous-discovery-board.mjs";
+import {
+  OFFICIAL_GATEWAY_DESTINATION_CHAINS,
+  OFFICIAL_GATEWAY_ROUTE_CHAINS,
+  summarizeOfficialGatewayRouteSurface,
+} from "./autonomous-discovery-board.mjs";
 import { summarizeStrategySnapshot } from "./strategy-snapshot.mjs";
 
 function sample(items = [], limit = 20) {
@@ -60,10 +64,7 @@ export function buildGatewayUpdateAlertRecord(result) {
       removedChainPairs: result.diff.removedEthFamilyChainPairs || [],
       followUpCommands:
         result.diff.addedEthFamilyRoutes.length > 0 || result.diff.removedEthFamilyRoutes.length > 0
-          ? [
-              "npm run analyze:ethereum-routes -- --write",
-              "npm run audit:eth-family-overfit",
-            ]
+          ? ["npm run analyze:ethereum-routes -- --write", "npm run audit:eth-family-overfit"]
           : [],
     },
     routeDiff: {
@@ -118,6 +119,12 @@ export function buildGatewayUpdateAutopilotRefreshPlan({ watchResult = null } = 
       script: "verify:gateway:asset-coverage",
       command: "npm run verify:gateway:asset-coverage",
       artifact: "data/gateway-routes.jsonl",
+    },
+    {
+      id: "refresh_gateway_gold_readiness",
+      script: "report:gateway-gold-readiness",
+      command: "npm run report:gateway-gold-readiness -- --write",
+      artifact: "data/gateway-gold-readiness-latest.json",
     },
     {
       id: "refresh_btc_quote_surface",

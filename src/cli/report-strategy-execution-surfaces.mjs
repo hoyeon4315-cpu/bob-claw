@@ -37,6 +37,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     merklCanaryQueue,
     merklCanaryAutopilotLatest,
     autonomousDiscoveryBoard,
+    gatewayGoldReadiness,
   ] = await Promise.all([
     readJsonIfExists(join(dataDir, "dashboard-status.json")),
     readJsonIfExists(join(dataDir, "gateway-scores.json")),
@@ -49,7 +50,22 @@ export async function loadStrategyExecutionSurfaceInputs({
     readJsonIfExists(join(dataDir, "merkl-canary-queue.json")),
     readJsonIfExists(join(dataDir, "merkl-canary-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "autonomous-discovery-board.json")),
+    readJsonIfExists(join(dataDir, "gateway-gold-readiness-latest.json")),
   ]);
+
+  const hydratedDashboardStatus = gatewayGoldReadiness
+    ? {
+        ...(dashboardStatus || { generatedAt: new Date().toISOString(), overall: { liveTrading: "BLOCKED" } }),
+        gateway: {
+          ...(dashboardStatus?.gateway || {}),
+          goldRouteReadiness: gatewayGoldReadiness,
+        },
+        strategy: {
+          ...(dashboardStatus?.strategy || {}),
+          gatewayGoldReadiness,
+        },
+      }
+    : dashboardStatus;
 
   const hydratedWrappedBtcLendingLoopSlice = wrappedBtcLendingLoopSlice?.strategy?.id
     ? {
@@ -63,7 +79,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     : wrappedBtcLendingLoopSlice;
 
   return {
-    dashboardStatus,
+    dashboardStatus: hydratedDashboardStatus,
     state: {
       scoreSnapshot,
     },
@@ -93,7 +109,10 @@ async function main() {
   });
 
   if (args.write) {
-    await writeTextIfChanged(join(config.dataDir, "strategy-execution-surfaces.json"), `${JSON.stringify(report, null, 2)}\n`);
+    await writeTextIfChanged(
+      join(config.dataDir, "strategy-execution-surfaces.json"),
+      `${JSON.stringify(report, null, 2)}\n`,
+    );
   }
 
   if (args.json) {
@@ -107,7 +126,10 @@ async function main() {
   console.log(`runnable: ${report.summary.runnableCount}/${report.summary.strategyCount}`);
   console.log(`liveEligible: ${report.summary.liveEligibleCount}`);
   for (const strategy of report.strategies) {
-    const scripts = strategy.selectedCommands.map((command) => command.script).filter(Boolean).join(",");
+    const scripts = strategy.selectedCommands
+      .map((command) => command.script)
+      .filter(Boolean)
+      .join(",");
     console.log(
       [
         `- ${strategy.label}`,

@@ -19,6 +19,7 @@ import { runGatewayUpdateWatch } from "../watch/gateway-update-watch.mjs";
 
 const DEFAULT_ALLOWED_AUTOPILOT_SCRIPTS = new Set([
   "report:autonomous-discovery-board",
+  "report:gateway-gold-readiness",
   "report:strategy-snapshot",
   "scan:quote-surface",
   "verify:gateway:asset-coverage",
@@ -75,10 +76,12 @@ async function main() {
   let refreshExecution = null;
   if (args.execute && refreshPlan.triggered) {
     const steps = refreshPlan.steps.flatMap((step) =>
-      parseWhitelistedRefreshCommand(step.command, { allowedScripts: DEFAULT_ALLOWED_AUTOPILOT_SCRIPTS }).map((parsed) => ({
-        ...parsed,
-        id: step.id,
-      })),
+      parseWhitelistedRefreshCommand(step.command, { allowedScripts: DEFAULT_ALLOWED_AUTOPILOT_SCRIPTS }).map(
+        (parsed) => ({
+          ...parsed,
+          id: step.id,
+        }),
+      ),
     );
     const executed = await runParsedRefreshSteps(steps);
     refreshExecution = {
@@ -135,15 +138,25 @@ async function main() {
   console.log(`updateDetected=${record.watch.updateDetected}`);
   console.log(`changeReasons=${record.watch.changeReasons.join(",") || "none"}`);
   console.log(`routeCount=${record.watch.routeCount}`);
-  console.log(`supportedRoutes=${record.supportedSurface.supportedRouteCount} ignoredRoutes=${record.supportedSurface.ignoredRouteCount}`);
+  console.log(
+    `supportedRoutes=${record.supportedSurface.supportedRouteCount} ignoredRoutes=${record.supportedSurface.ignoredRouteCount}`,
+  );
   console.log(`unsupportedChains=${record.supportedSurface.unsupportedChains.join(",") || "none"}`);
   console.log(`refreshTriggered=${record.refresh.triggered}`);
   console.log(`refreshStatus=${record.refresh.executionStatus}`);
   console.log(`refreshStepCount=${record.refresh.stepCount}`);
-  console.log(`autonomousDiscovery opportunities=${record.planningArtifacts.autonomousDiscoveryBoard?.opportunityCount ?? 0} readyNow=${record.planningArtifacts.autonomousDiscoveryBoard?.readyNowCount ?? 0} top=${record.planningArtifacts.autonomousDiscoveryBoard?.topOpportunity?.id || "n/a"} next=${record.planningArtifacts.autonomousDiscoveryBoard?.nextAction?.code || "n/a"}`);
-  console.log(`paperPnlBtc=${record.pnl.paper?.btc ?? "n/a"} paperPnlUsd=${record.pnl.paper?.usdProjection ?? "n/a"} paperPnlStatus=${record.pnl.paper?.status || "n/a"}`);
-  console.log(`estimatedPnlBtc=${record.pnl.estimated?.btc ?? "n/a"} estimatedPnlUsd=${record.pnl.estimated?.usdProjection ?? "n/a"} estimatedPnlStatus=${record.pnl.estimated?.status || "n/a"}`);
-  console.log(`realizedPnlBtc=${record.pnl.realized?.btc ?? "n/a"} realizedPnlUsd=${record.pnl.realized?.usdProjection ?? "n/a"} realizedPnlStatus=${record.pnl.realized?.status || "n/a"}`);
+  console.log(
+    `autonomousDiscovery opportunities=${record.planningArtifacts.autonomousDiscoveryBoard?.opportunityCount ?? 0} readyNow=${record.planningArtifacts.autonomousDiscoveryBoard?.readyNowCount ?? 0} top=${record.planningArtifacts.autonomousDiscoveryBoard?.topOpportunity?.id || "n/a"} next=${record.planningArtifacts.autonomousDiscoveryBoard?.nextAction?.code || "n/a"}`,
+  );
+  console.log(
+    `paperPnlBtc=${record.pnl.paper?.btc ?? "n/a"} paperPnlUsd=${record.pnl.paper?.usdProjection ?? "n/a"} paperPnlStatus=${record.pnl.paper?.status || "n/a"}`,
+  );
+  console.log(
+    `estimatedPnlBtc=${record.pnl.estimated?.btc ?? "n/a"} estimatedPnlUsd=${record.pnl.estimated?.usdProjection ?? "n/a"} estimatedPnlStatus=${record.pnl.estimated?.status || "n/a"}`,
+  );
+  console.log(
+    `realizedPnlBtc=${record.pnl.realized?.btc ?? "n/a"} realizedPnlUsd=${record.pnl.realized?.usdProjection ?? "n/a"} realizedPnlStatus=${record.pnl.realized?.status || "n/a"}`,
+  );
   for (const step of record.refresh.steps || []) {
     console.log(
       [
