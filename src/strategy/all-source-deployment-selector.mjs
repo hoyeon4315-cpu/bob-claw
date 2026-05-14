@@ -1,4 +1,5 @@
 import { isOfficialGatewayDestinationChain, canonicalGatewayChain } from "../config/gateway-destinations.mjs";
+import { computeTinyCanaryMinProfitablePositionUsd } from "../config/sizing.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { evaluateIntentPolicies } from "../executor/policy/index.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
@@ -155,58 +156,327 @@ function campaignByOpportunity(campaignAware = {}) {
   return map;
 }
 
-function normalizeMerklCandidates({ merklQueue = {}, campaignAware = {}, activeCapitalUsd = null }) {
+function merklOpportunityById(merklOpportunities = {}) {
+  const map = new Map();
+  for (const key of ["opportunities", "candidates", "topCandidates", "items"]) {
+    for (const opportunity of array(merklOpportunities[key])) {
+      const id = opportunity?.opportunityId ?? opportunity?.id;
+      if (id !== null && id !== undefined) map.set(String(id), opportunity);
+    }
+  }
+  return map;
+}
+
+function findLiveInventoryToken({ capitalManagerRefill = {}, chain, asset, tokenAddress }) {
+  const targetChain = normalizeChain(chain);
+  const targetAsset = String(asset || "").toLowerCase();
+  const targetAddress = tokenAddress ? String(tokenAddress).toLowerCase() : null;
+  const tokenRows = [
+    ...array(capitalManagerRefill.capitalPlan?.inventory?.tokens),
+    ...array(capitalManagerRefill.inventory?.tokens),
+    ...array(capitalManagerRefill.fundingSourcePlan?.inventory?.tokens),
+  ];
+  return tokenRows.find((row) => {
+    const rowChain = normalizeChain(row?.chain);
+    const rowTicker = String(row?.ticker || row?.symbol || row?.asset || "").toLowerCase();
+    const rowAddress = row?.token || row?.address ? String(row.token || row.address).toLowerCase() : null;
+    if (rowChain !== targetChain) return false;
+    if (targetAddress && rowAddress === targetAddress) return true;
+    return targetAsset && rowTicker === targetAsset;
+  });
+}
+
+function liveInventoryProof({ capitalManagerRefill, chain, asset, tokenAddress, requiredUsd }) {
+  const row = findLiveInventoryToken({ capitalManagerRefill, chain, asset, tokenAddress });
+  if (!row) return { ready: false, status: "missing", reason: "live_inventory_entry_asset_not_found" };
+  const estimatedUsd = finiteNumber(row.estimatedUsd, finiteNumber(row.valueUsd));
+  const staleFallback = row.staleFallback === true || row.status === "stale_fallback";
+  if (staleFallback || row.scanError) {
+    return {
+      ready: false,
+      status: "blocked",
+      reason: row.scanError ? "live_inventory_scan_error" : "live_inventory_stale_fallback",
+      rowStatus: row.status || null,
+      estimatedUsd,
+    };
+  }
+  return {
+    ready: estimatedUsd !== null && estimatedUsd >= finiteNumber(requiredUsd, 0),
+    status: estimatedUsd !== null && estimatedUsd >= finiteNumber(requiredUsd, 0) ? "ready" : "insufficient",
+    reason:
+      estimatedUsd !== null && estimatedUsd >= finiteNumber(requiredUsd, 0)
+        ? null
+        : "live_inventory_below_required_notional",
+    chain: normalizeChain(row.chain),
+    asset: row.ticker || row.symbol || row.asset || asset,
+    token: row.token || row.address || tokenAddress || null,
+    estimatedUsd: round(estimatedUsd),
+    actualDecimal: round(row.actualDecimal),
+    rowStatus: row.status || null,
+    staleFallback: row.staleFallback === true,
+    scanError: row.scanError || null,
+  };
+}
+
+function rewardTokenTypesFor({ merklOpportunity = {}, campaign = {} }) {
+  return unique([
+    ...array(merklOpportunity.rewardTokenTypes),
+    campaign.rewardTokenType,
+    ...array(campaign.rewardTokenTypes),
+  ]).map((value) => String(value).toLowerCase());
+}
+
+function rewardTokensFor({ merklOpportunity = {}, campaign = {} }) {
+  return unique([
+    campaign.rewardToken,
+    ...array(campaign.rewardTokens),
+    ...array(merklOpportunity.rewardTokenSymbols),
+    ...array(merklOpportunity.rewardTokens),
+  ]);
+}
+
+function rewardExitProofFor({ merklOpportunity = {}, campaign = {} }) {
+  const rewardTokens = rewardTokensFor({ merklOpportunity, campaign });
+  const rewardTokenTypes = rewardTokenTypesFor({ merklOpportunity, campaign });
+  const campaignStatus = campaign.rewardExitLiquidityStatus || null;
+  const hasReward = rewardTokens.length > 0 && rewardTokens.some((token) => !/^unknown$/i.test(token));
+  const stableOrNative =
+    !hasReward ||
+    rewardTokenTypes.some((type) => /stable|native|shareprice|share_price|nativeorsharepriceyield/.test(type)) ||
+    rewardTokens.every((token) => /^(usdc|usdt|dai|usds|lusd|frax|susdc)$/i.test(token));
+  if (stableOrNative) {
+    return {
+      ready: true,
+      status: hasReward ? "stable_or_native_reward_exit_exempt" : "native_or_share_price_yield_exit_exempt",
+      reason: null,
+      rewardTokens,
+      rewardTokenTypes,
+    };
+  }
+  if (rewardTokenTypes.some((type) => /pretge|pre_tge|points/.test(type))) {
+    return {
+      ready: false,
+      status: "failed",
+      blocker: "reward_exit_liquidity_failed:pre_tge_reward_token",
+      reason: "pre_tge_reward_has_no_claim_swap_depth_route",
+      rewardTokens,
+      rewardTokenTypes,
+      evidenceSource: "merkl_opportunity.rewardTokenTypes",
+    };
+  }
+  if (campaignStatus?.ready === true) {
+    return { ...campaignStatus, ready: true, rewardTokens, rewardTokenTypes };
+  }
+  return {
+    ready: false,
+    status: "missing_explicit_reward_exit_liquidity_proof",
+    blocker: "reward_exit_liquidity_unproven",
+    reason: campaignStatus?.reason || "non_stable_reward_requires_depth_proof",
+    rewardTokens,
+    rewardTokenTypes,
+  };
+}
+
+function rewardHaircutFor({ campaign = {}, rewardExitProof }) {
+  const configuredHaircut = finiteNumber(campaign.rewardTokenHaircut, 0);
+  const rewardTokenTypes = array(rewardExitProof?.rewardTokenTypes);
+  if (rewardTokenTypes.some((type) => /pretge|pre_tge|points/.test(type))) {
+    return Math.max(configuredHaircut, 0.85);
+  }
+  return configuredHaircut;
+}
+
+function expectedGrossUsd({ notionalUsd, aprPct, holdDays }) {
+  const notional = finiteNumber(notionalUsd);
+  const apr = finiteNumber(aprPct);
+  const days = finiteNumber(holdDays);
+  if (notional === null || apr === null || days === null) return null;
+  return (notional * apr * days) / 36500;
+}
+
+function maxTinyCanaryNotionalUsd({ strategyId, chain, activeCapitalUsd }) {
+  const caps = getStrategyCaps(strategyId, { activeCapitalUsd });
+  if (!caps?.caps) return null;
+  const values = [
+    finiteNumber(caps.caps.tinyLivePerTxUsd),
+    finiteNumber(caps.caps.perTxUsd),
+    finiteNumber(caps.caps.perChainUsd?.[normalizeChain(chain)]),
+  ].filter((value) => value !== null);
+  return values.length ? Math.min(...values) : null;
+}
+
+function removeResolvedMerklBlockers(blockers, { inventoryReady, rewardExitProofReady, rewardExitProofStatus }) {
+  return unique(blockers).filter((blocker) => {
+    if (inventoryReady && /inventory|current_inventory_entry_route_required/.test(blocker)) return false;
+    if (blocker === "reward_exit_liquidity_unproven" && (rewardExitProofReady || rewardExitProofStatus === "failed")) {
+      return false;
+    }
+    if (/tiny_canary_unprofitable:/.test(blocker)) return false;
+    return true;
+  });
+}
+
+function resizeTinyCanary({
+  strategyId,
+  chain,
+  notionalUsd,
+  displayedApr,
+  rewardHaircut,
+  holdDays,
+  costUsd,
+  inventoryProof,
+  activeCapitalUsd,
+}) {
+  const effectiveApr = finiteNumber(displayedApr, 0) * (1 - finiteNumber(rewardHaircut, 0));
+  const neededUsd = computeTinyCanaryMinProfitablePositionUsd({
+    chain,
+    aprPct: effectiveApr,
+    expectedHoldDays: holdDays,
+    estimatedGasCostUsd: costUsd,
+  });
+  if (neededUsd === null) return { notionalUsd, blocker: "tiny_canary_ev_unmeasured", neededUsd: null };
+  if (finiteNumber(notionalUsd, 0) >= neededUsd) return { notionalUsd, neededUsd, resized: false };
+  const capUsd = maxTinyCanaryNotionalUsd({ strategyId, chain, activeCapitalUsd });
+  const roundedNeededUsd = Math.ceil(neededUsd);
+  if (capUsd !== null && roundedNeededUsd > capUsd) {
+    return {
+      notionalUsd,
+      neededUsd,
+      capUsd,
+      resized: false,
+      blocker: `tiny_canary_resize_above_cap:need_$${roundedNeededUsd}_cap_$${Math.floor(capUsd)}`,
+    };
+  }
+  if (inventoryProof?.ready === true && finiteNumber(inventoryProof.estimatedUsd, 0) < roundedNeededUsd) {
+    return {
+      notionalUsd,
+      neededUsd,
+      capUsd,
+      resized: false,
+      blocker: `tiny_canary_resize_inventory_short:need_$${roundedNeededUsd}_available_$${Math.floor(
+        finiteNumber(inventoryProof.estimatedUsd, 0),
+      )}`,
+    };
+  }
+  return {
+    notionalUsd: roundedNeededUsd,
+    neededUsd,
+    capUsd,
+    resized: true,
+    resizeReason: `tiny_canary_resized_to_min_profitable_notional_$${roundedNeededUsd}`,
+  };
+}
+
+function normalizeMerklCandidates({
+  merklQueue = {},
+  merklOpportunities = {},
+  campaignAware = {},
+  capitalManagerRefill = {},
+  activeCapitalUsd = null,
+}) {
   const campaigns = campaignByOpportunity(campaignAware);
+  const opportunities = merklOpportunityById(merklOpportunities);
   return array(merklQueue.queue).map((item) => {
     const campaign = campaigns.get(String(item.opportunityId)) || {};
+    const merklOpportunity = opportunities.get(String(item.opportunityId)) || {};
+    const strategyId = item.mappedStrategyId || campaign.strategyId || "gateway_native_asset_conversion_sleeve";
+    const chain = item.chain || campaign.chain;
+    const asset = first(item.entryAssets) || campaign.asset || campaign.rewardToken || "unknown";
+    const assetAddress =
+      item.protocolBindingPlan?.resolvedBinding?.assetAddress || merklOpportunity.protocolBinding?.assetAddress || null;
+    const initialNotionalUsd = campaign.operatorPositionUsd ?? item.notionalUsd ?? 0;
+    const inventoryProof = liveInventoryProof({
+      capitalManagerRefill,
+      chain,
+      asset,
+      tokenAddress: assetAddress,
+      requiredUsd: initialNotionalUsd,
+    });
+    const rewardExitProof = rewardExitProofFor({ merklOpportunity, campaign });
+    const rewardHaircut = rewardHaircutFor({ campaign, rewardExitProof });
+    const holdPeriodDays =
+      campaign.expectedHoldDays ??
+      (finiteNumber(item.campaignRemainingHours) === null ? null : item.campaignRemainingHours / 24);
     const costs = finiteNumber(
       campaign.estimatedGasClaimSwapBridgeCostUsd,
       finiteNumber(campaign.tinyCanaryEvStatus?.roundTripCostUsd, 0),
     );
-    const blockers = unique([
-      ...array(item.autoEntry?.blockers),
-      ...array(campaign.blockers),
-      item.executionReadiness?.status && item.executionReadiness.status !== "inventory_ready"
-        ? item.executionReadiness.status
-        : null,
-      item.protocolBindingPlan?.status && item.protocolBindingPlan.status !== "binding_ready"
-        ? item.protocolBindingPlan.status
-        : null,
-      campaign.rewardExitLiquidityStatus?.ready === false ? "reward_exit_liquidity_unproven" : null,
-    ]);
+    const displayedApr = finiteNumber(campaign.displayedApr, finiteNumber(item.aprPct, 0));
+    const resize = resizeTinyCanary({
+      strategyId,
+      chain,
+      notionalUsd: initialNotionalUsd,
+      displayedApr,
+      rewardHaircut,
+      holdDays: holdPeriodDays,
+      costUsd: costs,
+      inventoryProof,
+      activeCapitalUsd,
+    });
+    const notionalUsd = resize.notionalUsd;
+    const effectiveAprPct = displayedApr * (1 - rewardHaircut);
+    const grossUsd = expectedGrossUsd({ notionalUsd, aprPct: effectiveAprPct, holdDays: holdPeriodDays });
+    const expectedNetUsd = grossUsd === null ? campaign.expectedNetProfitUsd : grossUsd - finiteNumber(costs, 0);
+    const blockers = removeResolvedMerklBlockers(
+      [
+        ...array(item.autoEntry?.blockers),
+        ...array(campaign.blockers),
+        item.executionReadiness?.status && item.executionReadiness.status !== "inventory_ready"
+          ? item.executionReadiness.status
+          : null,
+        item.protocolBindingPlan?.status && item.protocolBindingPlan.status !== "binding_ready"
+          ? item.protocolBindingPlan.status
+          : null,
+        rewardExitProof.ready === false ? rewardExitProof.blocker || "reward_exit_liquidity_unproven" : null,
+        resize.blocker || null,
+      ],
+      {
+        inventoryReady: inventoryProof.ready === true,
+        rewardExitProofReady: rewardExitProof.ready === true,
+        rewardExitProofStatus: rewardExitProof.status || null,
+      },
+    );
     return makeCandidate(
       {
         source: "merkl",
-        strategyId: item.mappedStrategyId || campaign.strategyId || "gateway_native_asset_conversion_sleeve",
-        chain: item.chain || campaign.chain,
-        asset: first(item.entryAssets) || campaign.asset || campaign.rewardToken || "unknown",
+        strategyId,
+        chain,
+        asset,
         protocol: item.protocolId || campaign.protocol,
         opportunityId: item.opportunityId || item.queueId,
         executorBinding: {
           status: item.executionReadiness?.executorSupported === true ? "ready" : "missing",
           ready: item.executionReadiness?.executorSupported === true,
-          executionReadiness: item.executionReadiness?.status || null,
+          executionReadiness:
+            inventoryProof.ready === true ? "inventory_ready" : item.executionReadiness?.status || null,
           executionSurface: item.executionSurface || null,
         },
         routeRefillBinding: {
-          status: item.executionReadiness?.status === "inventory_ready" ? "ready" : "inventory_or_refill_required",
-          ready: item.executionReadiness?.status === "inventory_ready",
-          capabilityGaps: array(item.capabilityGaps),
+          status:
+            inventoryProof.ready === true || item.executionReadiness?.status === "inventory_ready"
+              ? "ready"
+              : "inventory_or_refill_required",
+          ready: inventoryProof.ready === true || item.executionReadiness?.status === "inventory_ready",
+          capabilityGaps: inventoryProof.ready === true ? [] : array(item.capabilityGaps),
+          inventoryProof,
         },
-        notionalUsd: campaign.operatorPositionUsd ?? item.notionalUsd ?? 0,
-        holdPeriodDays:
-          campaign.expectedHoldDays ??
-          (finiteNumber(item.campaignRemainingHours) === null ? null : item.campaignRemainingHours / 24),
-        expectedGrossYieldUsd: campaign.operatorExpectedGrossProfitUsd,
-        rewardHaircut: campaign.rewardTokenHaircut,
+        notionalUsd,
+        holdPeriodDays,
+        expectedGrossYieldUsd: grossUsd ?? campaign.operatorExpectedGrossProfitUsd,
+        rewardHaircut,
         refillBridgeGasSlippageClaimSwapExitCostUsd: costs,
         p90CostFloorUsd: campaign.tinyCanaryEvStatus?.roundTripCostUsd ?? costs,
-        expectedRealizedNetUsd: campaign.expectedNetProfitUsd,
+        expectedRealizedNetUsd: expectedNetUsd,
         blockers,
         metadata: {
           queueId: item.queueId || null,
-          rewardToken: campaign.rewardToken || null,
+          rewardToken: first(rewardExitProof.rewardTokens) || campaign.rewardToken || null,
+          rewardTokenTypes: rewardExitProof.rewardTokenTypes || [],
           rewardExitLiquidityStatus: campaign.rewardExitLiquidityStatus || null,
+          rewardExitLiquidityProof: rewardExitProof,
+          inventoryProof,
+          tinyCanaryResize: resize,
+          effectiveAprPct: round(effectiveAprPct, 4),
           family: item.family || null,
         },
       },
