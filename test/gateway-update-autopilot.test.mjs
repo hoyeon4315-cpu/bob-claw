@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildGatewayUpdateAlertRecord,
   buildGatewayUpdateAutopilotRefreshPlan,
   summarizeGatewayUpdateAutopilotRuns,
 } from "../src/strategy/gateway-update-autopilot.mjs";
@@ -96,4 +97,52 @@ test("gateway update autopilot summary retains latest planning-only pnl surface"
   assert.equal(summary.latestSupportedSurface.ignoredRouteCount, 1);
   assert.equal(summary.latestAutonomousDiscoveryBoard.topOpportunity.id, "wrapped_btc_loop");
   assert.equal(summary.pnl.paper.status, "board_priority_surface_only");
+});
+
+test("gateway update alert record carries openapi snapshot fields for cli consumers", () => {
+  const record = buildGatewayUpdateAlertRecord({
+    observedAt: "2026-05-14T11:00:00.000Z",
+    updateDetected: true,
+    changeReasons: ["route_inventory"],
+    snapshot: {
+      routeCount: 1,
+      chains: ["bitcoin", "ethereum"],
+      routeHash: "route-hash",
+    },
+    schemaHash: "schema-hash",
+    diff: {
+      changed: true,
+      reason: "route_inventory",
+      addedRoutes: ["bitcoin:ethereum:xaut"],
+      removedRoutes: [],
+      addedChains: ["ethereum"],
+      removedChains: [],
+      addedTokens: ["xaut"],
+      removedTokens: [],
+      addedEthFamilyRoutes: [],
+      removedEthFamilyRoutes: [],
+      addedEthFamilyChainPairs: [],
+      removedEthFamilyChainPairs: [],
+    },
+    ethFamily: {
+      routeCount: 0,
+      surfaceChanged: false,
+      chainPairs: [],
+    },
+    schemaDiff: { changed: false },
+    probeHealthDiff: { changed: false },
+    openApiDiff: { changed: true },
+    openApiSnapshot: {
+      sha256: "abc123",
+      url: "https://docs.gobob.xyz/openapi.json",
+    },
+    probeFailures: [],
+    probes: [],
+  });
+
+  assert.deepEqual(record.openApiDiff, { changed: true });
+  assert.deepEqual(record.openApiSnapshot, {
+    sha256: "abc123",
+    url: "https://docs.gobob.xyz/openapi.json",
+  });
 });
