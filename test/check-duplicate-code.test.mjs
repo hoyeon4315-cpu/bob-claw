@@ -39,6 +39,8 @@ test("normalizeJscpdDuplicates groups duplicate fragments by stable fingerprint"
   assert.equal(duplicates[0].format, "javascript");
   assert.equal(duplicates[0].lines, 14);
   assert.deepEqual(duplicates[0].files, ["scripts/a.mjs", "scripts/b.mjs"]);
+  assert.match(duplicates[0].fragmentHash, /^sha1-(?:[a-f0-9]{8}-){4}[a-f0-9]{8}$/u);
+  assert.doesNotMatch(duplicates[0].fragmentHash, /^[a-f0-9]{32,}$/u);
   assert.equal(duplicates[1].count, 1);
   assert.deepEqual(duplicates[1].files, ["scripts/c.mjs", "scripts/d.mjs"]);
 });
