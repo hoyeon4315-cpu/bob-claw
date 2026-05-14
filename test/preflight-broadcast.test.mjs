@@ -56,6 +56,20 @@ function preflightRunner({ readyForLiveBroadcast = true } = {}) {
           },
         });
       }
+      if (step.id === "wallet_inventory_refresh") {
+        return commandResult({
+          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+          observedAt: "2026-05-09T00:00:00.000Z",
+          source: "live_scan",
+          totalUsd: 360.98,
+          summary: {
+            walletCoverage: "full_rpc",
+            assetUniverseStatus: "closed",
+            scanErrorCount: 0,
+            unknownAssetBalanceCount: 0,
+          },
+        });
+      }
       if (step.id === "wallet_holdings") {
         return commandResult(
           {
@@ -112,8 +126,9 @@ test("preflight-broadcast returns preflight_clean when all broadcast prechecks p
   assert.equal(payload.status, "preflight_clean");
   assert.equal(payload.executeAllowed, true);
   assert.equal(payload.target, TARGET);
-  assert.equal(payload.stages.length, 5);
+  assert.equal(payload.stages.length, 6);
   assert.ok(payload.nextActionGuide.command.includes("--execute"));
+  assert.ok(runner.commands.some((command) => command.includes("npm run inventory:whole-wallet -- --json")));
   assert.ok(runner.commands.some((command) => command.includes("npm run report:wallet-holdings -- --json")));
   assert.equal(payload.summary.payback.pendingSats, 601);
   assert.equal(payload.summary.payback.effectiveMinSats, 5000);
@@ -170,6 +185,20 @@ test("preflight-broadcast reads wallet freshness from the emitted wallet payload
           },
         });
       }
+      if (step.id === "wallet_inventory_refresh") {
+        return commandResult({
+          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+          observedAt: "2026-05-09T00:00:00.000Z",
+          source: "live_scan",
+          totalUsd: 818.25,
+          summary: {
+            walletCoverage: "full_rpc",
+            assetUniverseStatus: "closed",
+            scanErrorCount: 0,
+            unknownAssetBalanceCount: 0,
+          },
+        });
+      }
       if (step.id === "wallet_holdings") {
         return commandResult(
           {
@@ -202,7 +231,7 @@ test("preflight-broadcast reads wallet freshness from the emitted wallet payload
       now: "2026-05-09T00:00:00.000Z",
     });
     const payload = JSON.parse(result.stdout);
-    assert.equal(payload.stages[2].status, "passed");
+    assert.equal(payload.stages[3].status, "passed");
     assert.equal(payload.summary.wallet.freshnessPct, 1);
   } finally {
     process.chdir(previousCwd);
@@ -219,6 +248,20 @@ test("preflight-broadcast allows fresh wallet balances when only price metadata 
             readyForBroadcast: true,
             telemetryComplete: true,
             limitations: [],
+          },
+        });
+      }
+      if (step.id === "wallet_inventory_refresh") {
+        return commandResult({
+          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+          observedAt: "2026-05-09T00:00:00.000Z",
+          source: "live_scan",
+          totalUsd: 818.25,
+          summary: {
+            walletCoverage: "full_rpc",
+            assetUniverseStatus: "closed",
+            scanErrorCount: 0,
+            unknownAssetBalanceCount: 0,
           },
         });
       }
@@ -264,4 +307,47 @@ test("preflight-broadcast allows fresh wallet balances when only price metadata 
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "preflight_clean");
   assert.equal(payload.summary.wallet.stalePriceItemCount, 43);
+});
+
+test("preflight-broadcast blocks when wallet inventory refresh is not live exact coverage", async () => {
+  const runner = {
+    runCommandImpl: async ({ step }) => {
+      if (step.id === "kill_status") return commandResult({ halted: false });
+      if (step.id === "signer_health") {
+        return commandResult({
+          readiness: {
+            readyForBroadcast: true,
+            telemetryComplete: true,
+            limitations: [],
+          },
+        });
+      }
+      if (step.id === "wallet_inventory_refresh") {
+        return commandResult({
+          address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+          observedAt: "2026-05-09T00:00:00.000Z",
+          source: "stored_treasury_snapshot",
+          totalUsd: 818.25,
+          summary: {
+            walletCoverage: "partial_supported",
+            assetUniverseStatus: "open",
+            scanErrorCount: 1,
+            unknownAssetBalanceCount: 2,
+          },
+        });
+      }
+      throw new Error(`unexpected step ${step.id}`);
+    },
+  };
+
+  const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
+    runCommandImpl: runner.runCommandImpl,
+    now: "2026-05-09T00:00:00.000Z",
+  });
+
+  assert.equal(result.exitCode, 2);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "preflight_blocked");
+  assert.equal(payload.blockers[0].stage, "wallet_inventory_refresh");
+  assert.equal(payload.blockers[0].reason, "wallet_inventory_not_live_exact");
 });

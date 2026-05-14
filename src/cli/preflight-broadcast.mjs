@@ -63,6 +63,12 @@ function buildSteps(target) {
       args: ["run", "diagnose:signer-health", "--", "--json"],
     },
     {
+      id: "wallet_inventory_refresh",
+      label: "wallet inventory refresh",
+      command: "npm",
+      args: ["run", "inventory:whole-wallet", "--", "--json"],
+    },
+    {
       id: "wallet_holdings",
       label: "wallet holdings",
       command: "npm",
@@ -121,6 +127,45 @@ function evaluateSignerHealth(payload) {
       : blocker("signer_health", "signer_not_ready_for_broadcast", {
           cause: payload?.cause || null,
           limitations: payload?.readiness?.limitations || [],
+        }),
+  };
+}
+
+function evaluateWalletInventoryRefresh(payload) {
+  const summary = payload?.summary || {};
+  const source = payload?.source || null;
+  const walletCoverage = summary.walletCoverage || null;
+  const scanErrorCount = Number(summary.scanErrorCount ?? 0);
+  const unknownAssetBalanceCount = Number(summary.unknownAssetBalanceCount ?? 0);
+  const assetUniverseStatus = summary.assetUniverseStatus || null;
+  const observedAt = payload?.observedAt || null;
+  const totalUsd = finiteNumber(payload?.totalUsd);
+  const liveScan = source !== "stored_treasury_snapshot";
+  const exactCoverage = walletCoverage === "full_rpc" && assetUniverseStatus === "closed";
+  const ok = liveScan && exactCoverage && scanErrorCount === 0 && unknownAssetBalanceCount === 0 && totalUsd !== null;
+  return {
+    ok,
+    summary: {
+      address: payload?.address || null,
+      observedAt,
+      source,
+      totalUsd,
+      walletCoverage,
+      assetUniverseStatus,
+      scanErrorCount,
+      unknownAssetBalanceCount,
+    },
+    blocker: ok
+      ? null
+      : blocker("wallet_inventory_refresh", "wallet_inventory_not_live_exact", {
+          address: payload?.address || null,
+          observedAt,
+          source,
+          totalUsd,
+          walletCoverage,
+          assetUniverseStatus,
+          scanErrorCount,
+          unknownAssetBalanceCount,
         }),
   };
 }
@@ -251,6 +296,7 @@ function evaluateDispatchDryRun(payload, target) {
 async function evaluateStep(step, payload, options) {
   if (step.id === "kill_status") return evaluateKillStatus(payload);
   if (step.id === "signer_health") return evaluateSignerHealth(payload);
+  if (step.id === "wallet_inventory_refresh") return evaluateWalletInventoryRefresh(payload);
   if (step.id === "wallet_holdings") return evaluateWalletHoldings(payload, options);
   if (step.id === "payback_status") return evaluatePaybackStatus(payload);
   if (step.id === "dispatch_dry_run") return evaluateDispatchDryRun(payload, options.target);
@@ -337,6 +383,7 @@ function summarizeStages(stages = []) {
   return {
     killSwitch: byId.kill_status || {},
     signer: byId.signer_health || {},
+    walletInventory: byId.wallet_inventory_refresh || {},
     wallet: byId.wallet_holdings || {},
     payback: byId.payback_status || {},
     dispatch: byId.dispatch_dry_run || {},
