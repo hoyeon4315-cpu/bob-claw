@@ -25,8 +25,18 @@ export function parseArgs(argv) {
         return [key, valueParts.join("=")];
       }),
   );
-  const scope = options.scope ? options.scope.split(",").map((item) => item.trim()).filter(Boolean) : [];
-  const target = options.target ? options.target.split(",").map((item) => item.trim()).filter(Boolean) : [];
+  const scope = options.scope
+    ? options.scope
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+  const target = options.target
+    ? options.target
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
@@ -40,7 +50,12 @@ export function parseArgs(argv) {
     orchestratorSource: options["orchestrator-source"] || null,
     target,
     scope: Array.from(new Set([...scope, ...target])),
-    bucket: options.bucket ? options.bucket.split(",").map((item) => item.trim()).filter(Boolean) : [],
+    bucket: options.bucket
+      ? options.bucket
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -48,7 +63,9 @@ export async function loadStrategyCatalogDispatchInputs({
   loadStrategyExecutionSurfaceInputsImpl = loadStrategyExecutionSurfaceInputs,
   dataDir = config.dataDir,
 } = {}) {
-  const { state, dashboardStatus, triangleArtifacts, artifacts } = await loadStrategyExecutionSurfaceInputsImpl({ dataDir });
+  const { state, dashboardStatus, triangleArtifacts, artifacts } = await loadStrategyExecutionSurfaceInputsImpl({
+    dataDir,
+  });
   const executionSurfaces = buildStrategyExecutionSurfaces({ dashboardStatus, state, triangleArtifacts, artifacts });
   const planningBridge = buildStrategyDispatchPlanningBridge({
     autonomousDiscoveryBoard: artifacts.autonomousDiscoveryBoard || null,
@@ -165,7 +182,9 @@ function renderHumanOutput({ enrichedRecord, planningBridge, summary }) {
   lines.push(`selectedCount=${enrichedRecord.selectedCount}`);
   lines.push(`batchStatus=${enrichedRecord.batchStatus}`);
   lines.push(`stopReason=${enrichedRecord.stopReason || "none"}`);
-  lines.push(`planningBridge=${planningBridge?.authority || "none"} top=${planningBridge?.topCandidateId || "none"} candidates=${planningBridge?.candidateCount ?? 0}`);
+  lines.push(
+    `planningBridge=${planningBridge?.authority || "none"} top=${planningBridge?.topCandidateId || "none"} candidates=${planningBridge?.candidateCount ?? 0}`,
+  );
   for (const result of enrichedRecord.strategyResults || []) {
     lines.push(
       [
@@ -181,7 +200,9 @@ function renderHumanOutput({ enrichedRecord, planningBridge, summary }) {
         .join(" "),
     );
   }
-  lines.push(`dispatchSummary runs=${summary.runCount} success=${summary.successCount} failed=${summary.failureCount} preview=${summary.previewCount}`);
+  lines.push(
+    `dispatchSummary runs=${summary.runCount} success=${summary.successCount} failed=${summary.failureCount} preview=${summary.previewCount}`,
+  );
   return `${lines.join("\n")}\n`;
 }
 
@@ -245,6 +266,41 @@ export async function runStrategyCatalogDispatcherCli(
     strategies = strategies.filter((strategy) => bucketSet.has(strategy.capabilityBucket));
   }
 
+  if (args.execute && args.target.length && strategies.length === 0) {
+    const status = "execute_blocked_by_empty_selection";
+    const blockers = args.target.map((strategyId) => ({
+      strategyId,
+      policyBlockers: ["target_not_selected"],
+      adviceCode: null,
+      selectedMode: null,
+    }));
+    const payload = {
+      status,
+      observedAt: now,
+      blockers,
+      nextActionGuide: buildNextActionGuide({ target: args.target, status }),
+      record: {
+        schemaVersion: 1,
+        observedAt: now,
+        mode: "execute",
+        requestedMode: args.mode,
+        selectedCount: 0,
+        batchStatus: "blocked",
+        stopReason: "target_not_selected",
+        strategyResults: [],
+        followUps: [],
+        planningBridge,
+      },
+    };
+    await appendCliBlockAudit({ logsDir, observedAt: now, reason: status, blockers, args });
+    return {
+      exitCode: 2,
+      stdout: renderJson(payload),
+      stderr: "",
+      payload,
+    };
+  }
+
   const dispatchOptions = {
     strategies,
     requestedMode: args.mode,
@@ -256,10 +312,11 @@ export async function runStrategyCatalogDispatcherCli(
     now,
     ...(Number.isFinite(args.commandTimeoutMs) && args.commandTimeoutMs > 0
       ? {
-          runCommand: (details) => runRefreshCommand({
-            ...details,
-            timeoutMs: args.commandTimeoutMs,
-          }),
+          runCommand: (details) =>
+            runRefreshCommand({
+              ...details,
+              timeoutMs: args.commandTimeoutMs,
+            }),
         }
       : runCommand
         ? { runCommand }
@@ -321,12 +378,16 @@ export async function runStrategyCatalogDispatcherCli(
   const allRecords = args.execute || args.write ? await readJsonlImpl(dataDir, "strategy-dispatch-runs") : [];
   const persistedSummary = buildStrategyDispatchSummaryImpl(allRecords);
   if (args.write || args.execute) {
-    await writeTextIfChangedImpl(join(dataDir, "strategy-dispatch-summary.json"), `${JSON.stringify(persistedSummary, null, 2)}\n`, {
-      normalize: (contents) => {
-        if (!contents) return contents;
-        return JSON.stringify(stripVolatile(JSON.parse(contents)));
+    await writeTextIfChangedImpl(
+      join(dataDir, "strategy-dispatch-summary.json"),
+      `${JSON.stringify(persistedSummary, null, 2)}\n`,
+      {
+        normalize: (contents) => {
+          if (!contents) return contents;
+          return JSON.stringify(stripVolatile(JSON.parse(contents)));
+        },
       },
-    });
+    );
   }
 
   const summary = args.execute ? persistedSummary : buildStrategyDispatchSummaryImpl([enrichedRecord]);

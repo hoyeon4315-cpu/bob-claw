@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildCapitalAuditReport, buildCapitalAuditScope, matchBitcoinSettlements } from "../src/audit/capital-audit.mjs";
+import {
+  buildCapitalAuditReport,
+  buildCapitalAuditScope,
+  matchBitcoinSettlements,
+} from "../src/audit/capital-audit.mjs";
 
 test("capital audit scope collects EVM and bitcoin addresses from audit sources", () => {
   const scope = buildCapitalAuditScope({
@@ -121,7 +125,10 @@ test("capital audit classifies approved operator BTC deposits separately from of
   assert.equal(report.summary.bitcoinUnmatchedTxCount, 0);
   assert.equal(report.bitcoinAddresses[0].operatorFundingTxs[0].txid, "funding-deposit");
   assert.equal(report.bitcoinAddresses[0].nonSettlementTxs[0].receivedSats, 1200);
-  assert.equal(report.issues.some((entry) => entry.code === "bitcoin_tx_unmatched_to_offramp"), false);
+  assert.equal(
+    report.issues.some((entry) => entry.code === "bitcoin_tx_unmatched_to_offramp"),
+    false,
+  );
 });
 
 test("capital audit report flags broadcasts that still lack helper traceability", () => {
@@ -156,7 +163,10 @@ test("capital audit report flags broadcasts that still lack helper traceability"
 
   assert.equal(report.status, "incomplete_traceability");
   assert.equal(report.summary.unmatchedBroadcastCount, 1);
-  assert.equal(report.issues.some((entry) => entry.code === "broadcast_missing_helper_trace"), true);
+  assert.equal(
+    report.issues.some((entry) => entry.code === "broadcast_missing_helper_trace"),
+    true,
+  );
 });
 
 test("capital audit decomposes broadcast gas by category chain result and preserves total gas", () => {
@@ -203,7 +213,10 @@ test("capital audit decomposes broadcast gas by category chain result and preser
   assert.equal(report.summary.topGasChain, "ethereum");
   assert.equal(report.summary.gasFromRevertedTxsUsd, 0.6);
   assert.equal(report.summary.gasFromNoReceiptTxsUsd, 0);
-  assert.equal(report.broadcastBreakdown.some((cell) => cell.result === "no_receipt"), true);
+  assert.equal(
+    report.broadcastBreakdown.some((cell) => cell.result === "no_receipt"),
+    true,
+  );
 });
 
 test("capital audit matches legacy funding-transfer broadcasts from signer audit helper traces", () => {
@@ -596,7 +609,53 @@ test("capital audit report includes combined EVM and native BTC totals", () => {
   assert.equal(report.summary.currentNativeBtcSats, 13000);
   assert.ok(Math.abs(report.summary.currentNativeBtcUsd - 10.4) < 1e-9);
   assert.ok(Math.abs(report.summary.currentCombinedUsd - 62.4) < 1e-9);
-  assert.ok(Math.abs(report.summary.combinedDeltaUsd - (-7.6)) < 1e-9);
+  assert.ok(Math.abs(report.summary.combinedDeltaUsd - -7.6) < 1e-9);
+});
+
+test("capital audit excludes ignored treasury snapshots from current combined capital", () => {
+  const report = buildCapitalAuditReport({
+    signerAuditRecords: [],
+    treasurySnapshots: [
+      {
+        observedAt: "2026-05-14T00:00:00.000Z",
+        address: "0x000000000000000000000000000000000000dEaD",
+        summary: { estimatedWalletUsd: 10_000_000_000 },
+      },
+    ],
+    gatewayBtcOfframpExecutions: [
+      {
+        plan: {
+          recipient: "bc1test",
+        },
+        signerResult: {
+          broadcast: {
+            txHash: "0xbtcscope",
+          },
+        },
+      },
+    ],
+    bitcoinHistoriesByAddress: {
+      bc1test: {
+        transactions: [],
+        balance: {
+          balanceSats: 13000,
+          confirmedBalanceSats: 13000,
+          mempoolBalanceSats: 0,
+        },
+      },
+    },
+    approvedOperatorBtcAddresses: ["bc1test"],
+    prices: {
+      btc: 80000,
+      tokenByKey: { btc: 80000 },
+      nativeByChain: {},
+    },
+    ignoredTreasuryAddresses: ["0x000000000000000000000000000000000000dEaD"],
+  });
+
+  assert.equal(report.summary.currentNativeBtcSats, 13000);
+  assert.equal(report.summary.currentCombinedUsd, null);
+  assert.equal(report.summary.treasurySnapshotCount, 0);
 });
 
 test("capital audit report injects protocol position marks into treasury inventory", () => {
@@ -702,9 +761,7 @@ test("capital audit scope includes onramp recipient in EVM addresses", () => {
     signerAuditRecords: [],
     treasurySnapshots: [],
     gatewayBtcOfframpExecutions: [],
-    gatewayBtcOnrampExecutions: [
-      { plan: { senderAddress: "bc1sender", recipient: "0xBaseRecipient" } },
-    ],
+    gatewayBtcOnrampExecutions: [{ plan: { senderAddress: "bc1sender", recipient: "0xBaseRecipient" } }],
     approvedOperatorBtcAddresses: [],
   });
 

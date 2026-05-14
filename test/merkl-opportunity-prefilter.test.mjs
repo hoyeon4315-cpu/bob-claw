@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { evaluateMerklOpportunity } from "../src/strategy/merkl-opportunity-prefilter.mjs";
+import { buildMerklOpportunityReport } from "../src/strategy/merkl-opportunity-plan.mjs";
+import { evaluateMerklOpportunity, evaluateMerklOpportunities } from "../src/strategy/merkl-opportunity-prefilter.mjs";
 import {
   MERKL_OPPORTUNITY_POLICY,
   SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY,
@@ -36,18 +37,22 @@ function buildOpportunity(overrides = {}) {
 }
 
 test("higher APR candidate scores above otherwise equal lower APR candidate", () => {
-  const lowApr = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "apr-3",
-    aprPct: 3,
-    nativeAprPct: 1,
-    incentiveAprPct: 1,
-  }));
-  const highApr = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "apr-12",
-    aprPct: 12,
-    nativeAprPct: 2,
-    incentiveAprPct: 2,
-  }));
+  const lowApr = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "apr-3",
+      aprPct: 3,
+      nativeAprPct: 1,
+      incentiveAprPct: 1,
+    }),
+  );
+  const highApr = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "apr-12",
+      aprPct: 12,
+      nativeAprPct: 2,
+      incentiveAprPct: 2,
+    }),
+  );
 
   assert.equal(lowApr.decision, "candidate");
   assert.equal(highApr.decision, "candidate");
@@ -55,20 +60,24 @@ test("higher APR candidate scores above otherwise equal lower APR candidate", ()
 });
 
 test("low TVL high APR candidate still loses net score despite APR band boost", () => {
-  const safeTvl = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "high-apr-safe-tvl",
-    aprPct: 25,
-    tvlUsd: 2_000_000,
-    nativeAprPct: 8,
-    incentiveAprPct: 6,
-  }));
-  const lowTvl = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "high-apr-low-tvl",
-    aprPct: 25,
-    tvlUsd: 500_000,
-    nativeAprPct: 8,
-    incentiveAprPct: 6,
-  }));
+  const safeTvl = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "high-apr-safe-tvl",
+      aprPct: 25,
+      tvlUsd: 2_000_000,
+      nativeAprPct: 8,
+      incentiveAprPct: 6,
+    }),
+  );
+  const lowTvl = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "high-apr-low-tvl",
+      aprPct: 25,
+      tvlUsd: 500_000,
+      nativeAprPct: 8,
+      incentiveAprPct: 6,
+    }),
+  );
 
   assert.ok(lowTvl.overfitFlags.includes("low_tvl_high_apr"));
   assert.ok(lowTvl.hardBlockers.includes("tvl_below_family_floor"));
@@ -76,58 +85,68 @@ test("low TVL high APR candidate still loses net score despite APR band boost", 
 });
 
 test("missing APR stays in the low band and adds no extra score", () => {
-  const missingApr = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "apr-missing",
-    aprPct: null,
-    nativeAprPct: null,
-    incentiveAprPct: null,
-  }));
-  const lowBandApr = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "apr-low-band",
-    aprPct: 2.9,
-    nativeAprPct: null,
-    incentiveAprPct: null,
-  }));
+  const missingApr = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "apr-missing",
+      aprPct: null,
+      nativeAprPct: null,
+      incentiveAprPct: null,
+    }),
+  );
+  const lowBandApr = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "apr-low-band",
+      aprPct: 2.9,
+      nativeAprPct: null,
+      incentiveAprPct: null,
+    }),
+  );
 
   assert.equal(missingApr.score, lowBandApr.score);
 });
 
 test("incentive dominant penalty still applies even with APR scoring enabled", () => {
-  const balancedRewards = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "balanced-rewards",
-    aprPct: 12,
-    nativeAprPct: 8,
-    incentiveAprPct: 4,
-  }));
-  const incentiveDominant = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "incentive-dominant",
-    aprPct: 12,
-    nativeAprPct: 2,
-    incentiveAprPct: 10,
-  }));
+  const balancedRewards = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "balanced-rewards",
+      aprPct: 12,
+      nativeAprPct: 8,
+      incentiveAprPct: 4,
+    }),
+  );
+  const incentiveDominant = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "incentive-dominant",
+      aprPct: 12,
+      nativeAprPct: 2,
+      incentiveAprPct: 10,
+    }),
+  );
 
   assert.ok(incentiveDominant.overfitFlags.includes("incentive_dominant"));
   assert.ok(incentiveDominant.score < balancedRewards.score);
 });
 
 test("POINT hard reject candidate remains clamped at zero score", () => {
-  const pointReward = evaluateMerklOpportunity(buildOpportunity({
-    opportunityId: "point-reward",
-    family: "non_core_asset",
-    rewardTokenTypes: ["POINT"],
-    hasPointRewards: true,
-    hasBtcExposure: false,
-    hasSupportedAssetExposure: false,
-    btcPaybackCompatible: false,
-    mappedStrategyId: null,
-    executionSurface: "managedVault",
-    tvlUsd: 100_000,
-    aprPct: 50,
-    nativeAprPct: null,
-    incentiveAprPct: 40,
-    campaignRemainingHours: 12,
-    liveCampaigns: 1,
-  }));
+  const pointReward = evaluateMerklOpportunity(
+    buildOpportunity({
+      opportunityId: "point-reward",
+      family: "non_core_asset",
+      rewardTokenTypes: ["POINT"],
+      hasPointRewards: true,
+      hasBtcExposure: false,
+      hasSupportedAssetExposure: false,
+      btcPaybackCompatible: false,
+      mappedStrategyId: null,
+      executionSurface: "managedVault",
+      tvlUsd: 100_000,
+      aprPct: 50,
+      nativeAprPct: null,
+      incentiveAprPct: 40,
+      campaignRemainingHours: 12,
+      liveCampaigns: 1,
+    }),
+  );
 
   assert.ok(pointReward.hardBlockers.includes("point_reward_program"));
   assert.equal(pointReward.score, 0);
@@ -137,7 +156,34 @@ test("selectMerklOpportunityPolicy switches to small-capital profile when operat
   assert.equal(selectMerklOpportunityPolicy(449).profileId, SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY.profileId);
   assert.equal(selectMerklOpportunityPolicy(999).profileId, SMALL_CAPITAL_MERKL_OPPORTUNITY_POLICY.profileId);
   assert.equal(selectMerklOpportunityPolicy(1000).profileId, MERKL_OPPORTUNITY_POLICY.profileId);
-  assert.equal(selectMerklOpportunityPolicy(null).profileId, MERKL_OPPORTUNITY_POLICY.profileId);
+});
+
+test("missing current operating capital blocks Merkl opportunity admission instead of falling back to aggressive", () => {
+  const evaluated = evaluateMerklOpportunity(buildOpportunity(), { operatingCapitalUsd: null });
+
+  assert.equal(evaluated.decision, "blocked");
+  assert.ok(evaluated.hardBlockers.includes("operating_capital_unavailable"));
+  assert.equal(evaluated.validationMode, "research_only");
+});
+
+test("batch Merkl evaluation preserves missing operating capital blocker", () => {
+  const [evaluated] = evaluateMerklOpportunities([buildOpportunity()], { operatingCapitalUsd: null });
+
+  assert.equal(evaluated.decision, "blocked");
+  assert.ok(evaluated.hardBlockers.includes("operating_capital_unavailable"));
+});
+
+test("Merkl report does not surface candidates when current operating capital is unavailable", () => {
+  const report = buildMerklOpportunityReport({
+    opportunities: [buildOpportunity()],
+    operatingCapitalUsd: null,
+    now: "2026-05-14T00:00:00.000Z",
+  });
+
+  assert.equal(report.summary.candidateCount, 0);
+  assert.equal(report.summary.blockedCount, 1);
+  assert.equal(report.summary.topCandidateId, null);
+  assert.ok(report.opportunities[0].hardBlockers.includes("operating_capital_unavailable"));
 });
 
 test("small-capital profile clears tvl_below_family_floor for $1.4M eth_fixed_yield Base Pendle pool", () => {

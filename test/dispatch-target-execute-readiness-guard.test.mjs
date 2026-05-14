@@ -33,26 +33,29 @@ test("dispatch-target --execute rejects strategies that are not ready for live b
   const logsDir = join(root, "logs");
   let executed = false;
 
-  const result = await runStrategyCatalogDispatcherCli(["--target=wrapped-btc-loop-base-moonwell", "--execute", "--json"], {
-    dataDir: join(root, "data"),
-    logsDir,
-    loadStrategyCatalogDispatchInputsImpl: async () => ({
-      executionSurfaces: {
-        summary: {},
-        strategies: [strategyFixture()],
+  const result = await runStrategyCatalogDispatcherCli(
+    ["--target=wrapped-btc-loop-base-moonwell", "--execute", "--json"],
+    {
+      dataDir: join(root, "data"),
+      logsDir,
+      loadStrategyCatalogDispatchInputsImpl: async () => ({
+        executionSurfaces: {
+          summary: {},
+          strategies: [strategyFixture()],
+        },
+        planningBridge: {
+          authority: "none",
+          candidateCount: 1,
+          topCandidateId: "wrapped-btc-loop-base-moonwell",
+        },
+      }),
+      runCommand: async () => {
+        executed = true;
+        throw new Error("execute command must not run when readiness blocks");
       },
-      planningBridge: {
-        authority: "none",
-        candidateCount: 1,
-        topCandidateId: "wrapped-btc-loop-base-moonwell",
-      },
-    }),
-    runCommand: async () => {
-      executed = true;
-      throw new Error("execute command must not run when readiness blocks");
+      readExecutionGuardsImpl: async () => ({ blocked: false, reasons: [] }),
     },
-    readExecutionGuardsImpl: async () => ({ blocked: false, reasons: [] }),
-  });
+  );
 
   assert.equal(result.exitCode, 2);
   assert.equal(executed, false);
@@ -79,19 +82,22 @@ test("dispatch-target --execute rejects immediately when the kill-switch guard i
   const logsDir = join(root, "logs");
   let loadedInputs = false;
 
-  const result = await runStrategyCatalogDispatcherCli(["--target=wrapped-btc-loop-base-moonwell", "--execute", "--json"], {
-    dataDir: join(root, "data"),
-    logsDir,
-    loadStrategyCatalogDispatchInputsImpl: async () => {
-      loadedInputs = true;
-      throw new Error("inputs must not load when kill-switch blocks immediately");
+  const result = await runStrategyCatalogDispatcherCli(
+    ["--target=wrapped-btc-loop-base-moonwell", "--execute", "--json"],
+    {
+      dataDir: join(root, "data"),
+      logsDir,
+      loadStrategyCatalogDispatchInputsImpl: async () => {
+        loadedInputs = true;
+        throw new Error("inputs must not load when kill-switch blocks immediately");
+      },
+      readExecutionGuardsImpl: async () => ({
+        blocked: true,
+        reasons: ["kill_switch_active"],
+        killSwitchActive: true,
+      }),
     },
-    readExecutionGuardsImpl: async () => ({
-      blocked: true,
-      reasons: ["kill_switch_active"],
-      killSwitchActive: true,
-    }),
-  });
+  );
 
   assert.equal(result.exitCode, 2);
   assert.equal(loadedInputs, false);
@@ -112,4 +118,39 @@ test("dispatch-target --execute rejects immediately when the kill-switch guard i
   const audit = JSON.parse(auditLines[0]);
   assert.equal(audit.action, "broadcast_blocked_at_cli");
   assert.equal(audit.reason, "execute_blocked_by_kill_switch");
+});
+
+test("dispatch-target --execute rejects when the explicit target selects no strategy", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-dispatch-empty-target-"));
+  const logsDir = join(root, "logs");
+  let executed = false;
+
+  const result = await runStrategyCatalogDispatcherCli(["--target=missing-strategy", "--execute", "--json"], {
+    dataDir: join(root, "data"),
+    logsDir,
+    loadStrategyCatalogDispatchInputsImpl: async () => ({
+      executionSurfaces: {
+        summary: {},
+        strategies: [strategyFixture({ id: "other-strategy" })],
+      },
+      planningBridge: null,
+    }),
+    runCommand: async () => {
+      executed = true;
+    },
+    readExecutionGuardsImpl: async () => ({ blocked: false, reasons: [] }),
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(executed, false);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "execute_blocked_by_empty_selection");
+  assert.deepEqual(payload.blockers, [
+    {
+      strategyId: "missing-strategy",
+      policyBlockers: ["target_not_selected"],
+      adviceCode: null,
+      selectedMode: null,
+    },
+  ]);
 });

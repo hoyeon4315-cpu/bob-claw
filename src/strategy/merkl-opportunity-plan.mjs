@@ -24,7 +24,11 @@ function summarizeCounts(items = []) {
 function buildRotationPlan(items = [], policy = MERKL_OPPORTUNITY_POLICY) {
   const expiring = items
     .filter((item) => item.decision !== "blocked")
-    .filter((item) => Number.isFinite(item.campaignRemainingHours) && item.campaignRemainingHours <= policy.entry.rotationLookaheadHours)
+    .filter(
+      (item) =>
+        Number.isFinite(item.campaignRemainingHours) &&
+        item.campaignRemainingHours <= policy.entry.rotationLookaheadHours,
+    )
     .sort(compareOpportunities);
 
   return expiring.slice(0, 10).map((item) => {
@@ -62,7 +66,9 @@ export function buildMerklOpportunityReport({
 } = {}) {
   const resolvedPolicy = policy || selectMerklOpportunityPolicy(operatingCapitalUsd);
   const normalized = normalizeMerklOpportunities(opportunities, { campaigns, now });
-  const evaluated = evaluateMerklOpportunities(normalized, { policy: resolvedPolicy }).sort(compareOpportunities);
+  const evaluated = evaluateMerklOpportunities(normalized, { policy: resolvedPolicy, operatingCapitalUsd }).sort(
+    compareOpportunities,
+  );
   const summary = summarizeCounts(evaluated);
   const topCandidates = evaluated.filter((item) => item.decision === "candidate").slice(0, 10);
   const topWatchlist = evaluated.filter((item) => item.decision === "watch").slice(0, 10);
