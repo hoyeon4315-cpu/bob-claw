@@ -151,18 +151,20 @@ export function parseDashboardLiveArgs(argv, env = process.env) {
 }
 
 function contentTypeFor(path) {
-  return ({
-    ".html": "text/html; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".jsx": "text/javascript; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".ico": "image/x-icon",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".svg": "image/svg+xml",
-  })[extname(path).toLowerCase()] || "application/octet-stream";
+  return (
+    {
+      ".html": "text/html; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".jsx": "text/javascript; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".ico": "image/x-icon",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".svg": "image/svg+xml",
+    }[extname(path).toLowerCase()] || "application/octet-stream"
+  );
 }
 
 function resolveStaticPath(rootDir, requestPath = "/") {
@@ -218,9 +220,10 @@ function buildAprByOpportunity(slice = null) {
 }
 
 function latestObservedAt(items = []) {
-  return items.reduce((latest, item) =>
-    timestampMs(item?.observedAt) >= timestampMs(latest) ? item?.observedAt || latest : latest
-  , null);
+  return items.reduce(
+    (latest, item) => (timestampMs(item?.observedAt) >= timestampMs(latest) ? item?.observedAt || latest : latest),
+    null,
+  );
 }
 
 function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
@@ -244,7 +247,8 @@ function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
     const next = {
       ...current,
       strategyId,
-      microCanaryStatus: micro?.microCanaryStatus || tick.microCanaryStatus || current.microCanaryStatus || "not_started",
+      microCanaryStatus:
+        micro?.microCanaryStatus || tick.microCanaryStatus || current.microCanaryStatus || "not_started",
       readinessVerdict: stage?.readinessVerdict || tick.lastTickMode || current.readinessVerdict || null,
       demotionSummary: {
         demoted: tick.demotion?.demoted || false,
@@ -260,12 +264,13 @@ function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
     rowsById.set(strategyId, next);
   }
 
-  const rows = currentRows.length > 0
-    ? [
-        ...currentRows.map((row) => byStrategy[row.strategyId] || row),
-        ...Object.values(byStrategy).filter((row) => !rowIds.has(row.strategyId)),
-      ]
-    : Object.values(byStrategy);
+  const rows =
+    currentRows.length > 0
+      ? [
+          ...currentRows.map((row) => byStrategy[row.strategyId] || row),
+          ...Object.values(byStrategy).filter((row) => !rowIds.has(row.strategyId)),
+        ]
+      : Object.values(byStrategy);
 
   return {
     ...status,
@@ -277,7 +282,8 @@ function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
         byStrategy,
         generatedAt: strategyTickStatus.generatedAt || servedAt,
       },
-      microCanarySummary: strategyTickStatus.microCanary || currentStrategy.microCanarySummary || { total: 0, byStrategy: {} },
+      microCanarySummary: strategyTickStatus.microCanary ||
+        currentStrategy.microCanarySummary || { total: 0, byStrategy: {} },
     },
     liveOverlay: {
       ...(status.liveOverlay || {}),
@@ -290,15 +296,43 @@ function overlayStrategyTickStatus(status, strategyTickStatus, servedAt) {
   };
 }
 
-async function applyLiveSliceOverlay(status, { rootDir, dataDir, liveSnapshotDir = DEFAULT_LIVE_SNAPSHOT_DIR, projectRoot, servedAt }) {
+function preserveFallbackPositionValues(slice = null) {
+  if (!slice || !Array.isArray(slice.items)) return slice;
+  return {
+    ...slice,
+    items: slice.items.map((item) => {
+      const knownValue =
+        finiteNumberOrNull(item.valueUsd) ??
+        finiteNumberOrNull(item.markUsd) ??
+        finiteNumberOrNull(item.currentValueUsd) ??
+        finiteNumberOrNull(item.positionValueUsd) ??
+        finiteNumberOrNull(item.capUsd);
+      if (!Number.isFinite(knownValue)) return item;
+      return {
+        ...item,
+        valueUsd: knownValue,
+        markSource: item.markSource || "tracked_position_reference",
+        markConfidence: item.markConfidence || "entry_reference",
+        markFreshness: item.markFreshness || "fresh",
+      };
+    }),
+  };
+}
+
+async function applyLiveSliceOverlay(
+  status,
+  { rootDir, dataDir, liveSnapshotDir = DEFAULT_LIVE_SNAPSHOT_DIR, projectRoot, servedAt },
+) {
   let nextStatus = status;
   const previousStrategy = nextStatus?.strategy || status?.strategy || {};
   const previousCapitalSummary = nextStatus?.capitalSummary || status?.capitalSummary || null;
-  const walletHoldings = await loadJsonFromCandidates(dashboardJsonCandidatePaths("wallet-holdings.json", {
-    rootDir,
-    liveSnapshotDir,
-    dataDir,
-  }));
+  const walletHoldings = await loadJsonFromCandidates(
+    dashboardJsonCandidatePaths("wallet-holdings.json", {
+      rootDir,
+      liveSnapshotDir,
+      dataDir,
+    }),
+  );
   if (walletHoldings && walletHoldings.pending !== true && Array.isArray(walletHoldings.items)) {
     const currentWalletAt = status?.walletHoldings?.generatedAt || status?.walletHoldings?.observedAt || null;
     const incomingWalletAt = walletHoldings.generatedAt || walletHoldings.observedAt || null;
@@ -308,7 +342,11 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, liveSnapshotDir
       const itemTotalUsd = walletHoldings.items.reduce((sum, item) => sum + (Number(item?.usd) || 0), 0);
       const walletHoldingsWithMetadata = {
         ...walletHoldings,
-        source: walletHoldings.source || previousWalletHoldings.source || previousCapitalSummary.walletSource || "whole_wallet_inventory",
+        source:
+          walletHoldings.source ||
+          previousWalletHoldings.source ||
+          previousCapitalSummary.walletSource ||
+          "whole_wallet_inventory",
         scanErrorCount: Number.isFinite(walletHoldings.scanErrorCount)
           ? walletHoldings.scanErrorCount
           : Array.isArray(walletHoldings.scanErrors)
@@ -361,26 +399,34 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, liveSnapshotDir
   const activeMerklProtocolPositions = activeProtocolPositions(merklPositionEvents);
   const livePositionEvents =
     activeMerklProtocolPositions.length > 0 ? activeMerklProtocolPositions : merklPositionEvents;
-  const protocolPositionMarks = protocolPositionMarkEvents.length > 0
-    ? buildProtocolPositionMarksSlice(protocolPositionMarkEvents, {
-        generatedAt: servedAt,
-        activePositionIds: activeMerklProtocolPositions.map((position) => position.positionId),
-      })
-    : previousStrategy.protocolPositionMarks || null;
-  const merklActivePositions = livePositionEvents.length > 0
-    ? buildMerklActivePositions(
-        mergeProtocolMarksIntoPositions(
-          livePositionEvents,
-          latestProtocolMarksByPosition(protocolPositionMarkEvents),
-        ),
-        {
+  const protocolPositionMarks =
+    protocolPositionMarkEvents.length > 0
+      ? buildProtocolPositionMarksSlice(protocolPositionMarkEvents, {
           generatedAt: servedAt,
-          aprByOpportunity: buildAprByOpportunity(previousStrategy.merklActivePositions),
-        },
-      )
-    : previousStrategy.merklActivePositions || null;
+          activePositionIds: activeMerklProtocolPositions.map((position) => position.positionId),
+        })
+      : previousStrategy.protocolPositionMarks || null;
+  const merklActivePositions =
+    livePositionEvents.length > 0
+      ? buildMerklActivePositions(
+          mergeProtocolMarksIntoPositions(
+            livePositionEvents,
+            latestProtocolMarksByPosition(protocolPositionMarkEvents),
+          ),
+          {
+            generatedAt: servedAt,
+            aprByOpportunity: buildAprByOpportunity(previousStrategy.merklActivePositions),
+          },
+        )
+      : preserveFallbackPositionValues(previousStrategy.merklActivePositions) || null;
 
-  if (protocolPositionMarks || merklActivePositions || nextStatus?.walletHoldings || status?.walletHoldings || previousCapitalSummary) {
+  if (
+    protocolPositionMarks ||
+    merklActivePositions ||
+    nextStatus?.walletHoldings ||
+    status?.walletHoldings ||
+    previousCapitalSummary
+  ) {
     const capitalSummary = buildCapitalSummarySlice({
       walletHoldings: nextStatus?.walletHoldings || status?.walletHoldings || null,
       merklActivePositions,
@@ -427,11 +473,13 @@ async function applyLiveSliceOverlay(status, { rootDir, dataDir, liveSnapshotDir
     };
   }
 
-  const strategyTickStatus = await loadJsonFromCandidates(dashboardJsonCandidatePaths("strategy-tick-status.json", {
-    rootDir,
-    liveSnapshotDir,
-    dataDir,
-  }));
+  const strategyTickStatus = await loadJsonFromCandidates(
+    dashboardJsonCandidatePaths("strategy-tick-status.json", {
+      rootDir,
+      liveSnapshotDir,
+      dataDir,
+    }),
+  );
   nextStatus = overlayStrategyTickStatus(nextStatus, strategyTickStatus, servedAt);
 
   const merklUserRewardsLatest = await loadJsonFromCandidates([
@@ -506,8 +554,14 @@ function apiHeaders(corsOrigin, extraHeaders = {}) {
 function commandSummary(result = {}) {
   return {
     status: result.status ?? null,
-    stdout: String(result.stdout || "").trim().split(/\r?\n/u).slice(-12),
-    stderr: String(result.stderr || "").trim().split(/\r?\n/u).slice(-12),
+    stdout: String(result.stdout || "")
+      .trim()
+      .split(/\r?\n/u)
+      .slice(-12),
+    stderr: String(result.stderr || "")
+      .trim()
+      .split(/\r?\n/u)
+      .slice(-12),
     observedAt: new Date().toISOString(),
   };
 }
@@ -710,17 +764,18 @@ export function createDashboardLiveServer(rawOptions = {}) {
         if (killTimer) clearTimeout(killTimer);
         fn(value);
       };
-      const timer = Number.isInteger(timeoutMs) && timeoutMs > 0
-        ? setTimeout(() => {
-            const result = { status: null, stdout, stderr };
-            const error = new Error(`node ${script} timed out after ${timeoutMs}ms`);
-            error.result = result;
-            child.kill("SIGTERM");
-            killTimer = setTimeout(() => child.kill("SIGKILL"), 1000);
-            killTimer.unref?.();
-            settle(rejectPromise, error);
-          }, timeoutMs)
-        : null;
+      const timer =
+        Number.isInteger(timeoutMs) && timeoutMs > 0
+          ? setTimeout(() => {
+              const result = { status: null, stdout, stderr };
+              const error = new Error(`node ${script} timed out after ${timeoutMs}ms`);
+              error.result = result;
+              child.kill("SIGTERM");
+              killTimer = setTimeout(() => child.kill("SIGKILL"), 1000);
+              killTimer.unref?.();
+              settle(rejectPromise, error);
+            }, timeoutMs)
+          : null;
       timer?.unref?.();
       child.stdout.on("data", (chunk) => {
         stdout += chunk;
@@ -774,7 +829,9 @@ export function createDashboardLiveServer(rawOptions = {}) {
       task.lastFailedAt = task.lastError.observedAt;
       task.lastResult = commandSummary(error.result);
       const stderrTail = (error.result?.stderr || "").trim().split(/\r?\n/u).slice(-6).join(" | ");
-      console.error(`[dashboard-live] ${task.label} failed: ${error.message}${stderrTail ? ` | stderr: ${stderrTail}` : ""}`);
+      console.error(
+        `[dashboard-live] ${task.label} failed: ${error.message}${stderrTail ? ` | stderr: ${stderrTail}` : ""}`,
+      );
       throw error;
     } finally {
       task.running = false;
@@ -796,13 +853,15 @@ export function createDashboardLiveServer(rawOptions = {}) {
     const statusDue = taskDue(tasks.statusSnapshot);
     if (dueTasks.length === 0 && !statusDue) return null;
     refreshPromise = (async () => {
-      await Promise.all(dueTasks.map(async (task) => {
-        try {
-          await runTask(task);
-        } catch {
-          // Task failure is already recorded in the task state and surfaced via health/runtime endpoints.
-        }
-      }));
+      await Promise.all(
+        dueTasks.map(async (task) => {
+          try {
+            await runTask(task);
+          } catch {
+            // Task failure is already recorded in the task state and surfaced via health/runtime endpoints.
+          }
+        }),
+      );
       if (statusDue) {
         try {
           await runTask(tasks.statusSnapshot);
@@ -887,17 +946,20 @@ export function createDashboardLiveServer(rawOptions = {}) {
   async function computeLiveStatusPayload() {
     void maybeRunRefreshCycle();
     const servedAt = new Date().toISOString();
-    const dashboardStatus = await applyLiveSliceOverlay(await loadDashboardStatusSnapshot({
-      rootDir: options.rootDir,
-      dataDir: options.dataDir,
-      liveSnapshotDir: options.liveSnapshotDir,
-    }), {
-      rootDir: options.rootDir,
-      dataDir: options.dataDir,
-      liveSnapshotDir: options.liveSnapshotDir,
-      projectRoot: options.projectRoot,
-      servedAt,
-    });
+    const dashboardStatus = await applyLiveSliceOverlay(
+      await loadDashboardStatusSnapshot({
+        rootDir: options.rootDir,
+        dataDir: options.dataDir,
+        liveSnapshotDir: options.liveSnapshotDir,
+      }),
+      {
+        rootDir: options.rootDir,
+        dataDir: options.dataDir,
+        liveSnapshotDir: options.liveSnapshotDir,
+        projectRoot: options.projectRoot,
+        servedAt,
+      },
+    );
     return {
       ...dashboardStatus,
       liveTransport: {
@@ -914,17 +976,20 @@ export function createDashboardLiveServer(rawOptions = {}) {
 
   async function buildStaticFallbackPayload(errorMessage = null) {
     const servedAt = new Date().toISOString();
-    const fallback = await applyLiveSliceOverlay(await loadDashboardStatusSnapshot({
-      rootDir: options.rootDir,
-      dataDir: options.dataDir,
-      liveSnapshotDir: options.liveSnapshotDir,
-    }), {
-      rootDir: options.rootDir,
-      dataDir: options.dataDir,
-      liveSnapshotDir: options.liveSnapshotDir,
-      projectRoot: options.projectRoot,
-      servedAt,
-    });
+    const fallback = await applyLiveSliceOverlay(
+      await loadDashboardStatusSnapshot({
+        rootDir: options.rootDir,
+        dataDir: options.dataDir,
+        liveSnapshotDir: options.liveSnapshotDir,
+      }),
+      {
+        rootDir: options.rootDir,
+        dataDir: options.dataDir,
+        liveSnapshotDir: options.liveSnapshotDir,
+        projectRoot: options.projectRoot,
+        servedAt,
+      },
+    );
     return {
       ...fallback,
       liveTransport: {
@@ -985,7 +1050,10 @@ export function createDashboardLiveServer(rawOptions = {}) {
       try {
         return await Promise.race([
           build,
-          timeoutAfter(options.statusBuildTimeoutMs, `live status build timed out after ${options.statusBuildTimeoutMs}ms`),
+          timeoutAfter(
+            options.statusBuildTimeoutMs,
+            `live status build timed out after ${options.statusBuildTimeoutMs}ms`,
+          ),
         ]);
       } catch (error) {
         return buildTimedFallback(error);
@@ -998,14 +1066,17 @@ export function createDashboardLiveServer(rawOptions = {}) {
 
   async function serveSnapshot(res) {
     const status = await buildLiveStatus();
-    res.writeHead(200, apiHeaders(options.corsOrigin, {
-      "Content-Type": "application/json; charset=utf-8",
-    }));
+    res.writeHead(
+      200,
+      apiHeaders(options.corsOrigin, {
+        "Content-Type": "application/json; charset=utf-8",
+      }),
+    );
     res.end(JSON.stringify(status));
   }
 
   async function serveHealth(res) {
-    const status = lastStatusPayload || await buildLiveStatus({ force: true });
+    const status = lastStatusPayload || (await buildLiveStatus({ force: true }));
     const taskSnapshots = snapshotTasks();
     const readiness = readinessState(status, taskSnapshots);
     const payload = {
@@ -1016,25 +1087,34 @@ export function createDashboardLiveServer(rawOptions = {}) {
       liveMode: status?.liveTransport?.mode || null,
       tasks: taskSnapshots,
     };
-    res.writeHead(200, apiHeaders(options.corsOrigin, {
-      "Content-Type": "application/json; charset=utf-8",
-    }));
+    res.writeHead(
+      200,
+      apiHeaders(options.corsOrigin, {
+        "Content-Type": "application/json; charset=utf-8",
+      }),
+    );
     res.end(JSON.stringify(payload));
   }
 
   async function serveRuntime(res) {
-    res.writeHead(200, apiHeaders(options.corsOrigin, {
-      "Content-Type": "application/json; charset=utf-8",
-    }));
+    res.writeHead(
+      200,
+      apiHeaders(options.corsOrigin, {
+        "Content-Type": "application/json; charset=utf-8",
+      }),
+    );
     res.end(JSON.stringify(runtimeState()));
   }
 
   function serveEvents(req, res) {
-    res.writeHead(200, apiHeaders(options.corsOrigin, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    }));
+    res.writeHead(
+      200,
+      apiHeaders(options.corsOrigin, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      }),
+    );
     res.write(`retry: ${options.streamMs}\n\n`);
     let closed = false;
     let inFlight = false;
@@ -1124,9 +1204,12 @@ export function createDashboardLiveServer(rawOptions = {}) {
       }
       await serveStatic(res, path);
     } catch (error) {
-      res.writeHead(500, apiHeaders(options.corsOrigin, {
-        "Content-Type": "application/json; charset=utf-8",
-      }));
+      res.writeHead(
+        500,
+        apiHeaders(options.corsOrigin, {
+          "Content-Type": "application/json; charset=utf-8",
+        }),
+      );
       res.end(JSON.stringify({ error: error.message }));
     }
   });
@@ -1164,7 +1247,7 @@ export function createDashboardLiveServer(rawOptions = {}) {
           server.listen(options.port, options.address);
           return;
         }
-          server.listen(options.port);
+        server.listen(options.port);
       });
       try {
         if (options.refreshEnabled) {
@@ -1174,9 +1257,12 @@ export function createDashboardLiveServer(rawOptions = {}) {
           }, options.refreshTickMs);
         }
         await buildLiveStatus({ force: true });
-        statusWarmTimer = setInterval(() => {
-          void buildLiveStatus({ force: true }).catch(() => {});
-        }, Math.max(options.streamMs, options.snapshotCacheMs));
+        statusWarmTimer = setInterval(
+          () => {
+            void buildLiveStatus({ force: true }).catch(() => {});
+          },
+          Math.max(options.streamMs, options.snapshotCacheMs),
+        );
         return {
           localUrl: localUrl(),
           snapshotUrl: `${localUrl()}/api/live-status`,

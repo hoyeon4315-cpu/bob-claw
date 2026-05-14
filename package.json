@@ -111,6 +111,7 @@
     "report:phase3-strategy-validation": "node src/cli/report-phase3-strategy-validation.mjs",
     "report:search-complexity-budgets": "node src/cli/report-search-complexity-budgets.mjs",
     "report:allocator-core": "node src/cli/report-allocator-core.mjs",
+    "run:all-source-deployment-selector": "node src/cli/run-all-source-deployment-selector.mjs",
     "report:protocol-trust-tiers": "node src/cli/report-protocol-trust-tiers.mjs",
     "report:protocol-codehash-watch": "node src/cli/report-protocol-codehash-watch.mjs",
     "report:protocol-market-watchers": "node src/cli/report-protocol-market-watchers.mjs",

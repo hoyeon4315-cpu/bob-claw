@@ -3,7 +3,8 @@ import { buildReconciliationSummary } from "./reconciliation-loop.mjs";
 export const ACCOUNTING_PROVENANCE = Object.freeze({
   TOTAL_ACCOUNTED_WALLET_PLUS_POSITIONS: "accounted_wallet_plus_positions",
   DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_EXTERNAL_REFERENCE: "supported_wallet_plus_positions_external_reference",
-  DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_CACHED_EXTERNAL_REFERENCE: "supported_wallet_plus_positions_cached_external_reference",
+  DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_CACHED_EXTERNAL_REFERENCE:
+    "supported_wallet_plus_positions_cached_external_reference",
   DISPLAY_PARTIAL_SUPPORTED_WALLET_PLUS_POSITIONS: "partial_supported_wallet_plus_positions",
   ESTIMATED_AUTOMATION_WITH_VERIFIED_WALLET_FLOOR: "automation_estimate_with_verified_wallet_floor",
   ESTIMATED_VERIFIED_WALLET_PLUS_TRACKED_PROTOCOLS: "verified_wallet_plus_tracked_protocols",
@@ -40,7 +41,8 @@ function priceSourceForPosition(position = {}) {
 }
 
 function deployedPositionItem(position = {}) {
-  const rawUsd = finiteNumber(position.valueUsd) ??
+  const rawUsd =
+    finiteNumber(position.valueUsd) ??
     finiteNumber(position.markUsd) ??
     finiteNumber(position.currentValueUsd) ??
     finiteNumber(position.positionValueUsd);
@@ -49,12 +51,16 @@ function deployedPositionItem(position = {}) {
   const observedAt = position.markObservedAt || position.lastObservedAt || null;
   const hasMarkFailure = Boolean(position.markFailureKind || position.markFailureMessage);
   const markFreshness = position.markFreshness || (hasMarkFailure ? "failed" : observedAt ? "fresh" : null);
-  const markConfidence = position.markConfidence || (hasMarkFailure ? "adapter_missing" : Number.isFinite(rawUsd) && rawUsd <= 0 ? "verified_current" : null);
+  const markConfidence =
+    position.markConfidence ||
+    (hasMarkFailure ? "adapter_missing" : Number.isFinite(rawUsd) && rawUsd <= 0 ? "verified_current" : null);
   const hasCurrentMark =
     position.markSource === "protocol_position_mark" &&
     (markConfidence === "verified_current" || markFreshness === "fresh" || markFreshness === "recent");
+  const hasFreshTrackedReference =
+    position.markSource === "tracked_position_reference" && (markFreshness === "fresh" || markFreshness === "recent");
   const zeroResidual = Number.isFinite(rawUsd) && rawUsd <= 0 && !hasMarkFailure;
-  const usd = hasCurrentMark || zeroResidual ? rawUsd : null;
+  const usd = hasCurrentMark || hasFreshTrackedReference || zeroResidual ? rawUsd : null;
   const staleReferenceUsd = !Number.isFinite(usd) && Number.isFinite(rawUsd) && rawUsd > 0 ? rawUsd : null;
   const unverifiedEntryUsd = !Number.isFinite(usd) && Number.isFinite(entryUsd) && entryUsd > 0 ? entryUsd : null;
   return {
@@ -132,9 +138,7 @@ function positiveRoundedDelta(left, right) {
 function isCurrentProtocolMark(item = {}) {
   if (item.markSource !== "protocol_position_mark") return false;
   return (
-    item.markConfidence === "verified_current" ||
-    item.markFreshness === "fresh" ||
-    item.markFreshness === "recent"
+    item.markConfidence === "verified_current" || item.markFreshness === "fresh" || item.markFreshness === "recent"
   );
 }
 
@@ -148,24 +152,22 @@ export function buildCapitalSummarySlice({
 } = {}) {
   const walletItems = Array.isArray(walletHoldings?.items) ? walletHoldings.items : [];
   const positionItems = (merklActivePositions?.items || []).map(deployedPositionItem);
-  const unmarkedProtocolPositionCount = positionItems.filter(
-    (item) => !isCurrentProtocolMark(item),
-  ).length;
-  const unverifiedProtocolEntryUsd = roundUsd(positionItems.reduce((sum, item) => {
-    if (isCurrentProtocolMark(item)) return sum;
-    return sum + (Number(item.unverifiedEntryUsd) || 0);
-  }, 0));
+  const unmarkedProtocolPositionCount = positionItems.filter((item) => !isCurrentProtocolMark(item)).length;
+  const unverifiedProtocolEntryUsd = roundUsd(
+    positionItems.reduce((sum, item) => {
+      if (isCurrentProtocolMark(item)) return sum;
+      return sum + (Number(item.unverifiedEntryUsd) || 0);
+    }, 0),
+  );
   const protocolMarkFailedCount = Number(protocolPositionMarks?.failedPositionCount || 0);
   const protocolMarkStaleCount = Number(protocolPositionMarks?.stalePositionCount || 0);
   const protocolMarkExpiredCount = Number(protocolPositionMarks?.expiredPositionCount || 0);
   const protocolMarkNeedsReconciliation =
     protocolPositionMarks &&
-    (
-      protocolPositionMarks.confidence !== "verified_current" ||
+    (protocolPositionMarks.confidence !== "verified_current" ||
       protocolMarkFailedCount > 0 ||
       protocolMarkStaleCount > 0 ||
-      protocolMarkExpiredCount > 0
-    );
+      protocolMarkExpiredCount > 0);
   const everyProtocolPositionMarked = unmarkedProtocolPositionCount === 0 && !protocolMarkNeedsReconciliation;
   const walletUsd = Number.isFinite(walletHoldings?.totalUsd)
     ? walletHoldings.totalUsd
@@ -175,7 +177,8 @@ export function buildCapitalSummarySlice({
   const rawFullWalletUsd = finiteNumber(walletHoldings?.fullWalletUsd);
   const rawWalletCoverage = walletHoldings?.walletCoverage || null;
   const fullWalletStale = walletHoldings?.fullWalletStale === true;
-  const hasCurrentExternalReference = rawWalletCoverage === "full_external" && !fullWalletStale && Number.isFinite(rawFullWalletUsd);
+  const hasCurrentExternalReference =
+    rawWalletCoverage === "full_external" && !fullWalletStale && Number.isFinite(rawFullWalletUsd);
   const fullWalletUsd = hasCurrentExternalReference ? rawFullWalletUsd : null;
   const walletCoverage = hasCurrentExternalReference
     ? rawWalletCoverage
@@ -187,7 +190,7 @@ export function buildCapitalSummarySlice({
     : [];
   const walletScanErrorCount = Array.isArray(walletHoldings?.scanErrors)
     ? walletScanErrors.length
-    : walletHoldings?.scanErrorCount ?? 0;
+    : (walletHoldings?.scanErrorCount ?? 0);
   const unknownAssetBalanceCount = Number(walletHoldings?.unknownAssetBalanceCount || 0);
   const assetUniverseUnknownTargetCount = Number(walletHoldings?.assetUniverse?.unknownTargetCount || 0);
   const displayWalletUsd = walletUsd;
@@ -195,27 +198,27 @@ export function buildCapitalSummarySlice({
   const currentWalletUsd = displayWalletUsd;
   const protocolDeployedUsd = deployedUsd;
   const currentTotalUsd = displayTotalUsd;
-  const displayTotalUsdSource = walletCoverage === "full_external"
-    ? ACCOUNTING_PROVENANCE.DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_EXTERNAL_REFERENCE
-    : walletCoverage === "full_external_stale"
-      ? ACCOUNTING_PROVENANCE.DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_CACHED_EXTERNAL_REFERENCE
-      : ACCOUNTING_PROVENANCE.DISPLAY_PARTIAL_SUPPORTED_WALLET_PLUS_POSITIONS;
+  const displayTotalUsdSource =
+    walletCoverage === "full_external"
+      ? ACCOUNTING_PROVENANCE.DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_EXTERNAL_REFERENCE
+      : walletCoverage === "full_external_stale"
+        ? ACCOUNTING_PROVENANCE.DISPLAY_SUPPORTED_WALLET_PLUS_POSITIONS_CACHED_EXTERNAL_REFERENCE
+        : ACCOUNTING_PROVENANCE.DISPLAY_PARTIAL_SUPPORTED_WALLET_PLUS_POSITIONS;
   const walletCoverageNotExact = walletCoverage !== "full_rpc";
   const capitalPlanRefillRequiredUsd = Number.isFinite(executorEstimatedAssetValueUsd)
     ? roundUsd(executorEstimatedAssetValueUsd)
     : null;
-  const executorEstimatedTotalUsd = walletCoverage === "full_rpc"
-    ? finiteNumber(executorEstimatedAssetValueUsd)
-    : null;
+  const executorEstimatedTotalUsd = walletCoverage === "full_rpc" ? finiteNumber(executorEstimatedAssetValueUsd) : null;
   const executorEstimateDeltaUsd = positiveRoundedDelta(executorEstimatedTotalUsd, currentTotalUsd);
   const referenceFullWalletGapUsd = positiveRoundedDelta(fullWalletUsd, currentTotalUsd);
   const planGapUsd = null;
   const protocolTrackingGapUsd = executorEstimateDeltaUsd;
-  const estimatedUntrackedProtocolUsd = Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
-    ? protocolTrackingGapUsd
-    : Number.isFinite(unverifiedProtocolEntryUsd) && unverifiedProtocolEntryUsd > 0
-      ? unverifiedProtocolEntryUsd
-      : null;
+  const estimatedUntrackedProtocolUsd =
+    Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
+      ? protocolTrackingGapUsd
+      : Number.isFinite(unverifiedProtocolEntryUsd) && unverifiedProtocolEntryUsd > 0
+        ? unverifiedProtocolEntryUsd
+        : null;
   const estimatedProtocolDeployedUsd = Number.isFinite(estimatedUntrackedProtocolUsd)
     ? roundUsd(protocolDeployedUsd + estimatedUntrackedProtocolUsd)
     : roundUsd(protocolDeployedUsd);
@@ -225,9 +228,10 @@ export function buildCapitalSummarySlice({
   const estimatedTotalUsdSource = Number.isFinite(estimatedUntrackedProtocolUsd)
     ? ACCOUNTING_PROVENANCE.ESTIMATED_AUTOMATION_WITH_VERIFIED_WALLET_FLOOR
     : ACCOUNTING_PROVENANCE.ESTIMATED_VERIFIED_WALLET_PLUS_TRACKED_PROTOCOLS;
-  const trackingGapSource = Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
-    ? ACCOUNTING_PROVENANCE.TRACKING_AUTOMATION_ESTIMATE_MINUS_VERIFIED_ASSETS
-    : null;
+  const trackingGapSource =
+    Number.isFinite(protocolTrackingGapUsd) && protocolTrackingGapUsd > 0
+      ? ACCOUNTING_PROVENANCE.TRACKING_AUTOMATION_ESTIMATE_MINUS_VERIFIED_ASSETS
+      : null;
   const accountingWarning = null;
   const needsReconciliation =
     walletCoverageNotExact ||
@@ -239,11 +243,17 @@ export function buildCapitalSummarySlice({
     Boolean(accountingWarning);
   const assetConfidence = needsReconciliation ? "verified_minimum" : "verified_current";
   const reconciliationState = needsReconciliation
-    ? walletCoverageNotExact && unmarkedProtocolPositionCount === 0 && !protocolMarkNeedsReconciliation && walletScanErrorCount === 0 && !accountingWarning
+    ? walletCoverageNotExact &&
+      unmarkedProtocolPositionCount === 0 &&
+      !protocolMarkNeedsReconciliation &&
+      walletScanErrorCount === 0 &&
+      !accountingWarning
       ? "needs_full_wallet_coverage"
-      : (unmarkedProtocolPositionCount > 0 || protocolMarkNeedsReconciliation) && walletScanErrorCount === 0 && !accountingWarning
-      ? "needs_protocol_position_marks"
-      : "needs_reconciliation"
+      : (unmarkedProtocolPositionCount > 0 || protocolMarkNeedsReconciliation) &&
+          walletScanErrorCount === 0 &&
+          !accountingWarning
+        ? "needs_protocol_position_marks"
+        : "needs_reconciliation"
     : "reconciled";
   const assetFormula = everyProtocolPositionMarked
     ? ASSET_FORMULA.CURRENT_WALLET_PLUS_MARKED_PROTOCOL_POSITIONS
@@ -293,13 +303,22 @@ export function buildCapitalSummarySlice({
     protocolMarkFailedCount,
     protocolMarkStaleCount,
     protocolMarkExpiredCount,
-    staleItemCount: Number(walletHoldings?.staleItemCount || 0) + positionItems.filter((item) => ["stale", "expired", "failed"].includes(String(item.markFreshness || "").toLowerCase())).length,
-    stalePriceItemCount: Number(walletHoldings?.stalePriceItemCount || 0) + positionItems.filter((item) => ["stale", "expired", "failed"].includes(String(item.priceFreshness || "").toLowerCase())).length,
+    staleItemCount:
+      Number(walletHoldings?.staleItemCount || 0) +
+      positionItems.filter((item) =>
+        ["stale", "expired", "failed"].includes(String(item.markFreshness || "").toLowerCase()),
+      ).length,
+    stalePriceItemCount:
+      Number(walletHoldings?.stalePriceItemCount || 0) +
+      positionItems.filter((item) =>
+        ["stale", "expired", "failed"].includes(String(item.priceFreshness || "").toLowerCase()),
+      ).length,
     failedProtocolMarkCount: protocolMarkFailedCount,
     doubleCountPreventedCount: Number(walletHoldings?.doubleCountPreventedCount || 0),
-    oldestMaterialSourceObservedAt: [walletHoldings?.oldestMaterialSourceObservedAt, protocolPositionMarks?.oldestMaterialSourceObservedAt]
-      .filter(Boolean)
-      .sort()[0] || null,
+    oldestMaterialSourceObservedAt:
+      [walletHoldings?.oldestMaterialSourceObservedAt, protocolPositionMarks?.oldestMaterialSourceObservedAt]
+        .filter(Boolean)
+        .sort()[0] || null,
     assetTrackingTotals: walletHoldings?.totals || null,
     referenceFullWalletGapUsd,
     planGapUsd,
@@ -320,8 +339,8 @@ export function buildCapitalSummarySlice({
     assetUniverseUnknownTargetCount,
     unknownAssetBalanceCount,
     unknownAssetBalances: (walletHoldings?.unknownAssetBalances || []).slice(0, 10),
-    externalWalletUsd: hasCurrentExternalReference ? walletHoldings?.externalWalletUsd ?? null : null,
-    unclassifiedUsd: hasCurrentExternalReference ? walletHoldings?.unclassifiedUsd ?? null : null,
+    externalWalletUsd: hasCurrentExternalReference ? (walletHoldings?.externalWalletUsd ?? null) : null,
+    unclassifiedUsd: hasCurrentExternalReference ? (walletHoldings?.unclassifiedUsd ?? null) : null,
     walletItemCount: walletItems.length,
     activePositionCount: positionItems.length,
     walletItems,
