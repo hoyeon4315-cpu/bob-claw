@@ -154,7 +154,6 @@ async function evaluateWalletHoldings(
     totalUsd !== null &&
     freshnessCoveragePct === 1 &&
     staleItemCount === 0 &&
-    stalePriceItemCount === 0 &&
     divergenceWarnCount === 0 &&
     divergenceBlockCount === 0;
   return {

@@ -208,3 +208,60 @@ test("preflight-broadcast reads wallet freshness from the emitted wallet payload
     process.chdir(previousCwd);
   }
 });
+
+test("preflight-broadcast allows fresh wallet balances when only price metadata is stale", async () => {
+  const runner = {
+    runCommandImpl: async ({ step }) => {
+      if (step.id === "kill_status") return commandResult({ halted: false });
+      if (step.id === "signer_health") {
+        return commandResult({
+          readiness: {
+            readyForBroadcast: true,
+            telemetryComplete: true,
+            limitations: [],
+          },
+        });
+      }
+      if (step.id === "wallet_holdings") {
+        return commandResult(
+          {
+            ok: true,
+            pending: false,
+            totalUsd: 818.25,
+          },
+          {
+            walletPayload: {
+              pending: false,
+              totalUsd: 818.25,
+              staleItemCount: 0,
+              stalePriceItemCount: 43,
+              assetMetadataCoverage: {
+                freshnessCoveragePct: 1,
+                divergenceWarnCount: 0,
+                divergenceBlockCount: 0,
+              },
+            },
+          },
+        );
+      }
+      if (step.id === "payback_status") {
+        return commandResult({
+          policy: { minPaybackSats: 5000 },
+          payback: { accumulatorPendingSats: 100, scheduler: { minimumPaybackProgress: { minPaybackSats: 5000 } } },
+        });
+      }
+      if (step.id === "dispatch_dry_run") return commandResult(cleanDispatchPayload());
+      throw new Error(`unexpected step ${step.id}`);
+    },
+  };
+
+  const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
+    runCommandImpl: runner.runCommandImpl,
+    now: "2026-05-09T00:00:00.000Z",
+  });
+
+  assert.equal(result.exitCode, 0);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "preflight_clean");
+  assert.equal(payload.summary.wallet.stalePriceItemCount, 43);
+});
