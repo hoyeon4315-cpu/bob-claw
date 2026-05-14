@@ -62,9 +62,17 @@ export function runJsonCli(scriptPath, args = [], { timeoutMs = readinessChildTi
       error: stderr.trim() || stdout.trim() || `exit ${result.status ?? 1}`,
     };
   }
-  let parsed = null;
   try {
-    parsed = JSON.parse(stdout);
+    const parsed = JSON.parse(stdout);
+    return {
+      ok: true,
+      status: 0,
+      signal: null,
+      stdout,
+      stderr,
+      json: parsed,
+      error: null,
+    };
   } catch (error) {
     return {
       ok: false,
@@ -76,15 +84,6 @@ export function runJsonCli(scriptPath, args = [], { timeoutMs = readinessChildTi
       error: `invalid_json:${error.message}`,
     };
   }
-  return {
-    ok: true,
-    status: 0,
-    signal: null,
-    stdout,
-    stderr,
-    json: parsed,
-    error: null,
-  };
 }
 
 function classifyRefillIssue(reason = null) {

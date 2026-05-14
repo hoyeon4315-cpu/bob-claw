@@ -4,6 +4,7 @@ import { config } from "../config/env.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { formatGatewayUpdateAlert, sendTelegramMessage } from "../notify/telegram.mjs";
+import { buildGatewayUpdateAlertRecord } from "../strategy/gateway-update-autopilot.mjs";
 import { runGatewayUpdateWatch } from "../watch/gateway-update-watch.mjs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -53,74 +54,6 @@ function summarizeResult(result) {
   return lines.join("\n");
 }
 
-function sample(items, limit = 20) {
-  return items.slice(0, limit);
-}
-
-function buildAlertRecord(result) {
-  return {
-    observedAt: result.observedAt,
-    updateDetected: result.updateDetected,
-    changeReasons: result.changeReasons,
-    routeCount: result.snapshot.routeCount,
-    chains: result.snapshot.chains,
-    routeHash: result.snapshot.routeHash,
-    schemaHash: result.schemaHash,
-    ethFamily: {
-      routeCount: result.ethFamily?.routeCount || 0,
-      surfaceChanged: Boolean(result.ethFamily?.surfaceChanged),
-      chainPairs: result.ethFamily?.chainPairs || [],
-      addedRoutesCount: result.diff.addedEthFamilyRoutes.length,
-      removedRoutesCount: result.diff.removedEthFamilyRoutes.length,
-      addedRoutesSample: sample(result.diff.addedEthFamilyRoutes),
-      removedRoutesSample: sample(result.diff.removedEthFamilyRoutes),
-      addedChainPairs: result.diff.addedEthFamilyChainPairs || [],
-      removedChainPairs: result.diff.removedEthFamilyChainPairs || [],
-      followUpCommands:
-        result.diff.addedEthFamilyRoutes.length > 0 || result.diff.removedEthFamilyRoutes.length > 0
-          ? [
-              "npm run analyze:ethereum-routes -- --write",
-              "npm run audit:eth-family-overfit",
-            ]
-          : [],
-    },
-    routeDiff: {
-      changed: result.diff.changed,
-      reason: result.diff.reason,
-      addedRoutesCount: result.diff.addedRoutes.length,
-      removedRoutesCount: result.diff.removedRoutes.length,
-      addedRoutesSample: sample(result.diff.addedRoutes),
-      removedRoutesSample: sample(result.diff.removedRoutes),
-      addedChains: result.diff.addedChains,
-      removedChains: result.diff.removedChains,
-      addedTokensCount: result.diff.addedTokens.length,
-      removedTokensCount: result.diff.removedTokens.length,
-      addedTokensSample: sample(result.diff.addedTokens),
-      removedTokensSample: sample(result.diff.removedTokens),
-    },
-    schemaDiff: result.schemaDiff,
-    probeHealthDiff: result.probeHealthDiff,
-    openApiDiff: result.openApiDiff,
-    openApiSnapshot: result.openApiSnapshot,
-    probeFailures: result.probeFailures,
-    probes: result.probes.map((probe) => ({
-      ok: probe.ok,
-      routeKey: probe.routeKey,
-      latencyMs: probe.latencyMs || null,
-      shape: probe.shape || null,
-      error: probe.error || null,
-    })),
-    scanRecommendations: result.diff.addedRoutes.slice(0, 20).map((rk) => ({
-      routeKey: rk,
-      command: `npm run scan:quote-surface -- --route-key="${rk}"`,
-    })),
-    ethFamilyScanRecommendations: result.diff.addedEthFamilyRoutes.slice(0, 20).map((rk) => ({
-      routeKey: rk,
-      command: `npm run scan:quote-surface -- --route-key="${rk}"`,
-    })),
-  };
-}
-
 async function main() {
   const store = new JsonlStore(config.dataDir);
   const previousRecords = await readJsonl(config.dataDir, "gateway-update-snapshots");
@@ -154,17 +87,26 @@ async function main() {
       bytes: result.openApiSnapshot.bytes,
       contentType: result.openApiSnapshot.contentType,
     };
-    const snapshots = previousSnapshots.at(-1)?.sha256 === nextSnapshot.sha256
-      ? previousSnapshots
-      : [...previousSnapshots, nextSnapshot];
-    await writeFile(snapshotPath, JSON.stringify({
-      schemaVersion: 1,
-      updatedAt: result.observedAt,
-      snapshots,
-    }, null, 2) + "\n", "utf8");
+    const snapshots =
+      previousSnapshots.at(-1)?.sha256 === nextSnapshot.sha256
+        ? previousSnapshots
+        : [...previousSnapshots, nextSnapshot];
+    await writeFile(
+      snapshotPath,
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          updatedAt: result.observedAt,
+          snapshots,
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf8",
+    );
   }
   if (result.updateDetected) {
-    await store.append("gateway-update-alerts", buildAlertRecord(result));
+    await store.append("gateway-update-alerts", buildGatewayUpdateAlertRecord(result));
     const telegramResult = await sendTelegramMessage({
       botToken: config.telegramBotToken,
       chatId: config.telegramChatId,

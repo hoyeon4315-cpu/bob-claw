@@ -83,6 +83,8 @@ export function buildGatewayUpdateAlertRecord(result) {
     },
     schemaDiff: result.schemaDiff,
     probeHealthDiff: result.probeHealthDiff,
+    openApiDiff: result.openApiDiff,
+    openApiSnapshot: result.openApiSnapshot,
     probeFailures: result.probeFailures,
     probes: result.probes.map((probe) => ({
       ok: probe.ok,
