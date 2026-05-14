@@ -162,6 +162,14 @@ function rewardExitLiquidityStatus({ rewardTokenType, rewardToken }) {
   };
 }
 
+function rewardCountedInDisplayedApr({ displayedApr = 0, nativeAprPct = null } = {}) {
+  const displayed = Number(displayedApr);
+  const nativeApr = Number(nativeAprPct);
+  if (!Number.isFinite(displayed) || displayed <= 0) return false;
+  if (!Number.isFinite(nativeApr)) return true;
+  return nativeApr + 1e-9 < displayed;
+}
+
 export function campaignReportChainIds(policy = SMALL_CAPITAL_CAMPAIGN_MODE) {
   return Object.keys(policy.chainSelection?.chainProfiles ?? {})
     .map((chain) => EVM_CHAIN_CONFIGS[chain]?.chainId)
@@ -365,6 +373,7 @@ export function buildCampaignAwareCandidates({
     let rewardTokenHaircut = 0;
     let campaignAgeHours = null;
     let hoursRemaining = null;
+    const nativeAprPct = typeof opp.nativeAprRecord?.value === "number" ? opp.nativeAprRecord.value : null;
 
     const campaigns = Array.isArray(opp.campaigns) ? opp.campaigns : [];
     if (campaigns.length) {
@@ -401,12 +410,19 @@ export function buildCampaignAwareCandidates({
       }
     }
 
+    const rewardCounted = rewardCountedInDisplayedApr({ displayedApr, nativeAprPct });
+    if (!rewardCounted) {
+      rewardToken = null;
+      rewardTokenType = "nativeOrSharePriceYield";
+      rewardTokenHaircut = 0;
+    }
     const expectedRealizedAprAfterHaircut = computeExpectedRealizedApr(displayedApr, rewardTokenHaircut);
     const preliminaryCandidate = {
       chain,
       protocol,
       opportunityId,
       displayedApr,
+      nativeAprPct,
       expectedRealizedAprAfterHaircut,
       tvlUsd,
       campaignAgeHours,
@@ -414,6 +430,7 @@ export function buildCampaignAwareCandidates({
       rewardToken,
       rewardTokenType,
       rewardTokenHaircut,
+      rewardCountedInDisplayedApr: rewardCounted,
       rewardExitLiquidityStatus: rewardExitLiquidityStatus({ rewardTokenType, rewardToken }),
     };
     const expectedHoldDays = resolveTinyCanaryExpectedHoldDays({

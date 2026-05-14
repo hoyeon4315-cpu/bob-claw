@@ -4,26 +4,25 @@ import { isAbsolute, resolve } from "node:path";
 import { MempoolClient } from "../../bitcoin/fees.mjs";
 import { getBitcoinChainConfig, getEvmChainConfig, listEvmChains } from "../../config/chains.mjs";
 import { rpc } from "../../evm/json-rpc.mjs";
+import {
+  DEFAULT_HEARTBEAT_RELATIVE_PATH,
+  resolveDefaultHeartbeatPath,
+  resolveDefaultSignerSocketPath,
+} from "../runtime-paths.mjs";
 import { evaluateWatchdogHeartbeat, readHeartbeat } from "../watchdog/heartbeat.mjs";
 import { readSignerAuditLog } from "./audit-log.mjs";
 import { DEFAULT_SIGNER_SOCKET_PATH, readSignerHealth } from "./client.mjs";
 
 const execFile = promisify(execFileCallback);
 
-export const DEFAULT_HEARTBEAT_PATH = "./state/executor-heartbeat.json";
+export const DEFAULT_HEARTBEAT_PATH = DEFAULT_HEARTBEAT_RELATIVE_PATH;
 export const DEFAULT_HEARTBEAT_TTL_MS = 60_000;
 export const DEFAULT_RPC_TIMEOUT_MS = 3_500;
 export const DEFAULT_BTC_RPC_BASE_URL = "https://mempool.space/api";
 
 const PROCESS_CHECKS = Object.freeze({
-  daemon: Object.freeze([
-    "executor:daemon",
-    "src/executor/signer/daemon.mjs",
-  ]),
-  watchdog: Object.freeze([
-    "executor:watchdog",
-    "src/cli/run-executor-watchdog.mjs",
-  ]),
+  daemon: Object.freeze(["executor:daemon", "src/executor/signer/daemon.mjs"]),
+  watchdog: Object.freeze(["executor:watchdog", "src/cli/run-executor-watchdog.mjs"]),
 });
 
 function envValue(env, name, fallback = undefined) {
@@ -99,10 +98,10 @@ export async function checkSignerProcesses({ execFileImpl = execFile } = {}) {
   let method = "pgrep";
   try {
     for (const pattern of PROCESS_CHECKS.daemon) {
-      daemonMatches.push(...await pgrep(pattern, { execFileImpl }));
+      daemonMatches.push(...(await pgrep(pattern, { execFileImpl })));
     }
     for (const pattern of PROCESS_CHECKS.watchdog) {
-      watchdogMatches.push(...await pgrep(pattern, { execFileImpl }));
+      watchdogMatches.push(...(await pgrep(pattern, { execFileImpl })));
     }
   } catch (error) {
     method = "pgrep+ps";
@@ -132,10 +131,7 @@ export async function checkSignerProcesses({ execFileImpl = execFile } = {}) {
   };
 }
 
-export async function pingEvmChain(chain, {
-  timeoutMs = DEFAULT_RPC_TIMEOUT_MS,
-  rpcImpl = rpc,
-} = {}) {
+export async function pingEvmChain(chain, { timeoutMs = DEFAULT_RPC_TIMEOUT_MS, rpcImpl = rpc } = {}) {
   const config = getEvmChainConfig(chain);
   if (!config) {
     return {
@@ -190,10 +186,7 @@ export async function pingAllEvmChains(options = {}) {
   return { chains };
 }
 
-export async function pingBitcoinRpc({
-  baseUrl = DEFAULT_BTC_RPC_BASE_URL,
-  client = null,
-} = {}) {
+export async function pingBitcoinRpc({ baseUrl = DEFAULT_BTC_RPC_BASE_URL, client = null } = {}) {
   const bitcoinConfig = getBitcoinChainConfig("bitcoin");
   const startedAt = Date.now();
   const mempoolClient = client || new MempoolClient({ baseUrl });
@@ -300,8 +293,8 @@ export async function diagnoseSignerHealth({
   env = process.env,
   now = new Date().toISOString(),
   heartbeatTtlMs = Number(envValue(env, "EXECUTOR_WATCHDOG_TTL_MS", DEFAULT_HEARTBEAT_TTL_MS)),
-  heartbeatPath = resolvePathFromCwd(envValue(env, "EXECUTOR_HEARTBEAT_PATH", DEFAULT_HEARTBEAT_PATH), cwd),
-  socketPath = resolvePathFromCwd(envValue(env, "EXECUTOR_SIGNER_SOCKET_PATH", DEFAULT_SIGNER_SOCKET_PATH), cwd),
+  heartbeatPath = envValue(env, "EXECUTOR_HEARTBEAT_PATH", resolveDefaultHeartbeatPath({ cwd })),
+  socketPath = envValue(env, "EXECUTOR_SIGNER_SOCKET_PATH", resolveDefaultSignerSocketPath({ cwd })),
   processChecker = checkSignerProcesses,
   heartbeatReader = readHeartbeat,
   signerHealthReader = readSignerHealth,
@@ -309,20 +302,24 @@ export async function diagnoseSignerHealth({
   btcRpcPinger = pingBitcoinRpc,
   signerAuditReader = summarizeSignerAudit,
 } = {}) {
+  const resolvedHeartbeatPath = resolvePathFromCwd(heartbeatPath, cwd);
+  const resolvedSocketPath = resolvePathFromCwd(socketPath, cwd);
   const process = await processChecker();
   const heartbeat = summarizeHeartbeat({
-    heartbeat: await heartbeatReader(heartbeatPath),
-    path: heartbeatPath,
+    heartbeat: await heartbeatReader(resolvedHeartbeatPath),
+    path: resolvedHeartbeatPath,
     now,
     ttlMs: heartbeatTtlMs,
   });
-  const effectiveSocketPath = heartbeat.socketPath || socketPath;
+  const effectiveSocketPath = heartbeat.socketPath || resolvedSocketPath;
   let socket = null;
   try {
-    socket = summarizeSocketResult(await signerHealthReader({
-      socketPath: effectiveSocketPath,
-      timeoutMs: Math.min(heartbeatTtlMs, 5_000),
-    }));
+    socket = summarizeSocketResult(
+      await signerHealthReader({
+        socketPath: effectiveSocketPath,
+        timeoutMs: Math.min(heartbeatTtlMs, 5_000),
+      }),
+    );
   } catch (error) {
     socket = {
       ok: false,

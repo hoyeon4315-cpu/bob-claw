@@ -5,6 +5,11 @@ import {
   resolveKillSwitchAuditPath,
   resolveKillSwitchPath,
 } from "../executor/policy/kill-switch.mjs";
+import {
+  DEFAULT_HEARTBEAT_RELATIVE_PATH,
+  resolveDefaultHeartbeatPath,
+  resolveDefaultSignerSocketPath,
+} from "../executor/runtime-paths.mjs";
 import { DEFAULT_SIGNER_SOCKET_PATH } from "../executor/signer/client.mjs";
 import { readSignerHealth } from "../executor/signer/client.mjs";
 import { evaluateWatchdogHeartbeat, readHeartbeat, writeHeartbeat } from "../executor/watchdog/heartbeat.mjs";
@@ -21,7 +26,7 @@ async function pathExists(path) {
 
 export function summarizeExecutorRuntime({
   heartbeat = null,
-  heartbeatPath = "./state/executor-heartbeat.json",
+  heartbeatPath = DEFAULT_HEARTBEAT_RELATIVE_PATH,
   signerSocketPath = DEFAULT_SIGNER_SOCKET_PATH,
   signerSocketPresent = false,
   signerSocketResponding = undefined,
@@ -31,13 +36,14 @@ export function summarizeExecutorRuntime({
   now = new Date().toISOString(),
 } = {}) {
   const watchdog = evaluateWatchdogHeartbeat({ heartbeat, now, ttlMs });
-  const runtimeStatus = watchdog.status === "healthy"
-    ? signerSocketPresent
-      ? signerSocketResponding === false
-        ? "socket_unreachable"
-        : "healthy"
-      : "socket_missing"
-    : watchdog.status;
+  const runtimeStatus =
+    watchdog.status === "healthy"
+      ? signerSocketPresent
+        ? signerSocketResponding === false
+          ? "socket_unreachable"
+          : "healthy"
+        : "socket_missing"
+      : watchdog.status;
 
   return {
     heartbeatPath,
@@ -48,9 +54,10 @@ export function summarizeExecutorRuntime({
     signerSocketPresent,
     signerSocketResponding,
     signerHealthError,
-    signerStatus: signerSocketResponding === false
-      ? "unreachable"
-      : heartbeat?.status || (signerSocketPresent ? "socket_present" : "missing_socket"),
+    signerStatus:
+      signerSocketResponding === false
+        ? "unreachable"
+        : heartbeat?.status || (signerSocketPresent ? "socket_present" : "missing_socket"),
     lastCommand: heartbeat?.lastCommand || null,
     killSwitch: killSwitch
       ? {
@@ -72,8 +79,8 @@ export function summarizeExecutorRuntime({
 
 export async function loadExecutorRuntime({
   now = new Date().toISOString(),
-  heartbeatPath = getEnv("EXECUTOR_HEARTBEAT_PATH", "./state/executor-heartbeat.json"),
-  signerSocketPath = getEnv("EXECUTOR_SIGNER_SOCKET_PATH", DEFAULT_SIGNER_SOCKET_PATH),
+  heartbeatPath = getEnv("EXECUTOR_HEARTBEAT_PATH", resolveDefaultHeartbeatPath()),
+  signerSocketPath = getEnv("EXECUTOR_SIGNER_SOCKET_PATH", resolveDefaultSignerSocketPath()),
   killSwitchPath = getEnv("KILL_SWITCH_PATH", resolveKillSwitchPath()),
   killSwitchAuditPath = getEnv("KILL_SWITCH_AUDIT_PATH", resolveKillSwitchAuditPath()),
   ttlMs = getNumberEnv("EXECUTOR_WATCHDOG_TTL_MS", 60_000),

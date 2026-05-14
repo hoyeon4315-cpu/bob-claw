@@ -42,7 +42,13 @@ function normalizedSymbol(value) {
 
 function entrySymbolsWhitelisted(queueItem = {}, policy = MERKL_AUTO_ENTRY_POLICY) {
   const whitelist = new Set((policy.whitelistedEntrySymbols || []).map(normalizedSymbol));
+  const bindingAssetSymbol = normalizedSymbol(
+    queueItem.protocolBindingPlan?.resolvedBinding?.assetSymbol ||
+      queueItem.protocolBinding?.assetSymbol ||
+      null,
+  );
   const matchedSymbol = normalizedSymbol(queueItem.executionReadiness?.matchedToken?.ticker);
+  if (bindingAssetSymbol && whitelist.has(bindingAssetSymbol)) return true;
   if (matchedSymbol && whitelist.has(matchedSymbol)) return true;
   const symbols = queueItem.entryAssets?.length
     ? queueItem.entryAssets

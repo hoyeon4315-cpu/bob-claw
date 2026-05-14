@@ -20,9 +20,10 @@ function normalizePath(filePath) {
 }
 
 function stableFragmentHash(fragment) {
-  return createHash("sha1")
+  const hex = createHash("sha1")
     .update(String(fragment || ""))
     .digest("hex");
+  return `sha1-${hex.match(/.{1,8}/gu).join("-")}`;
 }
 
 function positiveInteger(value, fallback = 0) {

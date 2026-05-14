@@ -3,11 +3,10 @@ import { access, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
-import { DEFAULT_SIGNER_SOCKET_PATH } from "../executor/signer/client.mjs";
+import { resolveDefaultHeartbeatPath, resolveDefaultSignerSocketPath } from "../executor/runtime-paths.mjs";
 import { loadExecutorRuntime } from "../status/executor-runtime.mjs";
 import { buildExecutorLaunchAgentSpecs, readLaunchAgentStatus } from "./launchd.mjs";
 
-const DEFAULT_HEARTBEAT_PATH = "./state/executor-heartbeat.json";
 const DEFAULT_WATCHDOG_TTL_MS = 60_000;
 const REQUIRED_LAUNCHD_ENV_KEYS = new Set([
   "BURNER_EVM_KEY_PATH",
@@ -122,8 +121,12 @@ export async function inspectExecutorRuntimeEnv({
 } = {}) {
   const resolvedCwd = resolve(cwd);
   const envFilePath = resolve(resolvedCwd, ".env");
-  const heartbeatPath = envValue(env, "EXECUTOR_HEARTBEAT_PATH", DEFAULT_HEARTBEAT_PATH);
-  const signerSocketPath = envValue(env, "EXECUTOR_SIGNER_SOCKET_PATH", DEFAULT_SIGNER_SOCKET_PATH);
+  const heartbeatPath = envValue(env, "EXECUTOR_HEARTBEAT_PATH", resolveDefaultHeartbeatPath({ cwd: resolvedCwd }));
+  const signerSocketPath = envValue(
+    env,
+    "EXECUTOR_SIGNER_SOCKET_PATH",
+    resolveDefaultSignerSocketPath({ cwd: resolvedCwd }),
+  );
   const paybackDestination = envValue(env, "PAYBACK_BTC_DEST_ADDR", null);
   const evmKeyPath = envValue(env, "BURNER_EVM_KEY_PATH", envValue(env, "BURNER_PRIVATE_KEY_PATH", null));
   const btcKeyPath = envValue(env, "BURNER_BTC_KEY_PATH", null);
@@ -147,13 +150,13 @@ export async function inspectExecutorRuntimeEnv({
     derived: {
       heartbeatPath: {
         name: "EXECUTOR_HEARTBEAT_PATH",
-        path: resolve(resolvedCwd, heartbeatPath),
-        pathDisplay: formatDisplayPath(resolve(resolvedCwd, heartbeatPath)),
+        path: resolve(heartbeatPath),
+        pathDisplay: formatDisplayPath(resolve(heartbeatPath)),
       },
       signerSocketPath: {
         name: "EXECUTOR_SIGNER_SOCKET_PATH",
-        path: resolve(resolvedCwd, signerSocketPath),
-        pathDisplay: formatDisplayPath(resolve(resolvedCwd, signerSocketPath)),
+        path: resolve(signerSocketPath),
+        pathDisplay: formatDisplayPath(resolve(signerSocketPath)),
       },
       watchdogTtlMs: Number(envValue(env, "EXECUTOR_WATCHDOG_TTL_MS", DEFAULT_WATCHDOG_TTL_MS)),
     },

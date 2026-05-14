@@ -257,6 +257,261 @@ test("execution surfaces include executor-backed live strategies when artifacts 
   assert.equal(report.summary.liveEligibleCount, 2);
 });
 
+test("execution surfaces keep generic Merkl id stable when Pendle is the top ready canary", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: dashboardStatusFixture(),
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 0,
+          autoExecutableNowCount: 1,
+          topExecutableOpportunityId: "pendle-direct:8453:market",
+        },
+        queue: [
+          {
+            opportunityId: "pendle-direct:8453:market",
+            chain: "base",
+            protocolId: "pendle",
+            mappedStrategyId: "pendle-yt-canary",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 25262.222885, actual: "25262222885" },
+            },
+            aprPct: 15.94,
+            expectedHoldDays: 30,
+            protocolBindingPlan: {
+              bindingKind: "pendle_yt_buy_sell_redeem",
+              canaryActions: ["buy_yt", "sell_yt", "redeem"],
+            },
+          },
+        ],
+      },
+      liveTreasuryInventorySnapshot: {
+        observedAt: "2026-05-14T22:39:43.796Z",
+        tokens: [
+          {
+            chain: "base",
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            ticker: "USDC",
+            actual: "25262222885",
+            actualDecimal: 25262.222885,
+            estimatedUsd: 25262.222885,
+            priceUsd: 1,
+            status: "over_max_active",
+          },
+        ],
+      },
+    },
+  });
+
+  const genericMerkl = report.strategies.find((strategy) => strategy.label === "Merkl tiny live canary autopilot");
+  const pendle = report.strategies.find((strategy) => strategy.label === "Pendle YT canary autopilot");
+
+  assert.equal(genericMerkl.id, "gateway_native_asset_conversion_sleeve");
+  assert.equal(pendle.id, "pendle-yt-canary");
+});
+
+test("execution surfaces promote Pendle YT canary to live when live treasury inventory proves entry-token funding", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "ALLOWED",
+        lanePolicy: {
+          stage: "C",
+          policyLiveTrading: "ALLOWED",
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 0,
+          autoExecutableNowCount: 0,
+          pendleYtCount: 1,
+          pendleYtCanaryReadyCount: 1,
+          topBlockingReason: "inventory_unknown",
+        },
+        queue: [
+          {
+            opportunityId: "pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+            chain: "base",
+            protocolId: "pendle",
+            mappedStrategyId: "pendle-yt-canary",
+            priorityScore: 70,
+            entryAssets: ["apxUSD"],
+            queueStatus: "queued_for_tiny_live_canary_preflight",
+            capabilityGaps: ["current_inventory_entry_route_required"],
+            autoEntry: { autoExecute: false },
+            executionReadiness: {
+              status: "inventory_unknown",
+              executorSupported: true,
+              matchedToken: null,
+              matchedNative: {
+                asset: "ETH",
+                actual: "1000000000000000",
+                estimatedUsd: 2,
+              },
+              reasons: ["inventory_snapshot_missing"],
+            },
+            aprPct: 15.94393987912397,
+            pendleYt: {
+              ev: {
+                canaryReady: true,
+                expectedNetUsd: 0.07445,
+              },
+            },
+            protocolBindingPlan: {
+              status: "binding_ready",
+              bindingKind: "pendle_yt_buy_sell_redeem",
+              canaryActions: ["enter_fixed_yield_token", "exit_fixed_yield_token"],
+              resolvedBinding: {
+                assetAddress: "0xd993935e13851dd7517af10687ec7e5022127228",
+                entryTokenAddresses: [
+                  "0xd993935e13851dd7517af10687ec7e5022127228",
+                  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                ],
+              },
+            },
+          },
+        ],
+      },
+      liveTreasuryInventorySnapshot: {
+        observedAt: "2026-05-14T22:30:00.000Z",
+        native: [
+          {
+            chain: "base",
+            token: "0x0000000000000000000000000000000000000000",
+            asset: "ETH",
+            actual: "1000000000000000",
+            actualDecimal: 0.001,
+            estimatedUsd: 2,
+          },
+        ],
+        tokens: [
+          {
+            chain: "base",
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            ticker: "USDC",
+            actual: "25262222885",
+            actualDecimal: 25262.222885,
+            estimatedUsd: 25262.222885,
+          },
+          {
+            chain: "base",
+            token: "0xd993935e13851dd7517af10687ec7e5022127228",
+            ticker: "apxUSD",
+            actual: "0",
+            actualDecimal: 0,
+            estimatedUsd: 0,
+          },
+        ],
+      },
+    },
+  });
+
+  const pendle = report.strategies.find((strategy) => strategy.id === "pendle-yt-canary");
+  assert.ok(pendle);
+  assert.equal(pendle.currentLiveEligible, true);
+  assert.equal(pendle.selectedMode, "live");
+  assert.equal(pendle.selectedCommands[0].script, "executor:merkl-canary-autopilot");
+  assert.equal(pendle.liveAdmissionBlockers.length, 0);
+  assert.equal(pendle.reason, "auto_executable_merkl_candidate_available");
+});
+
+test("Merkl autopilot surface treats dashboard liveTrading as advisory once a policy-engine-ready Pendle canary exists", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "BLOCKED",
+        lanePolicy: {
+          stage: "shadow_replay",
+          policyLiveTrading: "BLOCKED",
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 0,
+          autoExecutableNowCount: 0,
+          pendleYtCount: 1,
+          pendleYtCanaryReadyCount: 1,
+          topBlockingReason: "inventory_unknown",
+        },
+        queue: [
+          {
+            opportunityId: "pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+            chain: "base",
+            protocolId: "pendle",
+            mappedStrategyId: "pendle-yt-canary",
+            priorityScore: 70,
+            entryAssets: ["apxUSD"],
+            capabilityGaps: ["current_inventory_entry_route_required"],
+            autoEntry: { autoExecute: false },
+            executionReadiness: {
+              status: "inventory_unknown",
+              executorSupported: true,
+              matchedToken: null,
+              matchedNative: {
+                asset: "ETH",
+                actual: "1000000000000000",
+                estimatedUsd: 2,
+              },
+            },
+            pendleYt: { ev: { canaryReady: true, expectedNetUsd: 0.07445 } },
+            protocolBindingPlan: {
+              status: "binding_ready",
+              bindingKind: "pendle_yt_buy_sell_redeem",
+              canaryActions: ["enter_fixed_yield_token", "exit_fixed_yield_token"],
+              resolvedBinding: {
+                assetAddress: "0xd993935e13851dd7517af10687ec7e5022127228",
+                entryTokenAddresses: [
+                  "0xd993935e13851dd7517af10687ec7e5022127228",
+                  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                ],
+              },
+            },
+          },
+        ],
+      },
+      liveTreasuryInventorySnapshot: {
+        observedAt: "2026-05-14T22:30:00.000Z",
+        native: [{ chain: "base", token: "0x0", asset: "ETH", actual: "1000000000000000", estimatedUsd: 2 }],
+        tokens: [
+          {
+            chain: "base",
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            ticker: "USDC",
+            actual: "25262222885",
+            actualDecimal: 25262.222885,
+            estimatedUsd: 25262.222885,
+          },
+        ],
+      },
+    },
+  });
+
+  const pendle = report.strategies.find((strategy) => strategy.id === "pendle-yt-canary");
+  assert.ok(pendle);
+  assert.equal(pendle.currentLiveEligible, true);
+  assert.equal(pendle.liveAdmissionBlockers.length, 0);
+  assert.equal(pendle.evidence.dashboardLiveTrading, "BLOCKED");
+});
+
 test("execution surfaces keep Stage B advisory when live evidence is otherwise ready", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {

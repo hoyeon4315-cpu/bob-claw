@@ -13,6 +13,7 @@ import {
   readLaunchAgentStatus,
   renderLaunchAgentPlist,
 } from "../src/runtime/launchd.mjs";
+import { resolveDefaultHeartbeatPath, resolveDefaultSignerSocketPath } from "../src/executor/runtime-paths.mjs";
 import { resolveNodeExecutable } from "../src/runtime/node-path.mjs";
 
 test("resolveNodeExecutable prefers stable Homebrew node symlink over stale Cellar paths", () => {
@@ -44,7 +45,10 @@ test("buildExecutorLaunchAgentSpecs wires executor launch agents", () => {
     pathEnv: "/usr/local/bin:/usr/bin:/bin",
   });
 
-  assert.deepEqual(specs.map((spec) => spec.id), ["daemon", "watchdog"]);
+  assert.deepEqual(
+    specs.map((spec) => spec.id),
+    ["daemon", "watchdog"],
+  );
   assert.equal(specs[0].programArguments[0], "/usr/local/bin/node");
   assert.equal(specs[0].scriptPath, "/repo/src/executor/signer/daemon.mjs");
   assert.equal(specs[1].scriptPath, "/repo/src/cli/run-executor-watchdog.mjs");
@@ -55,6 +59,29 @@ test("buildExecutorLaunchAgentSpecs wires executor launch agents", () => {
   assert.match(daemonPlist, /com\.bobclaw\.executor-daemon/);
   assert.match(daemonPlist, /\/repo\/src\/executor\/signer\/daemon\.mjs/);
   assert.match(daemonPlist, /\/repo\/logs\/launchd\/executor-daemon\.out\.log/);
+});
+
+test("buildExecutorLaunchAgentSpecs uses short runtime paths for long worktree roots", () => {
+  const rootDir = "/Users/test/.config/superpowers/worktrees/BOB Claw/codex-all-source-deployment-selector";
+  const specs = buildExecutorLaunchAgentSpecs({
+    rootDir,
+    nodePath: "/usr/local/bin/node",
+    launchAgentsDir: "/Users/test/Library/LaunchAgents",
+    logDir: `${rootDir}/logs/launchd`,
+    homeDir: "/Users/test",
+    pathEnv: "/usr/local/bin:/usr/bin:/bin",
+  });
+
+  const daemon = specs.find((spec) => spec.id === "daemon");
+  const watchdog = specs.find((spec) => spec.id === "watchdog");
+  const expectedSocketPath = resolveDefaultSignerSocketPath({ cwd: rootDir, homeDir: "/Users/test" });
+  const expectedHeartbeatPath = resolveDefaultHeartbeatPath({ cwd: rootDir, homeDir: "/Users/test" });
+
+  assert.equal(daemon.environmentVariables.EXECUTOR_SIGNER_SOCKET_PATH, expectedSocketPath);
+  assert.equal(daemon.environmentVariables.EXECUTOR_HEARTBEAT_PATH, expectedHeartbeatPath);
+  assert.equal(watchdog.environmentVariables.EXECUTOR_SIGNER_SOCKET_PATH, expectedSocketPath);
+  assert.equal(watchdog.environmentVariables.EXECUTOR_HEARTBEAT_PATH, expectedHeartbeatPath);
+  assert.equal(expectedSocketPath.startsWith("/Users/test/.bob-claw/runtime/"), true);
 });
 
 test("launchd specs never embed Cloudflare API token values", () => {
@@ -70,7 +97,10 @@ test("launchd specs never embed Cloudflare API token values", () => {
     });
     const rendered = specs.map(renderLaunchAgentPlist).join("\n");
 
-    assert.equal(specs.some((spec) => "CLOUDFLARE_API_TOKEN" in spec.environmentVariables), false);
+    assert.equal(
+      specs.some((spec) => "CLOUDFLARE_API_TOKEN" in spec.environmentVariables),
+      false,
+    );
     assert.doesNotMatch(rendered, /CLOUDFLARE_API_TOKEN/);
     assert.doesNotMatch(rendered, /should-not-be-rendered/);
   } finally {
@@ -180,7 +210,10 @@ test("buildLiveAutomationLaunchAgentSpecs wires gate self-heal and all-chain aut
     pathEnv: "/usr/local/bin:/usr/bin:/bin",
   });
 
-  assert.deepEqual(specs.map((spec) => spec.id), ["gate-self-heal", "all-chain-autopilot"]);
+  assert.deepEqual(
+    specs.map((spec) => spec.id),
+    ["gate-self-heal", "all-chain-autopilot"],
+  );
   assert.equal(specs[0].scriptPath, "/repo/src/cli/run-gate-self-heal.mjs");
   assert.ok(specs[0].programArguments.includes("--loop"));
   assert.equal(specs[1].scriptPath, "/repo/src/cli/run-all-chain-autopilot.mjs");

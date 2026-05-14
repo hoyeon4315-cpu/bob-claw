@@ -3,6 +3,7 @@ import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { OPERATOR_COOLDOWN_WAIVERS } from "../config/operator-waivers.mjs";
 import { computeTinyCanaryMinProfitablePositionUsd, resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
 import { evaluateNonPrimaryEntryPolicy } from "./non-primary-entry-policy.mjs";
+import { selectMerklCanaryAutopilotCandidate } from "../executor/merkl-canary-autopilot.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
@@ -648,10 +649,46 @@ function merklAutopilotLatestBlockers(latest = null) {
   return [...new Set(blockers.filter(Boolean))];
 }
 
-function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCanaryAutopilotLatest = null } = {}) {
-  const summary = merklCanaryQueue?.summary || {};
-  const queue = merklCanaryQueue?.queue || [];
+function summarizeMerklQueueForSurface(queue = []) {
+  const executableNowCount = queue.filter((item) => item?.executionReadiness?.status === "inventory_ready").length;
+  const autoExecutableNowCount = queue.filter((item) => item?.autoEntry?.autoExecute === true).length;
+  return {
+    queueCount: queue.length,
+    executableNowCount,
+    autoExecutableNowCount,
+    topBlockingReason:
+      queue.length === 0
+        ? null
+        : executableNowCount > 0
+          ? "executable_candidate_available"
+          : queue[0]?.executionReadiness?.status || queue[0]?.capabilityGaps?.[0] || "unknown",
+  };
+}
+
+function buildMerklAutopilotSurface({
+  policy,
+  merklCanaryQueue = null,
+  merklCanaryAutopilotLatest = null,
+  liveTreasuryInventorySnapshot = null,
+  now = null,
+  strategyId = null,
+  label = "Merkl tiny live canary autopilot",
+} = {}) {
+  const queue = (merklCanaryQueue?.queue || []).filter((item) =>
+    strategyId ? item?.mappedStrategyId === strategyId : true,
+  );
+  const summary = strategyId ? summarizeMerklQueueForSurface(queue) : merklCanaryQueue?.summary || {};
+  const liveSelection = liveTreasuryInventorySnapshot
+    ? selectMerklCanaryAutopilotCandidate(
+        { ...(merklCanaryQueue || {}), summary, queue },
+        {
+          inventorySnapshot: liveTreasuryInventorySnapshot,
+          now: now || new Date().toISOString(),
+        },
+      )
+    : null;
   const topReady =
+    liveSelection?.selected?.queueItem ||
     queue.find(
       (item) =>
         item?.autoEntry?.autoExecute === true &&
@@ -660,20 +697,16 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCana
     ) ||
     queue.find((item) => item?.queueStatus === "ready_for_tiny_live_canary") ||
     null;
-  if (!merklCanaryQueue && !topReady) return null;
-  const liveAllowed = baseLiveTradingAllowed(policy);
+  if ((!merklCanaryQueue && !topReady) || queue.length === 0) return null;
   const policyPreviewBlockers = merklPolicyPreviewBlockers(topReady);
   const latestAutopilotBlockers = merklAutopilotLatestBlockers(merklCanaryAutopilotLatest);
+  const liveReadyCount = liveSelection?.readyCount ?? summary.autoExecutableNowCount ?? 0;
   const blockers = compact([
-    !liveAllowed ? "live_trading_blocked" : null,
-    (summary.autoExecutableNowCount ?? 0) > 0
-      ? null
-      : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
+    liveReadyCount > 0 ? null : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
     ...policyPreviewBlockers,
     ...latestAutopilotBlockers,
   ]);
-  const rawLiveEligible =
-    liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady) && blockers.length === 0;
+  const rawLiveEligible = liveReadyCount > 0 && Boolean(topReady) && blockers.length === 0;
   const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "analysis",
@@ -681,15 +714,15 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCana
   const currentLiveEligible = mode.currentLiveEligible;
   const selectedMode = mode.selectedMode;
   return {
-    id: topReady?.mappedStrategyId || "gateway_native_asset_conversion_sleeve",
-    label: "Merkl tiny live canary autopilot",
+    id: strategyId || "gateway_native_asset_conversion_sleeve",
+    label,
     lane: "yield_sleeve",
     status: currentLiveEligible ? "candidate_for_validation" : "analysis_only",
     reason: currentLiveEligible ? "auto_executable_merkl_candidate_available" : blockers[0] || "merkl_queue_not_ready",
     evidence: {
       queueCount: summary.queueCount ?? 0,
       executableNowCount: summary.executableNowCount ?? 0,
-      autoExecutableNowCount: summary.autoExecutableNowCount ?? 0,
+      autoExecutableNowCount: liveReadyCount,
       topOpportunityId: topReady?.opportunityId || summary.topExecutableOpportunityId || null,
       topProtocolId: topReady?.protocolId || null,
       projectedPnlBtc: null,
@@ -709,6 +742,9 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCana
       latestAutopilotFilteredCount: merklCanaryAutopilotLatest?.summary?.filteredCount ?? null,
       latestAutopilotBlockedCount: merklCanaryAutopilotLatest?.summary?.blockedCount ?? null,
       latestAutopilotTopBlocker: merklCanaryAutopilotLatest?.summary?.topBlocker || null,
+      liveInventoryObservedAt: liveTreasuryInventorySnapshot?.observedAt || null,
+      dashboardLiveTrading: policy?.liveTrading || null,
+      dashboardPolicyLiveTrading: policy?.policyLiveTrading || null,
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",
@@ -720,6 +756,17 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCana
     liveAdmissionBlockers: currentLiveEligible ? [] : blockers,
     selectedCommands: withScripts(merklAutopilotCommands(selectedMode)),
   };
+}
+
+function buildMerklAutopilotSurfaces(options = {}) {
+  return [
+    buildMerklAutopilotSurface(options),
+    buildMerklAutopilotSurface({
+      ...options,
+      strategyId: "pendle-yt-canary",
+      label: "Pendle YT canary autopilot",
+    }),
+  ].filter(Boolean);
 }
 
 function buildSurface(entry, { group, policy }) {
@@ -1032,10 +1079,12 @@ export function buildStrategyExecutionSurfaces({
       operatorCooldownWaivers: artifacts.operatorCooldownWaivers || OPERATOR_COOLDOWN_WAIVERS,
       now: now || catalog.generatedAt || new Date().toISOString(),
     }),
-    buildMerklAutopilotSurface({
+    ...buildMerklAutopilotSurfaces({
       policy: catalog.policy,
       merklCanaryQueue: artifacts.merklCanaryQueue || null,
       merklCanaryAutopilotLatest: artifacts.merklCanaryAutopilotLatest || null,
+      liveTreasuryInventorySnapshot: artifacts.liveTreasuryInventorySnapshot || null,
+      now: now || catalog.generatedAt || new Date().toISOString(),
     }),
   ]
     .filter(Boolean)
