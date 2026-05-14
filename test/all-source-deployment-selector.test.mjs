@@ -43,7 +43,7 @@ function baseInputs(overrides = {}) {
           entryAssets: ["USDC"],
           campaignRemainingHours: 168,
           aprPct: 12,
-          protocolBindingPlan: { status: "binding_ready" },
+          protocolBindingPlan: { status: "binding_ready", bindingKind: "erc4626_vault_supply_withdraw" },
           executionReadiness: { status: "inventory_ready", executorSupported: true },
           autoEntry: { status: "blocked", blockers: [] },
         },
@@ -156,6 +156,8 @@ test("all-source selector normalizes every required source and selects the EV-po
   assert.equal(selected.capResult.status, "ready");
   assert.equal(selected.policyResult.decision, "ALLOW");
   assert.equal(selected.signerIntentAvailability.ready, true);
+  assert.equal(selected.signerIntentAvailability.builder, "merkl_canary_autopilot");
+  assert.equal(selected.signerIntentAvailability.intentType, "erc4626_deposit");
   assert.equal(selected.receiptCapitalAuditPath.capitalAuditRequired, true);
   assert.equal(report.selection.status, "POLICY_ATTEMPTED");
   assert.equal(report.broadcast.txHashes.length, 0);
@@ -186,6 +188,57 @@ test("all-source selector does not treat DefiLlama as executable without binding
     report.noTradeTable.some((row) => row.source === "defillama"),
     true,
   );
+});
+
+test("all-source selector converts DefiLlama pools into executable candidates only through committed bindings", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { queue: [], summary: { queueCount: 0 } },
+      campaignAware: { candidates: [] },
+      defiLlamaPools: [
+        {
+          chain: "Optimism",
+          project: "aave-v3",
+          symbol: "USDC",
+          pool: "optimism-aave-usdc",
+          tvlUsd: 5_000_000,
+          apy: 20,
+        },
+      ],
+      capitalManagerRefill: {
+        capitalPlan: {
+          inventory: {
+            tokens: [
+              {
+                chain: "optimism",
+                token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+                ticker: "USDC",
+                actualDecimal: 14.986814,
+                estimatedUsd: 14.986814,
+                status: "over_max_active",
+                staleFallback: false,
+                scanError: null,
+              },
+            ],
+          },
+        },
+      },
+    }),
+  );
+
+  const defillama = report.selection.selectedCandidate;
+  assert.equal(defillama.source, "defillama");
+  assert.equal(defillama.strategyId, "gateway_native_asset_conversion_sleeve");
+  assert.equal(defillama.notionalUsd, 3);
+  assert.equal(defillama.executorBinding.ready, true);
+  assert.equal(defillama.routeRefillBinding.ready, true);
+  assert.equal(defillama.signerIntentAvailability.builder, "destination_representative_autopilot");
+  assert.equal(defillama.signerIntentAvailability.intentType, "aave_supply");
+  assert.equal(defillama.signerIntentAvailability.ready, true);
+  assert.equal(defillama.blockers.includes("defillama_requires_executable_protocol_binding"), false);
+  assert.equal(defillama.blockers.includes("unwind_path_missing"), false);
+  assert.equal(defillama.receiptCapitalAuditPath.capitalAuditRequired, true);
+  assert.equal(report.selection.status, "POLICY_ATTEMPTED");
 });
 
 test("all-source selector emits exact full-universe NO_TRADE math when policy or EV blocks every candidate", async () => {
@@ -345,6 +398,122 @@ test("all-source selector resolves live Merkl inventory and converts PRETGE rewa
   assert.equal(merkl.blockers.includes("inventory_unknown"), false);
   assert.equal(merkl.blockers.includes("reward_exit_liquidity_unproven"), false);
   assert.equal(report.selection.status, "NO_TRADE");
+});
+
+test("family surface uses same-tick inventory proof before reporting the top EV-positive blocker", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: {
+        summary: { queueCount: 1 },
+        queue: [
+          {
+            queueId: "merkl:zyfai-usdc",
+            opportunityId: "zyfai-usdc",
+            chain: "base",
+            protocolId: "zyfai",
+            family: "stable_treasury_carry",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            executionSurface: "stableCarry",
+            entryAssets: ["USDC"],
+            campaignRemainingHours: 421.74,
+            aprPct: 8.48,
+            capabilityGaps: ["protocol_executor_required", "current_inventory_entry_route_required"],
+            protocolBindingPlan: { status: "unsupported_protocol_binding" },
+            executionReadiness: {
+              status: "executor_missing",
+              executorSupported: false,
+              reasons: ["protocol_executor_missing", "inventory_snapshot_missing"],
+            },
+            autoEntry: {
+              status: "blocked",
+              blockers: [
+                "protocol_binding_not_ready",
+                "protocol_binding_executor_missing",
+                "executor_missing",
+                "protocol_executor_required",
+              ],
+            },
+          },
+        ],
+      },
+      campaignAware: {
+        candidates: [
+          {
+            opportunityId: "zyfai-usdc",
+            chain: "base",
+            protocol: "zyfai",
+            displayedApr: 8.48,
+            rewardToken: "USDC",
+            expectedHoldDays: 17.5725,
+            operatorPositionUsd: 6,
+            estimatedGasClaimSwapBridgeCostUsd: 0,
+            expectedNetProfitUsd: 0.024496,
+            blockers: [],
+          },
+        ],
+      },
+      capitalManagerRefill: {
+        capitalPlan: {
+          inventory: {
+            tokens: [
+              {
+                chain: "base",
+                token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                ticker: "USDC",
+                actualDecimal: 25262.222885,
+                estimatedUsd: 25262.222885,
+                status: "over_max_active",
+                staleFallback: false,
+                scanError: null,
+              },
+            ],
+          },
+        },
+      },
+      policyEvaluator: async () => {
+        throw new Error("unsupported ZyFAI protocol binding must not reach policy");
+      },
+    }),
+  );
+
+  const candidate = report.candidates.find((item) => item.source === "merkl" && item.opportunityId === "zyfai-usdc");
+  assert.ok(candidate);
+  assert.equal(candidate.routeRefillBinding.ready, true);
+  assert.equal(candidate.metadata.inventoryProof.status, "ready");
+  assert.equal(candidate.blockers.includes("inventory_unknown"), false);
+  assert.equal(candidate.signerIntentAvailability.ready, false);
+  assert.equal(candidate.signerIntentAvailability.reason, "unsupported_protocol_binding");
+
+  const merkl = report.familyCoverage.find((row) => row.family === "merkl");
+  const stable = report.familyCoverage.find((row) => row.family === "stable_carry");
+  assert.equal(merkl.firstBlockingReason, "protocol_binding_not_ready");
+  assert.equal(stable.firstBlockingReason, "protocol_binding_not_ready");
+});
+
+test("family surface proves fresh Radar zero instead of leaving NO_SURFACE_EVIDENCE", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { queue: [], summary: { queueCount: 0 } },
+      campaignAware: { candidates: [] },
+      radarBoard: {
+        generatedAt: NOW,
+        summary: {
+          observedCount: 0,
+          candidateCount: 0,
+          executableCount: 0,
+        },
+        candidates: [],
+      },
+      policyEvaluator: async () => {
+        throw new Error("fresh zero Radar surface should not reach policy");
+      },
+    }),
+  );
+
+  const radar = report.familyCoverage.find((row) => row.family === "radar");
+  assert.ok(radar);
+  assert.equal(radar.discoveredCandidateCount, 0);
+  assert.equal(radar.firstBlockingReason, "RADAR_BOARD_FRESH_ZERO");
 });
 
 test("family surface report keeps Pendle visible when pendle-yt-canary has queue or audit evidence", async () => {

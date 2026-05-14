@@ -1,8 +1,10 @@
 import { isOfficialGatewayDestinationChain, canonicalGatewayChain } from "../config/gateway-destinations.mjs";
-import { computeTinyCanaryMinProfitablePositionUsd } from "../config/sizing.mjs";
+import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../config/destination-representative-bindings.mjs";
+import { computeTinyCanaryMinProfitablePositionUsd, tinyCanarySameChainRoundTripCostUsd } from "../config/sizing.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { evaluateIntentPolicies } from "../executor/policy/index.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
+import { resolveExitExecutor, resolveIntentType } from "../executor/protocol-binding-registry.mjs";
 
 export const ALL_SOURCE_DEPLOYMENT_SOURCES = Object.freeze([
   "pendle",
@@ -146,7 +148,7 @@ function makeCandidate(fields, { activeCapitalUsd = null } = {}) {
     expectedRealizedNetUsd,
     capResult: { status: "blocked", blockers: ["strategy_id_missing"], caps: null },
     policyResult: null,
-    signerIntentAvailability: { ready: false, reason: "policy_not_attempted" },
+    signerIntentAvailability: fields.signerIntentAvailability || { ready: false, reason: "policy_not_attempted" },
     receiptCapitalAuditPath: null,
     exactBlockers: blockers,
     blockers,
@@ -297,6 +299,83 @@ function rewardHaircutFor({ campaign = {}, rewardExitProof }) {
   return configuredHaircut;
 }
 
+function protocolKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/gu, "")
+    .replace(/v[23]$/u, "");
+}
+
+function symbolSet(value) {
+  return new Set(
+    String(value || "")
+      .split(/[-_+/,\s]+/u)
+      .map((part) => part.trim().toUpperCase())
+      .filter(Boolean),
+  );
+}
+
+function matchingRepresentativeBindingForDefiLlamaPool(pool = {}) {
+  const chain = normalizeChain(pool.chain);
+  const protocol = protocolKey(pool.project || pool.protocol);
+  const symbols = symbolSet(pool.symbol);
+  for (const binding of Object.values(DESTINATION_REPRESENTATIVE_BINDINGS)) {
+    if (normalizeChain(binding.chain) !== chain) continue;
+    if (protocolKey(binding.protocolId) !== protocol) continue;
+    if (binding.assetSymbol && !symbols.has(String(binding.assetSymbol).toUpperCase())) continue;
+    return binding;
+  }
+  return null;
+}
+
+function defillamaSignerIntentAvailability({ binding = null, inventoryProof = {}, blockers = [] } = {}) {
+  const bindingKind = binding?.bindingKind || null;
+  const intentType = resolveIntentType(bindingKind);
+  if (!binding) {
+    return {
+      ready: false,
+      reason: "defillama_requires_executable_protocol_binding",
+      bindingKind: null,
+      intentType: null,
+      builder: null,
+    };
+  }
+  if (!intentType) {
+    return {
+      ready: false,
+      reason: "deterministic_signer_intent_builder_missing",
+      bindingKind,
+      intentType: null,
+      builder: null,
+    };
+  }
+  if (inventoryProof.ready !== true) {
+    return {
+      ready: false,
+      reason: inventoryProof.reason || "live_inventory_entry_route_required",
+      bindingKind,
+      intentType,
+      builder: "destination_representative_autopilot",
+    };
+  }
+  if (array(blockers).length > 0) {
+    return {
+      ready: false,
+      reason: first(blockers, "candidate_blocked_before_policy"),
+      bindingKind,
+      intentType,
+      builder: "destination_representative_autopilot",
+    };
+  }
+  return {
+    ready: true,
+    reason: null,
+    bindingKind,
+    intentType,
+    builder: "destination_representative_autopilot",
+  };
+}
+
 function expectedGrossUsd({ notionalUsd, aprPct, holdDays }) {
   const notional = finiteNumber(notionalUsd);
   const apr = finiteNumber(aprPct);
@@ -325,6 +404,64 @@ function removeResolvedMerklBlockers(blockers, { inventoryReady, rewardExitProof
     if (/tiny_canary_unprofitable:/.test(blocker)) return false;
     return true;
   });
+}
+
+function merklSignerIntentAvailability({ item = {}, inventoryProof = {}, blockers = [] } = {}) {
+  const bindingPlan = item.protocolBindingPlan || {};
+  const bindingKind = bindingPlan.bindingKind || null;
+  const intentType = resolveIntentType(bindingKind);
+  if (bindingPlan.status !== "binding_ready") {
+    return {
+      ready: false,
+      reason: bindingPlan.status || "protocol_binding_not_ready",
+      bindingKind,
+      intentType,
+      builder: null,
+    };
+  }
+  if (!intentType) {
+    return {
+      ready: false,
+      reason: "deterministic_signer_intent_builder_missing",
+      bindingKind,
+      intentType: null,
+      builder: null,
+    };
+  }
+  if (item.executionReadiness?.executorSupported !== true) {
+    return {
+      ready: false,
+      reason: "protocol_executor_required",
+      bindingKind,
+      intentType,
+      builder: "merkl_canary_autopilot",
+    };
+  }
+  if (inventoryProof.ready !== true) {
+    return {
+      ready: false,
+      reason: inventoryProof.reason || "live_inventory_entry_route_required",
+      bindingKind,
+      intentType,
+      builder: "merkl_canary_autopilot",
+    };
+  }
+  if (array(blockers).length > 0) {
+    return {
+      ready: false,
+      reason: first(blockers, "candidate_blocked_before_policy"),
+      bindingKind,
+      intentType,
+      builder: "merkl_canary_autopilot",
+    };
+  }
+  return {
+    ready: true,
+    reason: null,
+    bindingKind,
+    intentType,
+    builder: "merkl_canary_autopilot",
+  };
 }
 
 function resizeTinyCanary({
@@ -408,10 +545,14 @@ function normalizeMerklCandidates({
     const holdPeriodDays =
       campaign.expectedHoldDays ??
       (finiteNumber(item.campaignRemainingHours) === null ? null : item.campaignRemainingHours / 24);
-    const costs = finiteNumber(
+    const configuredCosts = finiteNumber(
       campaign.estimatedGasClaimSwapBridgeCostUsd,
-      finiteNumber(campaign.tinyCanaryEvStatus?.roundTripCostUsd, 0),
+      finiteNumber(campaign.tinyCanaryEvStatus?.roundTripCostUsd),
     );
+    const costs =
+      configuredCosts !== null && configuredCosts > 0
+        ? configuredCosts
+        : tinyCanarySameChainRoundTripCostUsd({ chain });
     const displayedApr = finiteNumber(campaign.displayedApr, finiteNumber(item.aprPct, 0));
     const resize = resizeTinyCanary({
       strategyId,
@@ -447,6 +588,7 @@ function normalizeMerklCandidates({
         rewardExitProofStatus: rewardExitProof.status || null,
       },
     );
+    const signerIntentAvailability = merklSignerIntentAvailability({ item, inventoryProof, blockers });
     return makeCandidate(
       {
         source: "merkl",
@@ -479,8 +621,11 @@ function normalizeMerklCandidates({
         p90CostFloorUsd: campaign.tinyCanaryEvStatus?.roundTripCostUsd ?? costs,
         expectedRealizedNetUsd: expectedNetUsd,
         blockers,
+        signerIntentAvailability,
         metadata: {
           queueId: item.queueId || null,
+          protocolBindingPlan: item.protocolBindingPlan || null,
+          signerIntentBuilder: signerIntentAvailability,
           rewardToken: first(rewardExitProof.rewardTokens) || campaign.rewardToken || null,
           rewardTokenTypes: rewardExitProof.rewardTokenTypes || [],
           rewardExitLiquidityStatus: campaign.rewardExitLiquidityStatus || null,
@@ -519,32 +664,90 @@ function normalizeStableCarryCandidates({ merklCandidates = [], activeCapitalUsd
     );
 }
 
-function normalizeDefiLlamaCandidates({ defiLlamaPools = [], activeCapitalUsd = null }) {
+function normalizeDefiLlamaCandidates({ defiLlamaPools = [], capitalManagerRefill = {}, activeCapitalUsd = null }) {
   return array(defiLlamaPools)
     .slice(0, 50)
     .map((pool) => {
+      const executableBinding = matchingRepresentativeBindingForDefiLlamaPool(pool);
       const apy = finiteNumber(pool.apy, finiteNumber(pool.apyBase, 0));
-      const notionalUsd = Math.min(25, finiteNumber(pool.tvlUsd, 0) > 0 ? 25 : 0);
+      const notionalUsd = Math.min(
+        finiteNumber(executableBinding?.maxCanaryUsd, 25),
+        finiteNumber(pool.tvlUsd, 0) > 0 ? 25 : 0,
+      );
       const grossUsd = round((notionalUsd * apy * 7) / 36500);
+      const inventoryProof = executableBinding
+        ? liveInventoryProof({
+            capitalManagerRefill,
+            chain: executableBinding.chain,
+            asset: executableBinding.assetSymbol || String(pool.symbol || "").split("-")[0],
+            tokenAddress: executableBinding.assetAddress,
+            requiredUsd: notionalUsd,
+          })
+        : null;
+      const exitExecutorReady = executableBinding ? resolveExitExecutor(executableBinding.bindingKind) !== null : false;
+      const bindingBlockers = executableBinding
+        ? unique([
+            inventoryProof?.ready === true ? null : inventoryProof?.reason || "live_inventory_entry_route_required",
+            resolveIntentType(executableBinding.bindingKind) ? null : "deterministic_signer_intent_builder_missing",
+            exitExecutorReady ? null : "unwind_path_missing",
+          ])
+        : ["defillama_requires_executable_protocol_binding", "unwind_path_missing", "receipt_path_missing"];
+      const signerIntentAvailability = defillamaSignerIntentAvailability({
+        binding: executableBinding,
+        inventoryProof,
+        blockers: bindingBlockers,
+      });
       return makeCandidate(
         {
           source: "defillama",
-          strategyId: "defillama-yield-portfolio",
+          strategyId: executableBinding?.strategyId || "defillama-yield-portfolio",
           chain: pool.chain,
           asset: String(pool.symbol || "unknown").split("-")[0],
           protocol: pool.project || pool.protocol || "unknown",
           opportunityId: pool.pool || pool.poolMeta || `${pool.chain}:${pool.project}:${pool.symbol}`,
-          executorBinding: emptyBinding("missing", { reason: "defillama_surface_only" }),
-          routeRefillBinding: emptyBinding("missing", { reason: "requires_bound_protocol_candidate" }),
+          executorBinding: executableBinding
+            ? emptyBinding(resolveIntentType(executableBinding.bindingKind) ? "ready" : "missing", {
+                bindingKind: executableBinding.bindingKind,
+                reason: resolveIntentType(executableBinding.bindingKind)
+                  ? null
+                  : "deterministic_signer_intent_builder_missing",
+              })
+            : emptyBinding("missing", { reason: "defillama_surface_only" }),
+          routeRefillBinding: executableBinding
+            ? {
+                status: inventoryProof.ready ? "ready" : "inventory_or_refill_required",
+                ready: inventoryProof.ready === true,
+                inventoryProof,
+              }
+            : emptyBinding("missing", { reason: "requires_bound_protocol_candidate" }),
           notionalUsd,
           holdPeriodDays: 7,
           expectedGrossYieldUsd: grossUsd,
           rewardHaircut: 0,
-          refillBridgeGasSlippageClaimSwapExitCostUsd: null,
-          p90CostFloorUsd: null,
-          expectedRealizedNetUsd: null,
-          blockers: ["defillama_requires_executable_protocol_binding", "unwind_path_missing", "receipt_path_missing"],
-          metadata: { tvlUsd: finiteNumber(pool.tvlUsd), apy },
+          refillBridgeGasSlippageClaimSwapExitCostUsd: executableBinding
+            ? tinyCanarySameChainRoundTripCostUsd({ chain: executableBinding.chain })
+            : null,
+          p90CostFloorUsd: executableBinding
+            ? tinyCanarySameChainRoundTripCostUsd({ chain: executableBinding.chain })
+            : null,
+          expectedRealizedNetUsd: executableBinding
+            ? grossUsd - tinyCanarySameChainRoundTripCostUsd({ chain: executableBinding.chain })
+            : null,
+          blockers: bindingBlockers,
+          signerIntentAvailability,
+          metadata: {
+            tvlUsd: finiteNumber(pool.tvlUsd),
+            apy,
+            executableBinding: executableBinding
+              ? {
+                  templateId: executableBinding.templateId,
+                  bindingKind: executableBinding.bindingKind,
+                  assetAddress: executableBinding.assetAddress,
+                  evidence: executableBinding.evidence,
+                }
+              : null,
+            inventoryProof,
+          },
         },
         { activeCapitalUsd },
       );
@@ -1118,7 +1321,39 @@ function buildFamilyCoverage(candidates, options = {}, selectedCandidate = null)
   addAllocatorFamilyCoverage(rows, options.allocatorCore);
   addRadarFamilyCoverage(rows, options.radarBoard);
   addAuditAndPositionFamilyCoverage(rows, options);
+  applyTopEvCandidateBlockers(rows, candidates);
+  applyFreshRadarZeroEvidence(rows, options.radarBoard);
   return finalizeFamilyCoverage(rows, selectedCandidate);
+}
+
+function applyTopEvCandidateBlockers(rows, candidates = []) {
+  const byFamily = new Map();
+  for (const candidate of [...candidates]
+    .filter((item) => finiteNumber(item.expectedRealizedNetUsd, -1) > 0)
+    .sort(candidateRank)) {
+    const blocker = firstCandidateBlocker(candidate);
+    if (!blocker) continue;
+    for (const family of familySetForSurface(candidate)) {
+      if (!byFamily.has(family)) byFamily.set(family, blocker);
+    }
+  }
+  for (const [family, blocker] of byFamily.entries()) {
+    const row = rows.get(family);
+    if (!row) continue;
+    row.firstBlockingReason = blocker;
+  }
+}
+
+function applyFreshRadarZeroEvidence(rows, radarBoard = {}) {
+  const row = rows.get("radar");
+  if (!row || row.discoveredCandidateCount > 0) return;
+  const observedCount = finiteNumber(radarBoard.summary?.observedCount, 0);
+  const candidateCount = finiteNumber(radarBoard.summary?.candidateCount, array(radarBoard.candidates).length);
+  const executableCount = finiteNumber(radarBoard.summary?.executableCount, array(radarBoard.executable).length);
+  if (radarBoard.generatedAt && observedCount === 0 && candidateCount === 0 && executableCount === 0) {
+    row.firstBlockingReason = "RADAR_BOARD_FRESH_ZERO";
+    row.selectedAction = "observe";
+  }
 }
 
 function capitalUtilization({ capitalAudit = {}, unifiedCapital = {} }) {
@@ -1193,6 +1428,7 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       ...selectedCandidate,
       policyResult,
       signerIntentAvailability: {
+        ...(selectedCandidate.signerIntentAvailability || {}),
         ready: policyResult.decision === "ALLOW",
         reason: policyResult.decision === "ALLOW" ? null : first(policyResult.blockers, "policy_blocked"),
       },
