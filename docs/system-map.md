@@ -134,6 +134,7 @@ surfaces may propose work, but live execution still flows through proposer ->
 | Destination BTC yield/lending | `destination-*`, `wrapped-btc-*`, `recursive-*`, Moonwell helpers | Evidence-primary and official-destination yield surfaces | Unwind path, HF/liquidation policy, receipt-backed cost |
 | Campaign/Merkl/radar canaries | `merkl-*`, `strategy/radar/*`, `config/sizing.mjs` | Tiny live canary discovery and queueing | EV helper, reward haircut, exit liquidity proof, tiny cap |
 | Stable loops and reserve sleeves | `stable-*`, `tokenized-reserve-*`, treasury rotation | Stable entry/exit and deterministic yield sleeves | Realized net after gas, claim/swap, bridge/exit cost |
+| Tokenized gold rotation | `gateway-gold-route-readiness`, `tokenized-reserve-sleeve-adapter`, strategy catalog | XAUT/PAXG Gateway entry/exit readiness for hard-asset sleeve admission | Current Gateway route snapshot, entry quote, exit quote/liquidity, BTC return path, positive EV, caps, kill-switch, signer policy |
 | ETH-family deployment | `ethereum-route-*`, mixed triangle/flash modules | Allowed when measured positive EV clears fees | Ethereum gas/slippage and unwind proof |
 | Payback lane | `executor/payback/*`, Gateway BTC offramp helpers | Convert realized positive PnL share to native BTC | Three-way settlement proof: source tx, Gateway order, BTC txid |
 

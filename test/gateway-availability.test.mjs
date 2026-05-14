@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  GATEWAY_POLICY,
-  isGatewayMethod,
-  resolveGatewayAvailability,
-} from "../src/config/gateway.mjs";
+import { GATEWAY_POLICY, isGatewayMethod, resolveGatewayAvailability } from "../src/config/gateway.mjs";
 import { checkGatewayAvailability } from "../src/executor/policy/gateway-availability.mjs";
 
 test("isGatewayMethod classifies Gateway-backed methods", () => {
@@ -127,6 +123,33 @@ test("policy.checkGatewayAvailability allows Gateway route when current API rout
   });
   assert.equal(verdict.decision, "ALLOW");
   assert.equal(verdict.routeAvailable, true);
+});
+
+test("policy.checkGatewayAvailability requires current Gateway token route for XAUT intents", async () => {
+  const xaut = "0x68749665FF8D2d112Fa859AA293F07A622782F38";
+  const paxg = "0x45804880De22913dAFE09f4980848ECE6EcbAf78";
+  const btc = "0x0000000000000000000000000000000000000000";
+  const verdict = await checkGatewayAvailability({
+    intent: {
+      method: "gateway_btc_onramp",
+      metadata: {
+        gatewayRoute: {
+          srcChain: "bitcoin",
+          dstChain: "ethereum",
+          srcToken: btc,
+          dstToken: xaut,
+        },
+      },
+    },
+    availability: {
+      available: true,
+      observedAt: "2026-05-14T00:00:00Z",
+      routes: [{ srcChain: "bitcoin", dstChain: "ethereum", srcToken: btc, dstToken: paxg }],
+    },
+  });
+  assert.equal(verdict.decision, "BLOCK");
+  assert.deepEqual(verdict.blockers, ["gateway_route_currently_unavailable"]);
+  assert.equal(verdict.routeAvailable, false);
 });
 
 test("policy.checkGatewayAvailability blocks bridged radar canary when current Gateway route is absent", async () => {

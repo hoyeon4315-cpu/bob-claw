@@ -1,11 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { config } from "../config/env.mjs";
 import { readExecutionGuards } from "../execution/guards.mjs";
-import {
-  defaultRunCommand,
-  parseWhitelistedRefreshCommand,
-  runParsedRefreshSteps,
-} from "./shadow-refresh-runner.mjs";
+import { defaultRunCommand, parseWhitelistedRefreshCommand, runParsedRefreshSteps } from "./shadow-refresh-runner.mjs";
 
 export const DEFAULT_ALLOWED_STRATEGY_DISPATCH_SCRIPTS = new Set([
   "analyze:ethereum-routes",
@@ -25,6 +21,7 @@ export const DEFAULT_ALLOWED_STRATEGY_DISPATCH_SCRIPTS = new Set([
   "report:btc-proxy-spreads",
   "report:merkl-canary-queue",
   "report:lane-reclassification",
+  "report:gateway-gold-readiness",
   "report:secondary-strategy-scaffolds",
   "report:stable-loop-executor",
   "report:wrapped-btc-loop",
@@ -44,7 +41,9 @@ export const DEFAULT_STRATEGY_DISPATCH_FOLLOW_UP_COMMANDS = [
 ];
 
 function normalizeRequestedMode(mode = null) {
-  const value = String(mode || "auto").trim().toLowerCase();
+  const value = String(mode || "auto")
+    .trim()
+    .toLowerCase();
   if (value === "dry-run") return "dry_run";
   return value;
 }
@@ -86,22 +85,15 @@ function advisoryMetadata(strategy = {}) {
 }
 
 function uniqueStrings(items = []) {
-  return Array.from(new Set(
-    items
-      .map((item) => String(item || "").trim())
-      .filter(Boolean),
-  ));
+  return Array.from(new Set(items.map((item) => String(item || "").trim()).filter(Boolean)));
 }
 
-function buildBroadcastReadiness(strategy = {}, selection = {}, {
-  blockedReason = null,
-  guardReasons = [],
-  selectedStepCount = null,
-} = {}) {
-  const policyDispatchBlockers = uniqueStrings([
-    blockedReason,
-    ...guardReasons,
-  ]);
+function buildBroadcastReadiness(
+  strategy = {},
+  selection = {},
+  { blockedReason = null, guardReasons = [], selectedStepCount = null } = {},
+) {
+  const policyDispatchBlockers = uniqueStrings([blockedReason, ...guardReasons]);
   const selectedMode = normalizeRequestedMode(selection.mode || null);
   const readyForPolicyDispatch = policyDispatchBlockers.length === 0 && selectedStepCount !== 0;
   const liveSelectionHasRuntimeAuthority = liveBroadcastSelectionHasAuthority(strategy, selection, selectedMode);
@@ -368,7 +360,9 @@ async function executeStrategyItem(
 
   let steps;
   try {
-    steps = selection.commands.flatMap((command) => parseWhitelistedRefreshCommand(command.command, { allowedScripts }));
+    steps = selection.commands.flatMap((command) =>
+      parseWhitelistedRefreshCommand(command.command, { allowedScripts }),
+    );
     steps = normalizeDashboardStatusSteps(steps, {
       mode: shouldUseLightDashboardStatus({ execute, orchestration: normalizedOrchestration }) ? "omit" : "preserve",
     });

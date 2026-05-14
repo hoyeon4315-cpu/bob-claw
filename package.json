@@ -266,6 +266,7 @@
     "bitcoin:fees": "node src/cli/bitcoin-fee-snapshot.mjs",
     "quote:dex": "node src/cli/quote-dex.mjs",
     "report:gateway": "node src/cli/report-gateway.mjs",
+    "report:gateway-gold-readiness": "node src/cli/report-gateway-gold-readiness.mjs",
     "probe:gateway-health": "node src/cli/probe-gateway-health.mjs",
     "price:snapshot": "node src/cli/price-snapshot.mjs",
     "collect:quote-lag": "node src/cli/collect-quote-lag.mjs",

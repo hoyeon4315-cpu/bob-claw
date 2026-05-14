@@ -46,6 +46,7 @@ import { buildEthereumRouteAnalysis } from "../strategy/ethereum-route-analysis.
 import { buildNoEdgePersistenceSummary } from "../strategy/no-edge-persistence.mjs";
 import { buildEthProfitabilitySummary } from "../strategy/profitability-summary.mjs";
 import { buildStrategyPivotPlan, summarizeStrategyPivotPlan } from "../strategy/pivot-plan.mjs";
+import { buildGatewayGoldRouteReadinessSlice } from "../strategy/gateway-gold-route-readiness.mjs";
 import {
   buildProxySpreadCoveragePlan,
   summarizeProxySpreadCoveragePlan,
@@ -504,6 +505,7 @@ function gatewaySummary({
   updateAlerts,
   quotes,
   failures,
+  gatewayGoldReadiness = null,
   now,
 }) {
   const snapshot = latestUpdateSnapshot?.snapshot || null;
@@ -544,6 +546,11 @@ function gatewaySummary({
     recentFlowEvents: buildRecentFlowEvents(quotes || []),
     assetCoverage: buildAssetCoverage(routes, quotes || [], failures || []),
     btcWatchlist: buildBtcWatchlistSummary(routes),
+    goldRouteReadiness: buildGatewayGoldRouteReadinessSlice({
+      routes,
+      report: gatewayGoldReadiness,
+      now,
+    }),
     schemaHash: latestUpdateSnapshot?.schemaHash || null,
     probeHealthHash: latestUpdateSnapshot?.probeHealthHash || null,
     probeOk,
@@ -1940,6 +1947,7 @@ export function buildDashboardStatus(input, options = {}) {
     updateAlerts: input.updateAlerts || [],
     quotes: input.quotes || [],
     failures: input.failures || [],
+    gatewayGoldReadiness: input.gatewayGoldReadiness || null,
     now,
   });
   const gas = gasSummary({
