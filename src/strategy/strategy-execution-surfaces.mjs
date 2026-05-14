@@ -3,6 +3,7 @@ import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { OPERATOR_COOLDOWN_WAIVERS } from "../config/operator-waivers.mjs";
 import { computeTinyCanaryMinProfitablePositionUsd, resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
 import { evaluateNonPrimaryEntryPolicy } from "./non-primary-entry-policy.mjs";
+import { sizeMerklCanaryAmount } from "../executor/merkl-canary-autopilot.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
@@ -550,8 +551,10 @@ function merklAutopilotCommands(mode) {
   return ["npm run report:merkl-canary-queue -- --json"];
 }
 
-function merklCandidateAmountUsd(candidate = null) {
+function merklCandidateAmountUsd(candidate = null, sizing = null) {
   const values = [
+    sizing?.amountUsd,
+    candidate?.sizing?.amountUsd,
     candidate?.executionReadiness?.matchedToken?.estimatedUsd,
     candidate?.sizing?.amountUsd,
     candidate?.amountUsd,
@@ -577,9 +580,9 @@ function merklExitPathReady(candidate = null) {
   );
 }
 
-function merklPolicyPreviewBlockers(candidate = null) {
+function merklPolicyPreviewBlockers(candidate = null, sizing = null) {
   if (!candidate) return ["merkl_auto_executable_candidate_missing"];
-  const amountUsd = Number(merklCandidateAmountUsd(candidate));
+  const amountUsd = Number(merklCandidateAmountUsd(candidate, sizing));
   const blockers = [];
   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
     blockers.push("merkl_candidate_amount_missing");
@@ -623,6 +626,10 @@ function merklPolicyPreviewBlockers(candidate = null) {
 
 function filterRuntimeMerklEvBlockers(blockers = []) {
   return blockers.filter((blocker) => !isRuntimeMerklEvFilter(blocker));
+}
+
+function selectRuntimeMerklEvBlockers(blockers = []) {
+  return blockers.filter(isRuntimeMerklEvFilter);
 }
 
 function capitalAuditFlagForStrategy(capitalAuditState = null, strategyId = null) {
@@ -671,7 +678,7 @@ function merklAutopilotLatestBlockers(latest = null, { capitalAuditState = null,
   const currentBlockers = filterStaleCapitalAuditBlockers(blockers.filter(Boolean), {
     capitalAuditState,
     strategyId,
-  }).filter((blocker) => !isRuntimeMerklEvFilter(blocker));
+  });
   return [...new Set(currentBlockers)];
 }
 
@@ -680,6 +687,7 @@ function buildMerklAutopilotSurface({
   merklCanaryQueue = null,
   merklCanaryAutopilotLatest = null,
   capitalAuditState = null,
+  merklSelectionContext = {},
 } = {}) {
   const summary = merklCanaryQueue?.summary || {};
   const queue = merklCanaryQueue?.queue || [];
@@ -692,25 +700,36 @@ function buildMerklAutopilotSurface({
     ) ||
     queue.find((item) => item?.queueStatus === "ready_for_tiny_live_canary") ||
     null;
+  const selectedSizing = topReady
+    ? sizeMerklCanaryAmount(topReady, {
+        ...(merklSelectionContext || {}),
+      })
+    : null;
+  const runtimeSizingReadyCount =
+    selectedSizing?.status === "ready" ? Math.max(1, summary.autoExecutableNowCount ?? 0) : 0;
   if (!merklCanaryQueue && !topReady) return null;
   const strategyId = topReady?.mappedStrategyId || "gateway_native_asset_conversion_sleeve";
   const liveAllowed = baseLiveTradingAllowed(policy);
-  const policyPreviewBlockers = merklPolicyPreviewBlockers(topReady);
+  const policyPreviewBlockers = merklPolicyPreviewBlockers(topReady, selectedSizing);
   const currentCapitalAuditFlag = capitalAuditFlagForStrategy(capitalAuditState, strategyId);
   const latestAutopilotBlockers = merklAutopilotLatestBlockers(merklCanaryAutopilotLatest, {
     capitalAuditState,
     strategyId,
   });
-  const blockers = compact([
+  const structuralBlockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
-    (summary.autoExecutableNowCount ?? 0) > 0
-      ? null
-      : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
+    runtimeSizingReadyCount > 0 ? null : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
     ...filterRuntimeMerklEvBlockers(policyPreviewBlockers),
-    ...latestAutopilotBlockers,
+    ...filterRuntimeMerklEvBlockers(latestAutopilotBlockers),
   ]);
-  const rawLiveEligible =
-    liveAllowed && (summary.autoExecutableNowCount ?? 0) > 0 && Boolean(topReady) && blockers.length === 0;
+  const runtimeEvBlockers = compact([
+    ...selectRuntimeMerklEvBlockers(policyPreviewBlockers),
+    ...selectRuntimeMerklEvBlockers(latestAutopilotBlockers),
+  ]);
+  const blockers = compact([...structuralBlockers, ...runtimeEvBlockers]);
+  const livePathReady =
+    liveAllowed && runtimeSizingReadyCount > 0 && Boolean(topReady) && structuralBlockers.length === 0;
+  const rawLiveEligible = livePathReady && runtimeEvBlockers.length === 0;
   const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "analysis",
@@ -721,17 +740,21 @@ function buildMerklAutopilotSurface({
     id: strategyId,
     label: "Merkl tiny live canary autopilot",
     lane: "yield_sleeve",
-    status: currentLiveEligible ? "candidate_for_validation" : "analysis_only",
+    status: livePathReady ? "candidate_for_validation" : "analysis_only",
     reason: currentLiveEligible ? "auto_executable_merkl_candidate_available" : blockers[0] || "merkl_queue_not_ready",
     evidence: {
       queueCount: summary.queueCount ?? 0,
       executableNowCount: summary.executableNowCount ?? 0,
       autoExecutableNowCount: summary.autoExecutableNowCount ?? 0,
+      runtimeSizingReadyCount,
       topOpportunityId: topReady?.opportunityId || summary.topExecutableOpportunityId || null,
       topProtocolId: topReady?.protocolId || null,
       projectedPnlBtc: null,
       projectedPnlUsd: null,
       candidateAprPct: topReady?.aprPct ?? null,
+      selectedAmount: selectedSizing?.amount || null,
+      selectedAmountUsd: selectedSizing?.amountUsd ?? null,
+      selectedCapUsd: selectedSizing?.capUsd ?? null,
       estimatedPnlBtc: null,
       estimatedPnlUsd: topReady?.executionReadiness?.matchedToken?.estimatedUsd ?? null,
       realizedPnlBtc: null,
@@ -749,10 +772,17 @@ function buildMerklAutopilotSurface({
       currentCapitalAuditFlagged: Boolean(currentCapitalAuditFlag),
       currentCapitalAuditUnmatchedCount: currentCapitalAuditFlag?.unmatchedCount ?? 0,
       currentCapitalAuditLatestUnmatchedAt: currentCapitalAuditFlag?.latestUnmatchedAt || null,
+      structuralBlockers,
+      runtimeEvBlockers,
     },
-    capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
+    capabilityBucket: currentLiveEligible
+      ? "executable_now"
+      : livePathReady
+        ? "live_path_ready_policy_filtered"
+        : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",
     liveCapable: true,
+    livePathReady,
     currentLiveEligible,
     selectedMode,
     fallbackReason: currentLiveEligible ? null : blockers[0] || "merkl_queue_not_ready",
@@ -1098,6 +1128,10 @@ export function buildStrategyExecutionSurfaces({
       strategyCount: strategies.length,
       runnableCount: runnableStrategies.length,
       liveEligibleCount: strategies.filter((strategy) => strategy.currentLiveEligible).length,
+      livePathReadyCount: strategies.filter((strategy) => strategy.livePathReady).length,
+      livePathReadyPolicyFilteredCount: strategies.filter(
+        (strategy) => strategy.capabilityBucket === "live_path_ready_policy_filtered",
+      ).length,
       missingExecutorCount: strategies.filter((strategy) => strategy.capabilityBucket === "missing_executor_adapter")
         .length,
       bucketCounts,

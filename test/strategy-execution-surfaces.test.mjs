@@ -223,11 +223,12 @@ test("execution surfaces include executor-backed live strategies when artifacts 
             protocolId: "yo",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
             capabilityGaps: [],
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 150 },
+              matchedToken: { actual: "150000000", estimatedUsd: 150 },
             },
             aprPct: 100,
             protocolBindingPlan: {
@@ -320,11 +321,12 @@ test("execution surfaces keep Stage B advisory when live evidence is otherwise r
             protocolId: "yo",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
             capabilityGaps: [],
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 150 },
+              matchedToken: { actual: "150000000", estimatedUsd: 150 },
             },
             aprPct: 100,
             protocolBindingPlan: {
@@ -543,7 +545,7 @@ test("wrapped BTC loop still blocks when runtime liveTrading is blocked despite 
   assert.equal(report.summary.liveEligibleCount, 0);
 });
 
-test("Merkl surface keeps runtime EV filters out of structural live admission", () => {
+test("Merkl surface reports structural readiness while runtime EV filters block current live eligibility", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
       ...dashboardStatusFixture(),
@@ -565,11 +567,12 @@ test("Merkl surface keeps runtime EV filters out of structural live admission", 
             protocolId: "yo",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
             capabilityGaps: [],
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 0.25 },
+              matchedToken: { actual: "250000", estimatedUsd: 0.25 },
             },
             aprPct: 19.8,
             protocolBindingPlan: {
@@ -584,17 +587,22 @@ test("Merkl surface keeps runtime EV filters out of structural live admission", 
 
   const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
 
-  assert.equal(merkl.currentLiveEligible, true);
-  assert.equal(merkl.capabilityBucket, "executable_now");
-  assert.equal(merkl.selectedMode, "live");
+  assert.equal(merkl.livePathReady, true);
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.capabilityBucket, "live_path_ready_policy_filtered");
+  assert.equal(merkl.selectedMode, "analysis");
   assert.equal(merkl.liveAdmissionBlockers.includes("position_below_min_position_usd"), false);
   assert.equal(
     merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")),
-    false,
+    true,
+  );
+  assert.equal(
+    merkl.evidence.runtimeEvBlockers.some((item) => item.startsWith("same_chain_unprofitable:")),
+    true,
   );
 });
 
-test("Merkl surface keeps latest autopilot EV filter as evidence without disabling the live path", () => {
+test("Merkl surface treats latest autopilot EV filter as a current no-broadcast blocker", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
       ...dashboardStatusFixture(),
@@ -616,11 +624,12 @@ test("Merkl surface keeps latest autopilot EV filter as evidence without disabli
             protocolId: "morpho",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
             capabilityGaps: [],
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 150 },
+              matchedToken: { actual: "150000000", estimatedUsd: 150 },
             },
             aprPct: 100,
             protocolBindingPlan: {
@@ -644,13 +653,72 @@ test("Merkl surface keeps latest autopilot EV filter as evidence without disabli
 
   const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
 
-  assert.equal(merkl.currentLiveEligible, true);
-  assert.equal(merkl.capabilityBucket, "executable_now");
+  assert.equal(merkl.livePathReady, true);
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.capabilityBucket, "live_path_ready_policy_filtered");
   assert.equal(merkl.evidence.latestAutopilotStatus, "blocked");
   assert.equal(merkl.evidence.latestAutopilotBlockedReason, "same_chain_unprofitable:need_$57_on_base");
   assert.equal(merkl.evidence.projectedPnlUsd, null);
   assert.equal(merkl.evidence.candidateAprPct, 100);
-  assert.equal(merkl.liveAdmissionBlockers.includes("same_chain_unprofitable:need_$57_on_base"), false);
+  assert.equal(merkl.liveAdmissionBlockers.includes("same_chain_unprofitable:need_$57_on_base"), true);
+  assert.equal(merkl.evidence.runtimeEvBlockers.includes("same_chain_unprofitable:need_$57_on_base"), true);
+  assert.equal(report.summary.livePathReadyCount, 1);
+  assert.equal(report.summary.livePathReadyPolicyFilteredCount, 1);
+  assert.equal(report.summary.liveEligibleCount, 0);
+});
+
+test("Merkl surface evaluates EV against runtime canary sizing, not raw wallet inventory", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 1,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-low-apr-high-wallet",
+            chain: "base",
+            protocolId: "morpho",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: {
+                actual: "150000000",
+                estimatedUsd: 150,
+              },
+            },
+            aprPct: 1,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(merkl.livePathReady, true);
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.evidence.selectedAmountUsd, 5);
+  assert.equal(
+    merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")),
+    true,
+  );
 });
 
 test("Merkl surface ignores stale capital-audit autopilot blocker when current replay is clean", () => {
@@ -676,11 +744,12 @@ test("Merkl surface ignores stale capital-audit autopilot blocker when current r
             protocolId: "morpho",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
             capabilityGaps: [],
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 150 },
+              matchedToken: { actual: "150000000", estimatedUsd: 150 },
             },
             aprPct: 100,
             protocolBindingPlan: {
@@ -748,11 +817,12 @@ test("Merkl surface keeps capital-audit blocker when current replay flags the st
             protocolId: "morpho",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
             capabilityGaps: [],
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 150 },
+              matchedToken: { actual: "150000000", estimatedUsd: 150 },
             },
             aprPct: 100,
             protocolBindingPlan: {
@@ -810,11 +880,12 @@ test("Merkl surface treats structural completed_with_blockers with no executable
             protocolId: "morpho",
             mappedStrategyId: "gateway_native_asset_conversion_sleeve",
             queueStatus: "ready_for_tiny_live_canary",
+            priorityScore: 100,
             capabilityGaps: [],
             autoEntry: { autoExecute: true },
             executionReadiness: {
               status: "inventory_ready",
-              matchedToken: { estimatedUsd: 5 },
+              matchedToken: { actual: "5000000", estimatedUsd: 5 },
             },
             aprPct: 100,
             protocolBindingPlan: {
