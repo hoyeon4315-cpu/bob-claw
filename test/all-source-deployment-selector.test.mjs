@@ -676,3 +676,124 @@ test("family surface report does not call blocked Radar DefiLlama Merkl stable B
     assert.notEqual(row.firstBlockingReason, "NO_CANDIDATE", family);
   }
 });
+
+test("selector uses vault underlying whitelist and exact live inventory blocker for Morpho vault shares", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: {
+        summary: { queueCount: 1 },
+        queue: [
+          {
+            queueId: "merkl:17563083078147412604",
+            opportunityId: "17563083078147412604",
+            chain: "optimism",
+            protocolId: "morpho",
+            family: "stable_treasury_carry",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            executionSurface: "stableCarry",
+            entryAssets: ["gtusdcp", "USDC"],
+            campaignRemainingHours: 146.72774777777778,
+            aprPct: 1.882047751598493,
+            protocolBindingPlan: {
+              status: "binding_ready",
+              bindingKind: "erc4626_vault_supply_withdraw",
+              resolvedBinding: {
+                vaultAddress: "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59",
+                assetAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+                assetSymbol: "USDC",
+                assetDecimals: 6,
+                shareTokenAddress: "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59",
+                shareTokenSymbol: "gtusdcp",
+              },
+            },
+            executionReadiness: { status: "inventory_unknown", executorSupported: true },
+            autoEntry: { status: "blocked", blockers: ["inventory_unknown", "entry_asset_not_whitelisted"] },
+          },
+        ],
+      },
+      merklOpportunities: {
+        opportunities: [
+          {
+            opportunityId: "17563083078147412604",
+            chain: "optimism",
+            protocolId: "morpho",
+            rewardTokenSymbols: ["OP"],
+            rewardTokenTypes: ["TOKEN"],
+            type: "MORPHOVAULT",
+            action: "LEND",
+            nativeAprPct: 2.365440949606957,
+            protocolBinding: {
+              vaultAddress: "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59",
+              assetAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+              assetSymbol: "USDC",
+            },
+          },
+        ],
+      },
+      campaignAware: {
+        candidates: [
+          {
+            opportunityId: "17563083078147412604",
+            chain: "optimism",
+            protocol: "morpho",
+            displayedApr: 1.882047751598493,
+            nativeAprPct: 2.365440949606957,
+            rewardToken: null,
+            rewardTokenHaircut: 0,
+            rewardExitLiquidityStatus: {
+              ready: true,
+              status: "native_or_share_price_yield_no_reward_exit_required_for_candidate_report",
+            },
+            expectedHoldDays: 6.113656157407408,
+            operatorPositionUsd: 35,
+            operatorExpectedGrossProfitUsd: 0.011033335585707432,
+            estimatedGasClaimSwapBridgeCostUsd: 0.003,
+            expectedNetProfitUsd: 0.008033335585707432,
+            tinyCanaryEvStatus: {
+              ready: true,
+              currentAmountUsd: 35,
+              neededUsd: 19.033228742904705,
+              holdDays: 6.113656157407408,
+              roundTripCostUsd: 0.003,
+            },
+            blockers: [],
+          },
+        ],
+      },
+      capitalManagerRefill: {
+        capitalPlan: {
+          inventory: {
+            tokens: [
+              {
+                chain: "optimism",
+                token: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+                ticker: "USDC",
+                actualDecimal: 14.986814,
+                estimatedUsd: 14.986814,
+                status: "over_max_active",
+                staleFallback: false,
+                scanError: null,
+              },
+            ],
+          },
+        },
+      },
+      policyEvaluator: async () => {
+        throw new Error("inventory shortfall candidate should not reach policy");
+      },
+    }),
+  );
+
+  const candidate = report.candidates.find(
+    (item) => item.source === "merkl" && item.opportunityId === "17563083078147412604",
+  );
+  assert.ok(candidate);
+  assert.equal(candidate.rewardHaircut, 0);
+  assert.equal(candidate.expectedRealizedNetUsd, 0.008033);
+  assert.equal(candidate.blockers.includes("entry_asset_not_whitelisted"), false);
+  assert.equal(candidate.blockers.includes("reward_exit_liquidity_unproven"), false);
+  assert.equal(candidate.blockers.includes("inventory_unknown"), false);
+  assert.ok(candidate.blockers.includes("live_inventory_below_required_notional"));
+  assert.equal(candidate.blockers.includes("tiny_canary_resize_above_cap:need_$39_cap_$25"), false);
+  assert.equal(candidate.signerIntentAvailability.reason, "live_inventory_below_required_notional");
+});

@@ -616,4 +616,34 @@ describe("buildCampaignAwareCandidates status logic", () => {
     assert.equal(c.rewardExitLiquidityStatus.ready, true);
     assert.equal(c.blockers.includes("reward_exit_liquidity_unproven"), false);
   });
+
+  test("does not require reward exit liquidity proof when native APR already covers displayed APR", () => {
+    const candidates = buildCampaignAwareCandidates({
+      merklOpportunities: [
+        {
+          id: "native-apr-dominates",
+          chain: { name: "Optimism" },
+          protocol: { id: "morpho" },
+          apr: 1.882047751598493,
+          nativeAprRecord: { value: 2.365440949606957 },
+          tvl: 3_917_472.876488,
+          campaigns: [
+            {
+              start: Math.floor((nowMs - 4568 * 3600 * 1000) / 1000),
+              end: Math.floor((nowMs + 146 * 3600 * 1000) / 1000),
+              rewardToken: { displaySymbol: "OP", symbol: "OP" },
+            },
+          ],
+        },
+      ],
+      defiLlamaPools: [],
+      nowMs,
+    });
+    const c = candidates[0];
+    assert.equal(c.rewardToken, null);
+    assert.equal(c.rewardTokenHaircut, 0);
+    assert.equal(c.rewardCountedInDisplayedApr, false);
+    assert.equal(c.rewardExitLiquidityStatus.ready, true);
+    assert.equal(c.blockers.includes("reward_exit_liquidity_unproven"), false);
+  });
 });

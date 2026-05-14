@@ -1,5 +1,6 @@
 import { isOfficialGatewayDestinationChain, canonicalGatewayChain } from "../config/gateway-destinations.mjs";
 import { DESTINATION_REPRESENTATIVE_BINDINGS } from "../config/destination-representative-bindings.mjs";
+import { MERKL_AUTO_ENTRY_POLICY } from "../config/merkl-auto-entry.mjs";
 import { computeTinyCanaryMinProfitablePositionUsd, tinyCanarySameChainRoundTripCostUsd } from "../config/sizing.mjs";
 import { getStrategyCaps } from "../config/strategy-caps.mjs";
 import { evaluateIntentPolicies } from "../executor/policy/index.mjs";
@@ -398,12 +399,39 @@ function maxTinyCanaryNotionalUsd({ strategyId, chain, activeCapitalUsd }) {
 function removeResolvedMerklBlockers(blockers, { inventoryReady, rewardExitProofReady, rewardExitProofStatus }) {
   return unique(blockers).filter((blocker) => {
     if (inventoryReady && /inventory|current_inventory_entry_route_required/.test(blocker)) return false;
+    if (
+      /inventory_unknown|inventory_missing|current_inventory_entry_route_required/.test(blocker)
+    ) {
+      return false;
+    }
     if (blocker === "reward_exit_liquidity_unproven" && (rewardExitProofReady || rewardExitProofStatus === "failed")) {
       return false;
     }
     if (/tiny_canary_unprofitable:/.test(blocker)) return false;
     return true;
   });
+}
+
+function merklUnderlyingEntryWhitelisted(item = {}) {
+  const whitelist = new Set(array(MERKL_AUTO_ENTRY_POLICY.whitelistedEntrySymbols).map((value) => String(value).toUpperCase()));
+  const symbols = unique([
+    item.protocolBindingPlan?.resolvedBinding?.assetSymbol,
+    item.protocolBinding?.assetSymbol,
+    item.executionReadiness?.matchedToken?.ticker,
+  ]).map((value) => String(value).toUpperCase());
+  return symbols.some((symbol) => whitelist.has(symbol));
+}
+
+function resolvedMerklInventoryProof(item = {}, inventoryProof = {}) {
+  if (inventoryProof?.ready === true) return inventoryProof;
+  if (item.executionReadiness?.status === "inventory_ready") {
+    return {
+      ready: true,
+      status: "inventory_ready_from_queue",
+      reason: null,
+    };
+  }
+  return inventoryProof;
 }
 
 function merklExecutableBindingBlockers({ item = {}, merklOpportunity = {} } = {}) {
@@ -565,6 +593,7 @@ function normalizeMerklCandidates({
       tokenAddress: assetAddress,
       requiredUsd: initialNotionalUsd,
     });
+    const effectiveInventoryProof = resolvedMerklInventoryProof(item, inventoryProof);
     const rewardExitProof = rewardExitProofFor({ merklOpportunity, campaign });
     const rewardHaircut = rewardHaircutFor({ campaign, rewardExitProof });
     const holdPeriodDays =
@@ -594,14 +623,17 @@ function normalizeMerklCandidates({
     const effectiveAprPct = displayedApr * (1 - rewardHaircut);
     const grossUsd = expectedGrossUsd({ notionalUsd, aprPct: effectiveAprPct, holdDays: holdPeriodDays });
     const expectedNetUsd = grossUsd === null ? campaign.expectedNetProfitUsd : grossUsd - finiteNumber(costs, 0);
+    const inventoryBlocker =
+      item.executionReadiness?.status && item.executionReadiness.status !== "inventory_ready"
+        ? effectiveInventoryProof.reason || item.executionReadiness.status
+        : null;
     const blockers = removeResolvedMerklBlockers(
       [
         ...merklExecutableBindingBlockers({ item, merklOpportunity }),
         ...array(item.autoEntry?.blockers),
         ...array(campaign.blockers),
-        item.executionReadiness?.status && item.executionReadiness.status !== "inventory_ready"
-          ? item.executionReadiness.status
-          : null,
+        effectiveInventoryProof.ready === false ? effectiveInventoryProof.reason || "live_inventory_entry_route_required" : null,
+        inventoryBlocker,
         item.protocolBindingPlan?.status && item.protocolBindingPlan.status !== "binding_ready"
           ? item.protocolBindingPlan.status
           : null,
@@ -609,12 +641,12 @@ function normalizeMerklCandidates({
         resize.blocker || null,
       ],
       {
-        inventoryReady: inventoryProof.ready === true,
+        inventoryReady: effectiveInventoryProof.ready === true,
         rewardExitProofReady: rewardExitProof.ready === true,
         rewardExitProofStatus: rewardExitProof.status || null,
       },
-    );
-    const signerIntentAvailability = merklSignerIntentAvailability({ item, inventoryProof, blockers });
+    ).filter((blocker) => !(blocker === "entry_asset_not_whitelisted" && merklUnderlyingEntryWhitelisted(item)));
+    const signerIntentAvailability = merklSignerIntentAvailability({ item, inventoryProof: effectiveInventoryProof, blockers });
     return makeCandidate(
       {
         source: "merkl",
@@ -632,12 +664,12 @@ function normalizeMerklCandidates({
         },
         routeRefillBinding: {
           status:
-            inventoryProof.ready === true || item.executionReadiness?.status === "inventory_ready"
+            effectiveInventoryProof.ready === true || item.executionReadiness?.status === "inventory_ready"
               ? "ready"
               : "inventory_or_refill_required",
-          ready: inventoryProof.ready === true || item.executionReadiness?.status === "inventory_ready",
-          capabilityGaps: inventoryProof.ready === true ? [] : array(item.capabilityGaps),
-          inventoryProof,
+          ready: effectiveInventoryProof.ready === true || item.executionReadiness?.status === "inventory_ready",
+          capabilityGaps: effectiveInventoryProof.ready === true ? [] : array(item.capabilityGaps),
+          inventoryProof: effectiveInventoryProof,
         },
         notionalUsd,
         holdPeriodDays,
@@ -656,7 +688,7 @@ function normalizeMerklCandidates({
           rewardTokenTypes: rewardExitProof.rewardTokenTypes || [],
           rewardExitLiquidityStatus: campaign.rewardExitLiquidityStatus || null,
           rewardExitLiquidityProof: rewardExitProof,
-          inventoryProof,
+          inventoryProof: effectiveInventoryProof,
           tinyCanaryResize: resize,
           effectiveAprPct: round(effectiveAprPct, 4),
           family: item.family || null,
