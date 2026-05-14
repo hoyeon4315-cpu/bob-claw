@@ -208,6 +208,18 @@ test("all-source selector converts DefiLlama pools into executable candidates on
       capitalManagerRefill: {
         capitalPlan: {
           inventory: {
+            native: [
+              {
+                chain: "optimism",
+                actual: "309857193986883921",
+                actualDecimal: 0.3098571939868839,
+                estimatedUsd: 710.6915587002568,
+                ticker: "ETH",
+                status: "over_max_active",
+                staleFallback: false,
+                scanError: null,
+              },
+            ],
             tokens: [
               {
                 chain: "optimism",
@@ -763,6 +775,18 @@ test("selector uses vault underlying whitelist and exact live inventory blocker 
       capitalManagerRefill: {
         capitalPlan: {
           inventory: {
+            native: [
+              {
+                chain: "optimism",
+                actual: "309857193986883921",
+                actualDecimal: 0.3098571939868839,
+                estimatedUsd: 710.6915587002568,
+                ticker: "ETH",
+                status: "over_max_active",
+                staleFallback: false,
+                scanError: null,
+              },
+            ],
             tokens: [
               {
                 chain: "optimism",
@@ -789,11 +813,16 @@ test("selector uses vault underlying whitelist and exact live inventory blocker 
   );
   assert.ok(candidate);
   assert.equal(candidate.rewardHaircut, 0);
-  assert.equal(candidate.expectedRealizedNetUsd, 0.008033);
+  assert.equal(candidate.notionalUsd, 20);
+  assert.ok(candidate.expectedRealizedNetUsd < 0);
   assert.equal(candidate.blockers.includes("entry_asset_not_whitelisted"), false);
   assert.equal(candidate.blockers.includes("reward_exit_liquidity_unproven"), false);
   assert.equal(candidate.blockers.includes("inventory_unknown"), false);
-  assert.ok(candidate.blockers.includes("live_inventory_below_required_notional"));
+  assert.equal(candidate.blockers.includes("live_inventory_below_required_notional"), false);
+  assert.ok(candidate.blockers.includes("same_tick_refill_expected_net_non_positive"));
   assert.equal(candidate.blockers.includes("tiny_canary_resize_above_cap:need_$39_cap_$25"), false);
-  assert.equal(candidate.signerIntentAvailability.reason, "live_inventory_below_required_notional");
+  assert.equal(candidate.routeRefillBinding.status, "same_tick_refill_ready");
+  assert.equal(candidate.routeRefillBinding.sameTickRefill.selectedMethod, "same_chain_native_to_token_swap");
+  assert.ok(candidate.routeRefillBinding.sameTickRefill.expectedExecutionRefillCostUsd > 0.04);
+  assert.equal(candidate.signerIntentAvailability.reason, "same_tick_refill_expected_net_non_positive");
 });
