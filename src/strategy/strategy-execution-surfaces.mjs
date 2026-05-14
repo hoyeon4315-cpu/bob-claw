@@ -621,7 +621,30 @@ function merklPolicyPreviewBlockers(candidate = null) {
   return compact(blockers);
 }
 
-function merklAutopilotLatestBlockers(latest = null) {
+function filterRuntimeMerklEvBlockers(blockers = []) {
+  return blockers.filter((blocker) => !isRuntimeMerklEvFilter(blocker));
+}
+
+function capitalAuditFlagForStrategy(capitalAuditState = null, strategyId = null) {
+  if (!capitalAuditState || !Array.isArray(capitalAuditState.flaggedStrategies)) return null;
+  return (
+    capitalAuditState.flaggedStrategies.find(
+      (flag) => flag.strategyId === strategyId || flag.strategyId === "unknown",
+    ) || null
+  );
+}
+
+function filterStaleCapitalAuditBlockers(blockers = [], { capitalAuditState = null, strategyId = null } = {}) {
+  const capitalAuditFlag = capitalAuditFlagForStrategy(capitalAuditState, strategyId);
+  if (!capitalAuditState || capitalAuditFlag) return blockers;
+  return blockers.filter((blocker) => blocker !== "capital_audit_pair_unmatched");
+}
+
+function isRuntimeMerklEvFilter(blocker) {
+  return typeof blocker === "string" && blocker.startsWith("same_chain_unprofitable:");
+}
+
+function merklAutopilotLatestBlockers(latest = null, { capitalAuditState = null, strategyId = null } = {}) {
   if (!latest || typeof latest !== "object") return [];
   const summary = latest.summary || {};
   const status = String(latest.status || "");
@@ -645,10 +668,19 @@ function merklAutopilotLatestBlockers(latest = null) {
   const counts = summary.blockerCounts || {};
   blockers.push(...Object.keys(counts));
   if (blockers.length === 0 && status) blockers.push(`merkl_autopilot_${status}`);
-  return [...new Set(blockers.filter(Boolean))];
+  const currentBlockers = filterStaleCapitalAuditBlockers(blockers.filter(Boolean), {
+    capitalAuditState,
+    strategyId,
+  }).filter((blocker) => !isRuntimeMerklEvFilter(blocker));
+  return [...new Set(currentBlockers)];
 }
 
-function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCanaryAutopilotLatest = null } = {}) {
+function buildMerklAutopilotSurface({
+  policy,
+  merklCanaryQueue = null,
+  merklCanaryAutopilotLatest = null,
+  capitalAuditState = null,
+} = {}) {
   const summary = merklCanaryQueue?.summary || {};
   const queue = merklCanaryQueue?.queue || [];
   const topReady =
@@ -661,15 +693,20 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCana
     queue.find((item) => item?.queueStatus === "ready_for_tiny_live_canary") ||
     null;
   if (!merklCanaryQueue && !topReady) return null;
+  const strategyId = topReady?.mappedStrategyId || "gateway_native_asset_conversion_sleeve";
   const liveAllowed = baseLiveTradingAllowed(policy);
   const policyPreviewBlockers = merklPolicyPreviewBlockers(topReady);
-  const latestAutopilotBlockers = merklAutopilotLatestBlockers(merklCanaryAutopilotLatest);
+  const currentCapitalAuditFlag = capitalAuditFlagForStrategy(capitalAuditState, strategyId);
+  const latestAutopilotBlockers = merklAutopilotLatestBlockers(merklCanaryAutopilotLatest, {
+    capitalAuditState,
+    strategyId,
+  });
   const blockers = compact([
     !liveAllowed ? "live_trading_blocked" : null,
     (summary.autoExecutableNowCount ?? 0) > 0
       ? null
       : summary.topBlockingReason || "merkl_auto_executable_candidate_missing",
-    ...policyPreviewBlockers,
+    ...filterRuntimeMerklEvBlockers(policyPreviewBlockers),
     ...latestAutopilotBlockers,
   ]);
   const rawLiveEligible =
@@ -681,7 +718,7 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCana
   const currentLiveEligible = mode.currentLiveEligible;
   const selectedMode = mode.selectedMode;
   return {
-    id: topReady?.mappedStrategyId || "gateway_native_asset_conversion_sleeve",
+    id: strategyId,
     label: "Merkl tiny live canary autopilot",
     lane: "yield_sleeve",
     status: currentLiveEligible ? "candidate_for_validation" : "analysis_only",
@@ -709,6 +746,9 @@ function buildMerklAutopilotSurface({ policy, merklCanaryQueue = null, merklCana
       latestAutopilotFilteredCount: merklCanaryAutopilotLatest?.summary?.filteredCount ?? null,
       latestAutopilotBlockedCount: merklCanaryAutopilotLatest?.summary?.blockedCount ?? null,
       latestAutopilotTopBlocker: merklCanaryAutopilotLatest?.summary?.topBlocker || null,
+      currentCapitalAuditFlagged: Boolean(currentCapitalAuditFlag),
+      currentCapitalAuditUnmatchedCount: currentCapitalAuditFlag?.unmatchedCount ?? 0,
+      currentCapitalAuditLatestUnmatchedAt: currentCapitalAuditFlag?.latestUnmatchedAt || null,
     },
     capabilityBucket: currentLiveEligible ? "executable_now" : "dry_run_or_shadow_only",
     runnerKind: "command_sequence",
@@ -1036,6 +1076,7 @@ export function buildStrategyExecutionSurfaces({
       policy: catalog.policy,
       merklCanaryQueue: artifacts.merklCanaryQueue || null,
       merklCanaryAutopilotLatest: artifacts.merklCanaryAutopilotLatest || null,
+      capitalAuditState: artifacts.capitalAuditState || null,
     }),
   ]
     .filter(Boolean)

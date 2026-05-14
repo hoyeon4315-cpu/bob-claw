@@ -543,7 +543,7 @@ test("wrapped BTC loop still blocks when runtime liveTrading is blocked despite 
   assert.equal(report.summary.liveEligibleCount, 0);
 });
 
-test("Merkl surface does not mark policy-blocked tiny entries as executable now", () => {
+test("Merkl surface keeps runtime EV filters out of structural live admission", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
       ...dashboardStatusFixture(),
@@ -584,17 +584,17 @@ test("Merkl surface does not mark policy-blocked tiny entries as executable now"
 
   const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
 
-  assert.equal(merkl.currentLiveEligible, false);
-  assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
-  assert.equal(merkl.selectedMode, "analysis");
+  assert.equal(merkl.currentLiveEligible, true);
+  assert.equal(merkl.capabilityBucket, "executable_now");
+  assert.equal(merkl.selectedMode, "live");
   assert.equal(merkl.liveAdmissionBlockers.includes("position_below_min_position_usd"), false);
   assert.equal(
     merkl.liveAdmissionBlockers.some((item) => item.startsWith("same_chain_unprofitable:")),
-    true,
+    false,
   );
 });
 
-test("Merkl surface uses latest autopilot EV blocker after sizing and policy preview", () => {
+test("Merkl surface keeps latest autopilot EV filter as evidence without disabling the live path", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
       ...dashboardStatusFixture(),
@@ -644,16 +644,151 @@ test("Merkl surface uses latest autopilot EV blocker after sizing and policy pre
 
   const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
 
-  assert.equal(merkl.currentLiveEligible, false);
-  assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
+  assert.equal(merkl.currentLiveEligible, true);
+  assert.equal(merkl.capabilityBucket, "executable_now");
   assert.equal(merkl.evidence.latestAutopilotStatus, "blocked");
   assert.equal(merkl.evidence.latestAutopilotBlockedReason, "same_chain_unprofitable:need_$57_on_base");
   assert.equal(merkl.evidence.projectedPnlUsd, null);
   assert.equal(merkl.evidence.candidateAprPct, 100);
-  assert.equal(merkl.liveAdmissionBlockers.includes("same_chain_unprofitable:need_$57_on_base"), true);
+  assert.equal(merkl.liveAdmissionBlockers.includes("same_chain_unprofitable:need_$57_on_base"), false);
 });
 
-test("Merkl surface treats completed_with_blockers with no executable selection as non-live", () => {
+test("Merkl surface ignores stale capital-audit autopilot blocker when current replay is clean", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      capitalAuditState: { flaggedStrategies: [] },
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 1,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-sized-ready",
+            chain: "base",
+            protocolId: "morpho",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 150 },
+            },
+            aprPct: 100,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
+          },
+        ],
+      },
+      merklCanaryAutopilotLatest: {
+        status: "completed_with_blockers",
+        blockedReason: null,
+        summary: {
+          executionReadyCount: 0,
+          previewReadyCount: 0,
+          deliveredCount: 0,
+          blockedCount: 1,
+          filteredCount: 0,
+          topBlocker: "capital_audit_pair_unmatched",
+          blockerCounts: {
+            capital_audit_pair_unmatched: 1,
+          },
+        },
+      },
+    },
+  });
+
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(merkl.currentLiveEligible, true);
+  assert.equal(merkl.selectedMode, "live");
+  assert.equal(merkl.evidence.currentCapitalAuditFlagged, false);
+  assert.equal(merkl.evidence.currentCapitalAuditUnmatchedCount, 0);
+  assert.equal(merkl.liveAdmissionBlockers.includes("capital_audit_pair_unmatched"), false);
+});
+
+test("Merkl surface keeps capital-audit blocker when current replay flags the strategy", () => {
+  const report = buildStrategyExecutionSurfaces({
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: { liveTrading: "ALLOWED" },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      capitalAuditState: {
+        flaggedStrategies: [
+          {
+            strategyId: "gateway_native_asset_conversion_sleeve",
+            unmatchedCount: 2,
+            latestUnmatchedAt: "2026-05-14T00:00:00.000Z",
+          },
+        ],
+      },
+      merklCanaryQueue: {
+        summary: {
+          queueCount: 1,
+          executableNowCount: 1,
+          autoExecutableNowCount: 1,
+        },
+        queue: [
+          {
+            opportunityId: "opp-sized-ready",
+            chain: "base",
+            protocolId: "morpho",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            queueStatus: "ready_for_tiny_live_canary",
+            capabilityGaps: [],
+            autoEntry: { autoExecute: true },
+            executionReadiness: {
+              status: "inventory_ready",
+              matchedToken: { estimatedUsd: 150 },
+            },
+            aprPct: 100,
+            protocolBindingPlan: {
+              bindingKind: "erc4626_vault_supply_withdraw",
+              canaryActions: ["deposit_asset_for_shares", "withdraw_or_redeem_shares"],
+            },
+          },
+        ],
+      },
+      merklCanaryAutopilotLatest: {
+        status: "completed_with_blockers",
+        blockedReason: null,
+        summary: {
+          executionReadyCount: 0,
+          previewReadyCount: 0,
+          deliveredCount: 0,
+          blockedCount: 1,
+          filteredCount: 0,
+          topBlocker: "capital_audit_pair_unmatched",
+          blockerCounts: {
+            capital_audit_pair_unmatched: 1,
+          },
+        },
+      },
+    },
+  });
+
+  const merkl = report.strategies.find((strategy) => strategy.id === "gateway_native_asset_conversion_sleeve");
+
+  assert.equal(merkl.currentLiveEligible, false);
+  assert.equal(merkl.evidence.currentCapitalAuditFlagged, true);
+  assert.equal(merkl.evidence.currentCapitalAuditUnmatchedCount, 2);
+  assert.equal(merkl.liveAdmissionBlockers.includes("capital_audit_pair_unmatched"), true);
+});
+
+test("Merkl surface treats structural completed_with_blockers with no executable selection as non-live", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: {
       ...dashboardStatusFixture(),
@@ -692,7 +827,7 @@ test("Merkl surface treats completed_with_blockers with no executable selection 
       merklCanaryAutopilotLatest: {
         status: "completed_with_blockers",
         blockedReason: null,
-        filteredReason: "same_chain_unprofitable:need_$57_on_base",
+        filteredReason: "unsupported_binding_kind",
         summary: {
           executionReadyCount: 0,
           previewReadyCount: 0,
@@ -711,10 +846,10 @@ test("Merkl surface treats completed_with_blockers with no executable selection 
   assert.equal(merkl.currentLiveEligible, false);
   assert.equal(merkl.capabilityBucket, "dry_run_or_shadow_only");
   assert.equal(merkl.evidence.latestAutopilotStatus, "completed_with_blockers");
-  assert.equal(merkl.evidence.latestAutopilotFilteredReason, "same_chain_unprofitable:need_$57_on_base");
+  assert.equal(merkl.evidence.latestAutopilotFilteredReason, "unsupported_binding_kind");
   assert.equal(merkl.evidence.latestAutopilotExecutionReadyCount, 0);
   assert.equal(merkl.evidence.latestAutopilotFilteredCount, 4);
-  assert.equal(merkl.liveAdmissionBlockers.includes("same_chain_unprofitable:need_$57_on_base"), true);
+  assert.equal(merkl.liveAdmissionBlockers.includes("unsupported_binding_kind"), true);
 });
 
 test("wrapped BTC loop stays out of live dispatch when Base cbBTC collateral is unavailable", () => {
