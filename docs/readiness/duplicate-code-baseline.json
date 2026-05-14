@@ -4,12 +4,12 @@
   "configPath": ".jscpd.json",
   "scope": ["src", "scripts", "test", "dashboard/public"],
   "summary": {
-    "sources": 1489,
-    "lines": 305093,
-    "tokens": 3072112,
-    "clones": 452,
-    "duplicateFingerprintCount": 452,
-    "percentage": 3.56
+    "sources": 1556,
+    "lines": 321873,
+    "tokens": 3212435,
+    "clones": 453,
+    "duplicateFingerprintCount": 453,
+    "percentage": 3.34
   },
   "duplicates": [
     {
@@ -286,6 +286,14 @@
       "fragmentHash": "16d3f4d3e54dfce2f8920256cb874768ec7efb86"
     },
     {
+      "fingerprint": "javascript:15:16e3c0a427758293d77131622c01397e6aaff90b:src/cli/manage-executor-launchd.mjs::src/cli/manage-live-automation-launchd.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 15,
+      "files": ["src/cli/manage-executor-launchd.mjs", "src/cli/manage-live-automation-launchd.mjs"],
+      "fragmentHash": "16e3c0a427758293d77131622c01397e6aaff90b"
+    },
+    {
       "fingerprint": "javascript:15:176ba5ad1b0277a085857ec0dfb69a5235a39c47:test/treasury-funding-source-planner.test.mjs::test/treasury-funding-source-planner.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -441,6 +449,14 @@
       "fragmentHash": "b151bae655d23bf872f93dbe5d482cd8a0008a00"
     },
     {
+      "fingerprint": "javascript:15:b1e9e7b7b79f99ee3397cd3e88d7cc0883155f7b:src/cli/manage-live-automation-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 15,
+      "files": ["src/cli/manage-live-automation-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
+      "fragmentHash": "b1e9e7b7b79f99ee3397cd3e88d7cc0883155f7b"
+    },
+    {
       "fingerprint": "javascript:15:b2a6435fa102b205db2e64bcd132b1f2c2853e46:src/cli/estimate-gateway-gas.mjs::src/cli/validate-wrapped-btc-loop-bindings.mjs",
       "count": 1,
       "format": "javascript",
@@ -546,6 +562,14 @@
       "lines": 16,
       "files": ["src/cli/plan-prelive-fork-execution.mjs", "src/cli/reconcile-prelive-fork-execution.mjs"],
       "fragmentHash": "1af58845b45435ede20cd766a584d76e945585ab"
+    },
+    {
+      "fingerprint": "javascript:16:2f520373e0b10d2a69cb74c2ec57aa7c8664b69a:test/dashboard-live-slices.test.mjs::test/dashboard-live-slices.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 16,
+      "files": ["test/dashboard-live-slices.test.mjs", "test/dashboard-live-slices.test.mjs"],
+      "fragmentHash": "2f520373e0b10d2a69cb74c2ec57aa7c8664b69a"
     },
     {
       "fingerprint": "javascript:16:2fd72e6134790e081b9b6bb53e955441b0723acd:src/cli/fetch-aerodrome-snapshot.mjs::src/cli/fetch-berachain-snapshot.mjs",
@@ -778,6 +802,14 @@
       "lines": 16,
       "files": ["test/transaction-ledger.test.mjs", "test/transaction-ledger.test.mjs"],
       "fragmentHash": "ac12c7e2b01f49d2981548ae8b2cfed7f8417626"
+    },
+    {
+      "fingerprint": "javascript:16:ad565c6873a1c198a3e0704ab605666c729c6658:src/cli/manage-live-automation-launchd.mjs::src/cli/manage-research-launchd.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 16,
+      "files": ["src/cli/manage-live-automation-launchd.mjs", "src/cli/manage-research-launchd.mjs"],
+      "fragmentHash": "ad565c6873a1c198a3e0704ab605666c729c6658"
     },
     {
       "fingerprint": "javascript:16:b17d4d5ce59f9318126da5e129a57b62bde2938e:src/cli/dry-run-pendle-yt.mjs::src/cli/report-pendle-direct-canaries.mjs",
@@ -1395,14 +1427,6 @@
       "fragmentHash": "3605011993ae58625f9ebd3055860a269e4bef70"
     },
     {
-      "fingerprint": "javascript:19:3c4aff21e29566412631f9febe650693142361e9:src/executor/helpers/across-bridge.mjs::src/executor/helpers/lifi-bridge.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 19,
-      "files": ["src/executor/helpers/across-bridge.mjs", "src/executor/helpers/lifi-bridge.mjs"],
-      "fragmentHash": "3c4aff21e29566412631f9febe650693142361e9"
-    },
-    {
       "fingerprint": "javascript:19:4ac379f7931a0ef171e91431225c116d1ce9d010:src/cli/run-native-dex-experiment.mjs::src/cli/validate-wrapped-btc-loop-bindings.mjs",
       "count": 1,
       "format": "javascript",
@@ -1484,14 +1508,6 @@
       "lines": 19,
       "files": ["src/cli/run-current-route-prelive-pass.mjs", "src/cli/run-prelive-evidence-campaign.mjs"],
       "fragmentHash": "87c86a75559c40f18fce77f6a7220af093e2ed34"
-    },
-    {
-      "fingerprint": "javascript:19:935439b743692f4201189b421a8fa6b7953a4745:src/executor/helpers/lifi-bridge.mjs::src/executor/helpers/token-dex-experiment.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 19,
-      "files": ["src/executor/helpers/lifi-bridge.mjs", "src/executor/helpers/token-dex-experiment.mjs"],
-      "fragmentHash": "935439b743692f4201189b421a8fa6b7953a4745"
     },
     {
       "fingerprint": "javascript:19:9e112c13e1df1c5b0675aee52bec4889635c2fce:src/executor/helpers/wrapped-btc-loop-handoff.mjs::src/executor/payback/scheduler.mjs",
@@ -1658,20 +1674,20 @@
       "fragmentHash": "133fe791ba96518f308f9dd40654eee344853e3e"
     },
     {
+      "fingerprint": "javascript:20:24fb00b09bf9e1d6cd81338a3070c16428989dca:src/cli/watch-gateway-updates.mjs::src/strategy/gateway-update-autopilot.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 20,
+      "files": ["src/cli/watch-gateway-updates.mjs", "src/strategy/gateway-update-autopilot.mjs"],
+      "fragmentHash": "24fb00b09bf9e1d6cd81338a3070c16428989dca"
+    },
+    {
       "fingerprint": "javascript:20:297d99dce57a91fbd58d7c36d53d073f560f9c14:test/native-dex-experiment.test.mjs::test/token-dex-experiment.test.mjs",
       "count": 1,
       "format": "javascript",
       "lines": 20,
       "files": ["test/native-dex-experiment.test.mjs", "test/token-dex-experiment.test.mjs"],
       "fragmentHash": "297d99dce57a91fbd58d7c36d53d073f560f9c14"
-    },
-    {
-      "fingerprint": "javascript:20:60aa260b923921b3197871d7ce96aa1bf45453d6:src/cli/manage-live-automation-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 20,
-      "files": ["src/cli/manage-live-automation-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
-      "fragmentHash": "60aa260b923921b3197871d7ce96aa1bf45453d6"
     },
     {
       "fingerprint": "javascript:20:71c5c94de77300ee86475963da76ca9cb6aee9eb:test/wrapped-btc-loop-live-proof.test.mjs::test/wrapped-btc-loop-live-proof.test.mjs",
@@ -1714,6 +1730,14 @@
       "fragmentHash": "8e3dff2ac06dcb0f27f2ab671c66afc7c046e6c7"
     },
     {
+      "fingerprint": "javascript:20:9d7e7374125c4fba8d7ec8987d9ba06a12eb3386:test/pendle-binding.test.mjs::test/pendle-binding.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 20,
+      "files": ["test/pendle-binding.test.mjs", "test/pendle-binding.test.mjs"],
+      "fragmentHash": "9d7e7374125c4fba8d7ec8987d9ba06a12eb3386"
+    },
+    {
       "fingerprint": "javascript:20:c05270f7ef144f39974b36b5f3e7096d564fb062:src/cli/run-across-bridge.mjs::src/cli/run-token-dex-experiment.mjs",
       "count": 1,
       "format": "javascript",
@@ -1728,6 +1752,14 @@
       "lines": 20,
       "files": ["src/cli/report-autonomous-discovery-board.mjs", "src/cli/report-wrapped-btc-loop-dry-run.mjs"],
       "fragmentHash": "c17cce99563bf9cbc0412baa422da677f4306442"
+    },
+    {
+      "fingerprint": "javascript:20:c42e284a6a7b7be10bf48beee487779b9b190b30:src/cli/manage-executor-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 20,
+      "files": ["src/cli/manage-executor-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
+      "fragmentHash": "c42e284a6a7b7be10bf48beee487779b9b190b30"
     },
     {
       "fingerprint": "javascript:20:d0f92ae0e1229ae31ba2d278bb2d0a35a6d857e0:test/score-gateway-cli.test.mjs::test/score-gateway-cli.test.mjs",
@@ -1747,14 +1779,6 @@
         "src/strategy/registry/plugins/yield-tokenization/pendle-binding.mjs"
       ],
       "fragmentHash": "e44b65c76587acc5cab1ce5aee884ff30656619c"
-    },
-    {
-      "fingerprint": "javascript:20:f9a25451a4e7c000e75a7d33a0f66451390c930d:src/executor/helpers/native-dex-experiment.mjs::src/executor/helpers/token-dex-experiment.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 20,
-      "files": ["src/executor/helpers/native-dex-experiment.mjs", "src/executor/helpers/token-dex-experiment.mjs"],
-      "fragmentHash": "f9a25451a4e7c000e75a7d33a0f66451390c930d"
     },
     {
       "fingerprint": "javascript:20:fc5e91489334a25a97173d0b120cf629bd783fc3:src/cli/check-estimator-wallet.mjs::src/cli/estimate-gateway-gas.mjs",
@@ -1819,6 +1843,14 @@
       "lines": 21,
       "files": ["test/cli/first-broadcast-runner.test.mjs", "test/cli/first-broadcast-runner.test.mjs"],
       "fragmentHash": "78437569694b945fd40cc8868c33a99a1622eab7"
+    },
+    {
+      "fingerprint": "javascript:21:7b2c4551c34d8c77d2079a75c6b05971e967285b:src/executor/helpers/lifi-bridge.mjs::src/executor/helpers/token-dex-experiment.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 21,
+      "files": ["src/executor/helpers/lifi-bridge.mjs", "src/executor/helpers/token-dex-experiment.mjs"],
+      "fragmentHash": "7b2c4551c34d8c77d2079a75c6b05971e967285b"
     },
     {
       "fingerprint": "javascript:21:7b577372d332b02357d05dd0bcea35cad79402cf:test/current-route-prelive-pass.test.mjs::test/current-route-prelive-pass.test.mjs",
@@ -1957,6 +1989,14 @@
       "fragmentHash": "8ac9d9f74ac91d7cbe78bd76bca392c490166594"
     },
     {
+      "fingerprint": "javascript:22:8d3ed7746d96922aedf6a3d440a2c7fe4220ac1f:src/cli/manage-executor-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 22,
+      "files": ["src/cli/manage-executor-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
+      "fragmentHash": "8d3ed7746d96922aedf6a3d440a2c7fe4220ac1f"
+    },
+    {
       "fingerprint": "javascript:22:bcf4fb87ebd3edda30bc2d6218810758f58544b5:test/merkl-portfolio-allocator.test.mjs::test/merkl-portfolio-allocator.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -2046,14 +2086,6 @@
       "lines": 23,
       "files": ["test/whole-wallet-route-funding.test.mjs", "test/whole-wallet-route-funding.test.mjs"],
       "fragmentHash": "8c5fbf08eb39920d2977df7ce366e7fb8ee436cf"
-    },
-    {
-      "fingerprint": "javascript:23:a40d8797c0f65683cc0e5ac59c1441b2bfd73da5:src/cli/manage-live-automation-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 23,
-      "files": ["src/cli/manage-live-automation-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
-      "fragmentHash": "a40d8797c0f65683cc0e5ac59c1441b2bfd73da5"
     },
     {
       "fingerprint": "javascript:23:a415f7b8af8612a29c4d7d3e4e4ebae2495f60ae:src/cli/manage-dashboard-live-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
@@ -2166,6 +2198,14 @@
       "lines": 24,
       "files": ["test/strategy-catalog-dispatcher.test.mjs", "test/strategy-catalog-dispatcher.test.mjs"],
       "fragmentHash": "9928ce819507c8c3db8aa4e831a59158056cb386"
+    },
+    {
+      "fingerprint": "javascript:24:ac5643a65841d96dc98f7c78f03999aeb48fcf7f:src/cli/watch-gateway-updates.mjs::src/strategy/gateway-update-autopilot.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 24,
+      "files": ["src/cli/watch-gateway-updates.mjs", "src/strategy/gateway-update-autopilot.mjs"],
+      "fragmentHash": "ac5643a65841d96dc98f7c78f03999aeb48fcf7f"
     },
     {
       "fingerprint": "javascript:25:0f1e6ecde0f5471007b513ddbd601406c637d9c1:src/cli/report-exact-route-fork-package.mjs::src/cli/validate-prelive-readiness.mjs",
@@ -2288,6 +2328,14 @@
       "fragmentHash": "e309ce3c3cb63b86799a15ed0e5aea6919501959"
     },
     {
+      "fingerprint": "javascript:25:e84463f02036266900c996afa7d7d280a32b2c64:test/token-dex-experiment.test.mjs::test/token-dex-experiment.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 25,
+      "files": ["test/token-dex-experiment.test.mjs", "test/token-dex-experiment.test.mjs"],
+      "fragmentHash": "e84463f02036266900c996afa7d7d280a32b2c64"
+    },
+    {
       "fingerprint": "javascript:25:e8f10e39e9b6646f9e9b7e4db1458c133729c968:test/all-chain-autopilot.test.mjs::test/all-chain-autopilot.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -2320,6 +2368,14 @@
       "fragmentHash": "05ccfc41e76cfa344f94a9170c382dff6fa34911"
     },
     {
+      "fingerprint": "javascript:26:0ab24365b9fe8d6438bbadf4d37352146a294c18:test/cli-executor-parse.test.mjs::test/cli-executor-parse.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 26,
+      "files": ["test/cli-executor-parse.test.mjs", "test/cli-executor-parse.test.mjs"],
+      "fragmentHash": "0ab24365b9fe8d6438bbadf4d37352146a294c18"
+    },
+    {
       "fingerprint": "javascript:26:15ccc2b4f72b3690713d648babf4be07b240e22f:src/cli/run-aave-protocol-canary.mjs::src/cli/run-erc4626-protocol-canary.mjs",
       "count": 1,
       "format": "javascript",
@@ -2334,14 +2390,6 @@
       "lines": 26,
       "files": ["src/cli/run-gateway-btc-consolidation.mjs", "src/cli/run-proxy-spread-experiment.mjs"],
       "fragmentHash": "24721b3be6ef3124e2b4a64c2bf5e5bd1c2b74dc"
-    },
-    {
-      "fingerprint": "javascript:26:435b0cb9783295d5d82f34499b112a5092285959:test/token-dex-experiment.test.mjs::test/token-dex-experiment.test.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 26,
-      "files": ["test/token-dex-experiment.test.mjs", "test/token-dex-experiment.test.mjs"],
-      "fragmentHash": "435b0cb9783295d5d82f34499b112a5092285959"
     },
     {
       "fingerprint": "javascript:26:907f2ffa87505808e99576b494d28d60686736e2:src/cli/report-destination-economics-ledger.mjs::src/cli/report-destination-promotion-gate.mjs",
@@ -2577,11 +2625,11 @@
       "fragmentHash": "0264c34155f4b97fdc407cd4b8bc462bbc7c8ce3"
     },
     {
-      "fingerprint": "javascript:28:15ba040c8e0f2422d8af94ac618f118e4b600f02:src/cli/manage-live-automation-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
+      "fingerprint": "javascript:28:15ba040c8e0f2422d8af94ac618f118e4b600f02:src/cli/manage-executor-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
       "count": 1,
       "format": "javascript",
       "lines": 28,
-      "files": ["src/cli/manage-live-automation-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
+      "files": ["src/cli/manage-executor-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
       "fragmentHash": "15ba040c8e0f2422d8af94ac618f118e4b600f02"
     },
     {
@@ -2788,14 +2836,6 @@
       "fragmentHash": "af0d00e051334325e5af0d1274ee49afe332ee65"
     },
     {
-      "fingerprint": "javascript:29:c47ea13a999d86a833f4ba181de0d68153a70e24:src/executor/canary/proof-graduation-bridge.mjs::src/executor/merkl-canary-autopilot.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 29,
-      "files": ["src/executor/canary/proof-graduation-bridge.mjs", "src/executor/merkl-canary-autopilot.mjs"],
-      "fragmentHash": "c47ea13a999d86a833f4ba181de0d68153a70e24"
-    },
-    {
       "fingerprint": "javascript:29:c51aebb11b01bffd4cc811b189b257823d5e0a63:test/all-chain-autopilot.test.mjs::test/all-chain-autopilot.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -2882,6 +2922,14 @@
       "lines": 30,
       "files": ["test/treasury-refill-executor.test.mjs", "test/treasury-refill-executor.test.mjs"],
       "fragmentHash": "37095675db5b9239d98d5f3bcaafc0f54621a4ad"
+    },
+    {
+      "fingerprint": "javascript:30:4040d3834b9a3082d03f53fb6d38cbb7e86a2962:src/executor/canary/proof-graduation-bridge.mjs::src/executor/merkl-canary-autopilot.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 30,
+      "files": ["src/executor/canary/proof-graduation-bridge.mjs", "src/executor/merkl-canary-autopilot.mjs"],
+      "fragmentHash": "4040d3834b9a3082d03f53fb6d38cbb7e86a2962"
     },
     {
       "fingerprint": "javascript:30:4099461f1ae81f56f7d7d0076c2ed3655684ed30:src/cli/ingest-recursive-lending-loop-receipt.mjs::src/cli/run-recursive-lending-loop-dry-run.mjs",
@@ -3095,14 +3143,6 @@
       "fragmentHash": "09166d00478671113cde7c35518f881eb560f822"
     },
     {
-      "fingerprint": "javascript:33:4413404cc7101adf21dd07fe06faf2ced128a9ae:test/merkl-portfolio-allocator.test.mjs::test/merkl-portfolio-allocator.test.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 33,
-      "files": ["test/merkl-portfolio-allocator.test.mjs", "test/merkl-portfolio-allocator.test.mjs"],
-      "fragmentHash": "4413404cc7101adf21dd07fe06faf2ced128a9ae"
-    },
-    {
       "fingerprint": "javascript:33:6a4901140dd8819a9f09d772b7a36257e41d436a:test/score-gateway-shadow-observation.test.mjs::test/score-gateway-shadow-observation.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -3303,14 +3343,6 @@
       "fragmentHash": "8f53cfcd3d01ca4959f300f7edd8c2703324c450"
     },
     {
-      "fingerprint": "javascript:37:d64f10e2a36c3c53d3928be46788b765b9538459:test/merkl-portfolio-allocator.test.mjs::test/merkl-portfolio-allocator.test.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 37,
-      "files": ["test/merkl-portfolio-allocator.test.mjs", "test/merkl-portfolio-allocator.test.mjs"],
-      "fragmentHash": "d64f10e2a36c3c53d3928be46788b765b9538459"
-    },
-    {
       "fingerprint": "javascript:38:0c4136d7b1435f39daf1c7b8ac1ccdc9d5f5142f:src/strategy/proxy-spread-expansion-adapter.mjs::src/strategy/tokenized-reserve-sleeve-adapter.mjs",
       "count": 1,
       "format": "javascript",
@@ -3439,14 +3471,6 @@
       "fragmentHash": "8c76379a404881bcdc6f3296189dee7d4d2e0f9d"
     },
     {
-      "fingerprint": "javascript:41:8c76379a404881bcdc6f3296189dee7d4d2e0f9d:src/cli/manage-live-automation-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 41,
-      "files": ["src/cli/manage-live-automation-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
-      "fragmentHash": "8c76379a404881bcdc6f3296189dee7d4d2e0f9d"
-    },
-    {
       "fingerprint": "javascript:41:8c76379a404881bcdc6f3296189dee7d4d2e0f9d:src/cli/manage-research-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
       "count": 1,
       "format": "javascript",
@@ -3495,14 +3519,6 @@
       "fragmentHash": "3d653393b35e820d333237755f67bf9c9ba763ee"
     },
     {
-      "fingerprint": "javascript:44:51c6de768af29a53c3f52bf0438ebc9f9fa3a784:src/cli/watch-gateway-updates.mjs::src/strategy/gateway-update-autopilot.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 44,
-      "files": ["src/cli/watch-gateway-updates.mjs", "src/strategy/gateway-update-autopilot.mjs"],
-      "fragmentHash": "51c6de768af29a53c3f52bf0438ebc9f9fa3a784"
-    },
-    {
       "fingerprint": "javascript:44:b6197f7883ba892688a681961eb69c3b282a0342:test/capital-audit.test.mjs::test/capital-audit.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -3543,12 +3559,12 @@
       "fragmentHash": "c9c258270b46860c1cd3e2a5fa9dd0a7be467781"
     },
     {
-      "fingerprint": "javascript:47:388abb1f37fc921f5d375ca49cd032d19aa1d4e0:src/cli/manage-live-automation-launchd.mjs::src/cli/manage-research-launchd.mjs",
+      "fingerprint": "javascript:47:797c64ced76e4c1c29db0cf55035132cab7643fc:test/merkl-portfolio-allocator.test.mjs::test/merkl-portfolio-allocator.test.mjs",
       "count": 1,
       "format": "javascript",
       "lines": 47,
-      "files": ["src/cli/manage-live-automation-launchd.mjs", "src/cli/manage-research-launchd.mjs"],
-      "fragmentHash": "388abb1f37fc921f5d375ca49cd032d19aa1d4e0"
+      "files": ["test/merkl-portfolio-allocator.test.mjs", "test/merkl-portfolio-allocator.test.mjs"],
+      "fragmentHash": "797c64ced76e4c1c29db0cf55035132cab7643fc"
     },
     {
       "fingerprint": "javascript:47:af388e05473667ee720e3bb4f61d4cbabec1ae30:src/executor/helpers/compound-v2-supply-canary.mjs::src/executor/helpers/erc4626-protocol-canary.mjs",
@@ -3576,6 +3592,14 @@
       "lines": 51,
       "files": ["src/executor/helpers/moonwell-intent-builder.mjs", "src/executor/helpers/swap-intent-builder.mjs"],
       "fragmentHash": "0d2f5fbd9d0049b24873a9d59b71cd70097ca94e"
+    },
+    {
+      "fingerprint": "javascript:51:d864c22c554395319470144b6c0ac0e026d20a7e:test/merkl-portfolio-allocator.test.mjs::test/merkl-portfolio-allocator.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 51,
+      "files": ["test/merkl-portfolio-allocator.test.mjs", "test/merkl-portfolio-allocator.test.mjs"],
+      "fragmentHash": "d864c22c554395319470144b6c0ac0e026d20a7e"
     },
     {
       "fingerprint": "javascript:52:43047ade878fbcaedb88d00ebac6962d0e1a0e72:test/cycle-1-3-integration.test.mjs::test/merkl-canary-queue.test.mjs",
@@ -3672,22 +3696,6 @@
       "lines": 94,
       "files": ["test/prelive-review-package.test.mjs", "test/prelive-review-package.test.mjs"],
       "fragmentHash": "166258086ee5beeff9b3e2fb98dfa1d75cec9aa4"
-    },
-    {
-      "fingerprint": "javascript:99:5c7e54b946a1854005fc18792df4979b3bd1d643:src/cli/manage-executor-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 99,
-      "files": ["src/cli/manage-executor-launchd.mjs", "src/cli/manage-strategy-automation-launchd.mjs"],
-      "fragmentHash": "5c7e54b946a1854005fc18792df4979b3bd1d643"
-    },
-    {
-      "fingerprint": "jsx:18:70388feec14005afa71bf2487193d041c66395f8:dashboard/public/app.jsx::dashboard/public/app.jsx",
-      "count": 1,
-      "format": "jsx",
-      "lines": 18,
-      "files": ["dashboard/public/app.jsx", "dashboard/public/app.jsx"],
-      "fragmentHash": "70388feec14005afa71bf2487193d041c66395f8"
     },
     {
       "fingerprint": "jsx:28:af038ac2ed9e4a771db884da546df7c7972b4037:dashboard/public/data.jsx::dashboard/public/data.jsx",
