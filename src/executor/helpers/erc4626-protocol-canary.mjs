@@ -4,16 +4,15 @@ import { tokenAsset } from "../../assets/tokens.mjs";
 import { getEvmChainConfig } from "../../config/chains.mjs";
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
-import {
-  resolveTinyCanaryExpectedHoldDays,
-  tinyCanarySameChainRoundTripCostUsd,
-} from "../../config/sizing.mjs";
+import { resolveTinyCanaryExpectedHoldDays, tinyCanarySameChainRoundTripCostUsd } from "../../config/sizing.mjs";
 import { stableSerialize } from "../../execution/journal.mjs";
 import { estimateGas } from "../../gas/rpc-gas.mjs";
 import { readErc20Allowance } from "../../evm/account-state.mjs";
 import { appendExecutionReceiptReconciliation } from "../ingestor/execution-receipt-ingest.mjs";
 import { evGate } from "../policy/ev-gate.mjs";
+import { appendCapitalAuditPair, buildCapitalAuditClosureRecord } from "../capital/capital-audit-pair.mjs";
 import { sendSignerCommand } from "../signer/client.mjs";
+import { buildSignerAuditRecord } from "../signer/audit-log.mjs";
 import { applyMerklCanaryExecutionReadiness } from "../../strategy/merkl-canary-execution-readiness.mjs";
 import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "./gateway-btc-consolidation.mjs";
 import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAssetDelta } from "./settlement-proof.mjs";
@@ -21,9 +20,7 @@ import { defaultSettlementTimeoutMs, readEvmAssetBalance, sleep, waitForEvmAsset
 export const ERC4626_PROTOCOL_CANARY_STRATEGY_ID = "gateway_native_asset_conversion_sleeve";
 const ERC4626_LIKE_BINDING_KINDS = new Set(["erc4626_vault_supply_withdraw", "euler_evault_deposit_withdraw"]);
 
-const ERC20_INTERFACE = new Interface([
-  "function approve(address spender,uint256 amount)",
-]);
+const ERC20_INTERFACE = new Interface(["function approve(address spender,uint256 amount)"]);
 
 const ERC4626_INTERFACE = new Interface([
   "function deposit(uint256 assets,address receiver) returns (uint256 shares)",
@@ -52,7 +49,7 @@ function toPositiveIntegerString(value, label) {
 function amountUsdFromUnits(amount, decimals) {
   const parsedDecimals = Number(decimals);
   if (!Number.isInteger(parsedDecimals) || parsedDecimals < 0 || parsedDecimals > 36) return null;
-  return Number(amount) / (10 ** parsedDecimals);
+  return Number(amount) / 10 ** parsedDecimals;
 }
 
 function minimumRedeemDelta(amount, minimumReturnBps) {
@@ -77,10 +74,12 @@ function signerFailureError(result, fallbackMessage) {
       emergencyUnwindPath: result?.emergencyUnwindPath || null,
     };
   }
-  return result?.error || {
-    name: "SignerExecutionFailed",
-    message: fallbackMessage,
-  };
+  return (
+    result?.error || {
+      name: "SignerExecutionFailed",
+      message: fallbackMessage,
+    }
+  );
 }
 
 function signerFailureExecution({
@@ -109,8 +108,39 @@ function stableHash(value = {}) {
   return createHash("sha256").update(stableSerialize(value)).digest("hex");
 }
 
+async function closeConfirmedCapitalAuditPair({
+  step,
+  result,
+  dataDir = config.dataDir,
+  appendCapitalAuditPairImpl = appendCapitalAuditPair,
+  source = "erc4626_protocol_canary_executor",
+} = {}) {
+  if (result?.status !== "ok" || !result?.broadcast?.txHash) return null;
+  const receiptStatus = Number(result.receipt?.status ?? 1);
+  const auditRecord = buildSignerAuditRecord({
+    intent: step.intent,
+    policyVerdict: receiptStatus === 0 ? "errored" : "approved",
+    lifecycle: {
+      stage: receiptStatus === 0 ? "reverted" : "confirmed",
+      txHash: result.broadcast.txHash,
+    },
+    broadcast: result.broadcast,
+    realized: result.receipt || null,
+  });
+  const closure = buildCapitalAuditClosureRecord({
+    auditRecord,
+    receiptRecord: null,
+    source,
+  });
+  if (closure.validation?.ok === true) {
+    await appendCapitalAuditPairImpl(dataDir, closure);
+  }
+  return closure;
+}
+
 function displayedAprPct(queueItem = {}) {
-  const value = queueItem.effectiveAprPct ?? queueItem.displayedAprPct ?? queueItem.aprPct ?? queueItem.apr ?? queueItem.apy;
+  const value =
+    queueItem.effectiveAprPct ?? queueItem.displayedAprPct ?? queueItem.aprPct ?? queueItem.apr ?? queueItem.apy;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
@@ -129,7 +159,18 @@ function expectedGrossYieldUsd({ queueItem = {}, amountUsd = 0, now = new Date()
   return amountUsd * (aprPct / 100) * (holdDays / 365);
 }
 
-function buildIntent({ strategyId, chain, amountUsd, now, ttlMs, intentType, tx, approval = null, metadata = {}, executionReason = "strategy_execution" }) {
+function buildIntent({
+  strategyId,
+  chain,
+  amountUsd,
+  now,
+  ttlMs,
+  intentType,
+  tx,
+  approval = null,
+  metadata = {},
+  executionReason = "strategy_execution",
+}) {
   return {
     strategyId,
     chain,
@@ -165,18 +206,22 @@ export function selectErc4626QueueItem(
   const items = queue?.queue || [];
   const filtered = items
     .filter((item) => {
-    if (opportunityId && String(item.opportunityId) !== String(opportunityId)) return false;
-    if (chain && item.chain !== chain) return false;
-    return ERC4626_LIKE_BINDING_KINDS.has(item.protocolBindingPlan?.bindingKind || "") &&
-      item.protocolBindingPlan?.status === "binding_ready";
+      if (opportunityId && String(item.opportunityId) !== String(opportunityId)) return false;
+      if (chain && item.chain !== chain) return false;
+      return (
+        ERC4626_LIKE_BINDING_KINDS.has(item.protocolBindingPlan?.bindingKind || "") &&
+        item.protocolBindingPlan?.status === "binding_ready"
+      );
     })
-    .map((item) => item.executionReadiness
-      ? item
-      : applyMerklCanaryExecutionReadiness(item, {
-        inventorySnapshot,
-        canaryExecutions,
-        now,
-      }));
+    .map((item) =>
+      item.executionReadiness
+        ? item
+        : applyMerklCanaryExecutionReadiness(item, {
+            inventorySnapshot,
+            canaryExecutions,
+            now,
+          }),
+    );
 
   if (opportunityId || chain) return filtered[0] || null;
 
@@ -207,7 +252,9 @@ export async function buildErc4626ProtocolCanaryPlan({
   const assetAddress = assertAddress(binding.assetAddress, "assetAddress");
   const shareTokenAddress = assertAddress(binding.shareTokenAddress || vaultAddress, "shareTokenAddress");
   const normalizedAmount = toPositiveIntegerString(amount, "amount");
-  const assetDecimals = Number.isInteger(binding.assetDecimals) ? binding.assetDecimals : tokenAsset(chain, assetAddress).decimals;
+  const assetDecimals = Number.isInteger(binding.assetDecimals)
+    ? binding.assetDecimals
+    : tokenAsset(chain, assetAddress).decimals;
   const amountUsd = amountUsdFromUnits(normalizedAmount, assetDecimals) ?? 0;
   const capAmountUsd = amountUsd;
   const buffer = Math.max(10_000, Number(gasBufferBps) || DEFAULT_GATEWAY_GAS_BUFFER_BPS);
@@ -222,11 +269,12 @@ export async function buildErc4626ProtocolCanaryPlan({
   const allowanceAmount = BigInt(allowanceBefore?.allowance ?? 0);
   const allowanceCoversAmount = allowanceAmount >= BigInt(normalizedAmount);
   const allowanceNeedsZeroReset = !allowanceCoversAmount && allowanceAmount > 0n;
-  const tinyLiveCanary = queueItem.validationMode === "tiny_live_canary_only" || queueItem.metadata?.tinyLiveCanary === true;
+  const tinyLiveCanary =
+    queueItem.validationMode === "tiny_live_canary_only" || queueItem.metadata?.tinyLiveCanary === true;
   const executionReason = tinyLiveCanary ? "merkl_canary_autopilot" : "strategy_execution";
   const estimatedGasCostUsd = tinyLiveCanary
     ? tinyCanarySameChainRoundTripCostUsd({ chain, estimatedGasCostUsd: queueItem.estimatedGasCostUsd })
-    : queueItem.estimatedGasCostUsd ?? null;
+    : (queueItem.estimatedGasCostUsd ?? null);
 
   let approveGas = null;
   if (!allowanceCoversAmount) {
@@ -281,13 +329,14 @@ export async function buildErc4626ProtocolCanaryPlan({
     },
   });
   const parentEvVerdict = evGate(depositIntent, null, { now });
-  const parentEvEvidence = parentEvVerdict.allow === true
-    ? {
-        allow: true,
-        expectedNetUsd: parentEvVerdict.evidence?.expectedNetUsd ?? null,
-        requiredNetUsd: parentEvVerdict.evidence?.requiredNetUsd ?? null,
-      }
-    : null;
+  const parentEvEvidence =
+    parentEvVerdict.allow === true
+      ? {
+          allow: true,
+          expectedNetUsd: parentEvVerdict.evidence?.expectedNetUsd ?? null,
+          requiredNetUsd: parentEvVerdict.evidence?.requiredNetUsd ?? null,
+        }
+      : null;
   const parentApprovalMetadata = parentEvEvidence
     ? {
         parentIntent: depositIntent,
@@ -297,71 +346,79 @@ export async function buildErc4626ProtocolCanaryPlan({
       }
     : {};
   const steps = [
-    ...(allowanceNeedsZeroReset ? [{
-      id: "reset_asset_allowance",
-      intent: buildIntent({
-        strategyId,
-        chain,
-        amountUsd: 0,
-        now,
-        ttlMs: strategyCaps.intentTtlMs,
-        intentType: "approve_exact",
-        approval: {
-          token: assetAddress,
-          spender: vaultAddress,
-          amount: "0",
-          mode: "per_tx",
-        },
-        tx: {
-          to: assetAddress,
-          data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, "0"]),
-          value: "0",
-          gasLimit: gasLimitWithFallback(approveGas, 80_000, buffer),
-        },
-        metadata: {
-          capCheckAmountUsd: 0,
-          opportunityId: queueItem.opportunityId,
-          protocol: queueItem.protocolId,
-          vaultAddress,
-          assetAddress,
-          tinyLiveCanary,
-          ...parentApprovalMetadata,
-          approvalResetReason: "existing_allowance_below_required_amount",
-        },
-      }),
-    }] : []),
-    ...(!allowanceCoversAmount ? [{
-      id: "approve_asset_to_vault",
-      intent: buildIntent({
-        strategyId,
-        chain,
-        amountUsd: 0,
-        now,
-        ttlMs: strategyCaps.intentTtlMs,
-        intentType: "approve_exact",
-        approval: {
-          token: assetAddress,
-          spender: vaultAddress,
-          amount: normalizedAmount,
-          mode: "per_tx",
-        },
-        tx: {
-          to: assetAddress,
-          data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, normalizedAmount]),
-          value: "0",
-          gasLimit: gasLimitWithFallback(approveGas, 80_000, buffer),
-        },
-        metadata: {
-          capCheckAmountUsd: 0,
-          opportunityId: queueItem.opportunityId,
-          protocol: queueItem.protocolId,
-          vaultAddress,
-          assetAddress,
-          tinyLiveCanary,
-          ...parentApprovalMetadata,
-        },
-      }),
-    }] : []),
+    ...(allowanceNeedsZeroReset
+      ? [
+          {
+            id: "reset_asset_allowance",
+            intent: buildIntent({
+              strategyId,
+              chain,
+              amountUsd: 0,
+              now,
+              ttlMs: strategyCaps.intentTtlMs,
+              intentType: "approve_exact",
+              approval: {
+                token: assetAddress,
+                spender: vaultAddress,
+                amount: "0",
+                mode: "per_tx",
+              },
+              tx: {
+                to: assetAddress,
+                data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, "0"]),
+                value: "0",
+                gasLimit: gasLimitWithFallback(approveGas, 80_000, buffer),
+              },
+              metadata: {
+                capCheckAmountUsd: 0,
+                opportunityId: queueItem.opportunityId,
+                protocol: queueItem.protocolId,
+                vaultAddress,
+                assetAddress,
+                tinyLiveCanary,
+                ...parentApprovalMetadata,
+                approvalResetReason: "existing_allowance_below_required_amount",
+              },
+            }),
+          },
+        ]
+      : []),
+    ...(!allowanceCoversAmount
+      ? [
+          {
+            id: "approve_asset_to_vault",
+            intent: buildIntent({
+              strategyId,
+              chain,
+              amountUsd: 0,
+              now,
+              ttlMs: strategyCaps.intentTtlMs,
+              intentType: "approve_exact",
+              approval: {
+                token: assetAddress,
+                spender: vaultAddress,
+                amount: normalizedAmount,
+                mode: "per_tx",
+              },
+              tx: {
+                to: assetAddress,
+                data: ERC20_INTERFACE.encodeFunctionData("approve", [vaultAddress, normalizedAmount]),
+                value: "0",
+                gasLimit: gasLimitWithFallback(approveGas, 80_000, buffer),
+              },
+              metadata: {
+                capCheckAmountUsd: 0,
+                opportunityId: queueItem.opportunityId,
+                protocol: queueItem.protocolId,
+                vaultAddress,
+                assetAddress,
+                tinyLiveCanary,
+                ...parentApprovalMetadata,
+              },
+            }),
+          },
+        ]
+      : []),
     {
       id: "deposit_asset_to_vault",
       intent: depositIntent,
@@ -416,6 +473,8 @@ export async function executeErc4626ProtocolCanaryPlan({
   plan,
   sendCommand = sendSignerCommand,
   receiptIngest = appendExecutionReceiptReconciliation,
+  appendCapitalAuditPairImpl = appendCapitalAuditPair,
+  dataDir = config.dataDir,
   readErc20BalanceImpl,
   readNativeBalanceImpl,
   estimateGasImpl = estimateGas,
@@ -474,7 +533,11 @@ export async function executeErc4626ProtocolCanaryPlan({
       } catch {
         depositGas = { gasUnits: DEFAULT_DEPOSIT_GAS_UNITS };
       }
-      step.intent.tx.gasLimit = gasLimitWithFallback(depositGas, DEFAULT_DEPOSIT_GAS_UNITS, DEFAULT_GATEWAY_GAS_BUFFER_BPS);
+      step.intent.tx.gasLimit = gasLimitWithFallback(
+        depositGas,
+        DEFAULT_DEPOSIT_GAS_UNITS,
+        DEFAULT_GATEWAY_GAS_BUFFER_BPS,
+      );
     }
 
     const result = await sendCommand({
@@ -499,7 +562,16 @@ export async function executeErc4626ProtocolCanaryPlan({
         fallbackMessage: `Signer did not complete ${step.id}`,
       });
     }
-    stepResults.push({ id: step.id, signerResult: result });
+    const capitalAuditClosure =
+      step.intent.intentType === "approve_exact"
+        ? null
+        : await closeConfirmedCapitalAuditPair({
+            step,
+            result,
+            dataDir,
+            appendCapitalAuditPairImpl,
+          });
+    stepResults.push({ id: step.id, signerResult: result, capitalAuditClosure });
   }
 
   const shareProof = await waitForEvmAssetDelta({
@@ -634,7 +706,17 @@ export async function executeErc4626ProtocolCanaryPlan({
       fallbackMessage: "Signer did not complete erc4626_redeem",
     });
   }
-  stepResults.push({ id: "redeem_shares_from_vault", signerResult: redeemResult });
+  const redeemStep = { id: "redeem_shares_from_vault", intent: redeemIntent };
+  stepResults.push({
+    id: "redeem_shares_from_vault",
+    signerResult: redeemResult,
+    capitalAuditClosure: await closeConfirmedCapitalAuditPair({
+      step: redeemStep,
+      result: redeemResult,
+      dataDir,
+      appendCapitalAuditPairImpl,
+    }),
+  });
 
   const redeemProof = await waitForEvmAssetDelta({
     asset: plan.asset,
@@ -674,14 +756,15 @@ export async function executeErc4626ProtocolCanaryPlan({
     shareBalanceAfter,
     shareProof,
     redeemProof,
-    destinationProof: redeemProof.status === "delivered"
-      ? {
-          status: "delivered",
-          proofSource: redeemProof.proofSource,
-          observedDelta: redeemProof.observedDelta,
-          requiredDelta: redeemProof.requiredDelta,
-        }
-      : null,
+    destinationProof:
+      redeemProof.status === "delivered"
+        ? {
+            status: "delivered",
+            proofSource: redeemProof.proofSource,
+            observedDelta: redeemProof.observedDelta,
+            requiredDelta: redeemProof.requiredDelta,
+          }
+        : null,
   };
   if (typeof receiptIngest !== "function") return execution;
   return {

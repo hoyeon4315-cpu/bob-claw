@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
-import { readLatestJsonlRecord } from "../lib/jsonl-read.mjs";
+import { readJsonl, readLatestJsonlRecord } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
+import { replayAuditForCapitalGaps } from "../executor/capital/audit-replay-startup.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
 import { buildSliceDryRunSummary } from "../strategy/slice-dryrun-summary-builder.mjs";
 
@@ -38,6 +39,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     merklCanaryAutopilotLatest,
     autonomousDiscoveryBoard,
     gatewayGoldReadiness,
+    capitalAuditRecords,
   ] = await Promise.all([
     readJsonIfExists(join(dataDir, "dashboard-status.json")),
     readJsonIfExists(join(dataDir, "gateway-scores.json")),
@@ -51,7 +53,12 @@ export async function loadStrategyExecutionSurfaceInputs({
     readJsonIfExists(join(dataDir, "merkl-canary-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "autonomous-discovery-board.json")),
     readJsonIfExists(join(dataDir, "gateway-gold-readiness-latest.json")),
+    readJsonl(dataDir, "capital-audit-pairs").catch(() => []),
   ]);
+  const capitalAuditState = replayAuditForCapitalGaps({
+    auditRecords: signerAuditRecords,
+    capitalAuditRecords,
+  });
 
   const hydratedDashboardStatus = gatewayGoldReadiness
     ? {
@@ -90,6 +97,7 @@ export async function loadStrategyExecutionSurfaceInputs({
       treasuryInventoryRecords: latestTreasuryInventory ? [latestTreasuryInventory] : [],
       wrappedBtcLoopLiveProof,
       signerAuditRecords,
+      capitalAuditState,
       merklCanaryQueue,
       merklCanaryAutopilotLatest,
       autonomousDiscoveryBoard,

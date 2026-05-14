@@ -148,13 +148,15 @@ test("erc4626 protocol canary auto-selection prefers inventory-ready candidates"
   };
   const inventorySnapshot = {
     native: [{ chain: "base", actual: "100", actualDecimal: 0.001 }],
-    tokens: [{
-      chain: "base",
-      ticker: "USDC",
-      token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      actual: "414771",
-      actualDecimal: 0.414771,
-    }],
+    tokens: [
+      {
+        chain: "base",
+        ticker: "USDC",
+        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        actual: "414771",
+        actualDecimal: 0.414771,
+      },
+    ],
   };
 
   const queueItem = selectErc4626QueueItem(queue, {
@@ -328,4 +330,85 @@ test("erc4626 protocol canary records signer policy rejection instead of throwin
   assert.equal(execution.stepResults[0].id, "approve_asset_to_vault");
   assert.equal(execution.error.name, "SignerRejected");
   assert.equal(execution.error.policy.blockers[0], "max_consecutive_failures_reached");
+});
+
+test("erc4626 protocol canary closes capital-audit pair before redeem intent", async () => {
+  const queueItem = {
+    queueId: "merkl:base-morpho",
+    opportunityId: "base-morpho",
+    chain: "base",
+    protocolId: "morpho",
+    name: "Deposit USDC to Morpho vault",
+    mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+    validationMode: "tiny_live_canary_only",
+    aprPct: 100,
+    protocolBindingPlan: {
+      status: "binding_ready",
+      bindingKind: "erc4626_vault_supply_withdraw",
+      resolvedBinding: {
+        vaultAddress: "0x1111111111111111111111111111111111111111",
+        assetAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        shareTokenAddress: "0x1111111111111111111111111111111111111111",
+        assetSymbol: "USDC",
+        assetDecimals: 6,
+        shareTokenSymbol: "mUSDC",
+      },
+    },
+  };
+  const plan = await buildErc4626ProtocolCanaryPlan({
+    queueItem,
+    senderAddress: "0x2222222222222222222222222222222222222222",
+    amount: "1000000",
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    readErc20AllowanceImpl: async () => ({ allowance: 2_000_000n, rpcUrl: "memory" }),
+    now: "2026-05-14T00:00:00.000Z",
+  });
+  const order = [];
+  const closures = [];
+  let depositSent = false;
+  let redeemSent = false;
+
+  const execution = await executeErc4626ProtocolCanaryPlan({
+    plan,
+    dataDir: "/tmp/erc4626-capital-audit-test",
+    appendCapitalAuditPairImpl: async (_dataDir, closure) => {
+      order.push(`append:${closure.strategyId}:${closure.status}`);
+      closures.push(closure);
+      return "/tmp/erc4626-capital-audit-test/capital-audit-pairs.jsonl";
+    },
+    readErc20BalanceImpl: async (_chain, token) => {
+      const normalized = token.toLowerCase();
+      if (normalized === plan.assetAddress.toLowerCase()) {
+        return { balance: redeemSent ? 1_950_000n : 2_000_000n, rpcUrl: "memory" };
+      }
+      return { balance: depositSent && !redeemSent ? 1_000_000n : 0n, rpcUrl: "memory" };
+    },
+    estimateGasImpl: async () => ({ gasUnits: 50_000 }),
+    sendCommand: async ({ message }) => {
+      order.push(`send:${message.intent.intentType}`);
+      if (message.intent.intentType === "erc4626_deposit") depositSent = true;
+      if (message.intent.intentType === "erc4626_redeem") redeemSent = true;
+      return {
+        status: "ok",
+        broadcast: { txHash: `0x${message.intent.intentType}` },
+        receipt: { status: 1, transactionHash: `0x${message.intent.intentType}` },
+        policy: { decision: "ALLOW", blockers: [] },
+      };
+    },
+    sleepImpl: async () => {},
+    settlementTimeoutMs: 1,
+    pollIntervalMs: 0,
+  });
+
+  assert.equal(execution.settlementStatus, "delivered");
+  assert.deepEqual(order, [
+    "send:erc4626_deposit",
+    "append:gateway_native_asset_conversion_sleeve:closed",
+    "send:erc4626_redeem",
+    "append:gateway_native_asset_conversion_sleeve:closed",
+  ]);
+  assert.equal(closures.length, 2);
+  assert.equal(closures[0].stage, "post_reconciliation");
+  assert.equal(closures[0].validation.ok, true);
+  assert.equal(closures[1].validation.ok, true);
 });
