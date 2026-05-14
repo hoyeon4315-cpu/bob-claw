@@ -591,6 +591,148 @@ test("family surface report keeps Pendle visible when pendle-yt-canary has queue
   assert.equal(pendle.firstBlockingReason, "NO_RECEIPT_RECONCILIATION");
 });
 
+test("selector promotes Pendle direct YT candidate with live Base USDC entry inventory into policy attempt", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: {
+        summary: {
+          queueCount: 1,
+          byStrategy: { "pendle-yt-canary": 1 },
+          pendleYtCount: 1,
+          pendleYtCanaryReadyCount: 1,
+        },
+        queue: [
+          {
+            queueId: "merkl:pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+            opportunityId: "pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+            chain: "base",
+            protocolId: "pendle",
+            protocolName: "Pendle",
+            name: "apxUSD",
+            family: "stable_fixed_yield",
+            entryAssets: ["apxUSD"],
+            mappedStrategyId: "pendle-yt-canary",
+            executionSurface: "fixedYield",
+            campaignRemainingHours: 817.79,
+            aprPct: 15.94393987912397,
+            nativeAprPct: 15.94393987912397,
+            capabilityGaps: ["current_inventory_entry_route_required"],
+            protocolBindingPlan: {
+              status: "binding_ready",
+              protocolId: "pendle",
+              bindingKind: "pendle_yt_buy_sell_redeem",
+              resolvedBinding: {
+                marketAddress: "0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+                ytTokenAddress: "0xf90c9350ed4a91121167ad40a79ec5852c6018e2",
+                assetAddress: "0xd993935e13851dd7517af10687ec7e5022127228",
+                assetSymbol: "apxUSD",
+                assetDecimals: 18,
+                shareTokenAddress: "0x25cb814c094b3ee4b19bfcab4c190c53d7890635",
+                maturity: "2026-06-18T00:00:00.000Z",
+                ytExpiry: "2026-06-18T00:00:00.000Z",
+                impliedAprPct: 15.94393987912397,
+                entryTokenAddresses: [
+                  "0xd993935e13851dd7517af10687ec7e5022127228",
+                  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                ],
+                exitQuote: {
+                  source: "pendle_fair_value_model",
+                  outputUsd: 10,
+                  depthUsd: 10000,
+                  slippageBps: 5,
+                  costUsd: 0.305,
+                },
+              },
+            },
+            pendleYt: {
+              family: "pendle_yt",
+              ev: {
+                policyProfile: "pendle_yt_tiny_canary_ev_v2",
+                status: "positive_ev",
+                canaryReady: true,
+                blockers: [],
+                notionalUsd: 10,
+                maturity: "2026-06-18T00:00:00.000Z",
+                maturityHours: 817.79,
+                holdDays: 33.07,
+                aprPct: 15.94393987912397,
+                rewardHaircutPct: 0,
+                hasRewardToken: false,
+                effectiveAprPct: 15.94393987912397,
+                grossYieldUsd: 0.1444772077685413,
+                entryCostUsd: 0.01,
+                exitCostUsd: 0.01,
+                gasCostUsd: 0.05,
+                chainCostProfile: "base",
+                expectedNetUsd: 0.0744772077685413,
+                exitQuote: {
+                  outputUsd: 10,
+                  depthUsd: 10000,
+                  slippageBps: 5,
+                  source: "pendle_fair_value_model",
+                },
+              },
+            },
+            executionReadiness: {
+              status: "inventory_unknown",
+              reasons: ["inventory_snapshot_missing"],
+              executorSupported: true,
+              matchedToken: null,
+            },
+            autoEntry: {
+              status: "blocked",
+              blockers: ["inventory_unknown"],
+            },
+          },
+        ],
+      },
+      campaignAware: { candidates: [] },
+      capitalManagerRefill: {
+        capitalPlan: {
+          inventory: {
+            tokens: [
+              {
+                chain: "base",
+                token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                ticker: "USDC",
+                actualDecimal: 25262.222885,
+                estimatedUsd: 25262.222885,
+                status: "over_max_active",
+                staleFallback: false,
+                scanError: null,
+              },
+            ],
+          },
+        },
+      },
+    }),
+  );
+
+  const selected = report.selection.selectedCandidate;
+  assert.ok(selected);
+  assert.equal(selected.source, "pendle");
+  assert.equal(selected.strategyId, "pendle-yt-canary");
+  assert.equal(selected.opportunityId, "pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e");
+  assert.equal(selected.asset, "USDC");
+  assert.equal(selected.expectedRealizedNetUsd, 0.074477);
+  assert.equal(selected.routeRefillBinding.ready, true);
+  assert.equal(selected.metadata.inventoryProof.asset, "USDC");
+  assert.equal(selected.metadata.inventoryProof.token, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  assert.equal(selected.signerIntentAvailability.ready, true);
+  assert.equal(selected.signerIntentAvailability.intentType, "pendle_yt_entry");
+  assert.equal(selected.signerIntentAvailability.builder, "pendle_direct_canary");
+  assert.equal(selected.blockers.includes("inventory_unknown"), false);
+  assert.equal(selected.blockers.includes("live_inventory_entry_asset_not_found"), false);
+  assert.equal(selected.blockers.includes("current_inventory_entry_route_required"), false);
+  assert.equal(report.selection.status, "POLICY_ATTEMPTED");
+
+  const pendleFamily = report.familyCoverage.find((row) => row.family === "pendle");
+  assert.ok(pendleFamily);
+  assert.equal(pendleFamily.policyEligibleCandidateCount, 1);
+  assert.equal(pendleFamily.signerIntentReadyCount, 1);
+  assert.equal(pendleFamily.firstBlockingReason, null);
+});
+
 test("family surface report does not call blocked Radar DefiLlama Merkl stable BTC gold or catalog surfaces NO_CANDIDATE", async () => {
   const report = await buildAllSourceDeploymentSelectorReport(
     baseInputs({

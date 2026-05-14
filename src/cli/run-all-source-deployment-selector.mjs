@@ -64,6 +64,11 @@ async function runJsonNode(script, args = [], { timeout = 180_000 } = {}) {
 async function collectFreshInputs({ timeout }) {
   const capitalAuditInputs = await collectCapitalAuditInputs({ dataDir: config.dataDir });
   const capitalAudit = buildCapitalAuditReport(capitalAuditInputs);
+  const pendleDirectCanaries = await runJsonNode(
+    "src/cli/report-pendle-direct-canaries.mjs",
+    ["--json", "--write", "--sdk-tokens"],
+    { timeout },
+  ).catch(() => null);
   const [
     unifiedCapital,
     killStatus,
@@ -99,6 +104,7 @@ async function collectFreshInputs({ timeout }) {
     capitalAudit,
     signerAuditRecords: capitalAuditInputs.signerAuditRecords || [],
     protocolPositionMarks: capitalAuditInputs.protocolPositionMarks || [],
+    pendleDirectCanaries,
     unifiedCapital,
     killStatus,
     merklOpportunities,

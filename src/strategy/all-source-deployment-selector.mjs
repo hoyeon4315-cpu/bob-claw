@@ -8,6 +8,7 @@ import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/
 import { evaluateIntentPolicies } from "../executor/policy/index.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
 import { resolveExitExecutor, resolveIntentType } from "../executor/protocol-binding-registry.mjs";
+import { evaluatePendleYtEv } from "./pendle-yt-ev.mjs";
 
 export const ALL_SOURCE_DEPLOYMENT_SOURCES = Object.freeze([
   "pendle",
@@ -198,7 +199,7 @@ function findLiveInventoryToken({ capitalManagerRefill = {}, chain, asset, token
     const rowTicker = String(row?.ticker || row?.symbol || row?.asset || "").toLowerCase();
     const rowAddress = row?.token || row?.address ? String(row.token || row.address).toLowerCase() : null;
     if (rowChain !== targetChain) return false;
-    if (targetAddress && rowAddress === targetAddress) return true;
+    if (targetAddress) return rowAddress === targetAddress;
     return targetAsset && rowTicker === targetAsset;
   });
 }
@@ -233,6 +234,42 @@ function liveInventoryProof({ capitalManagerRefill, chain, asset, tokenAddress, 
     staleFallback: row.staleFallback === true,
     scanError: row.scanError || null,
   };
+}
+
+function liveInventoryProofForTokenSet({
+  capitalManagerRefill,
+  chain,
+  asset,
+  tokenAddress,
+  alternativeTokenAddresses = [],
+  requiredUsd,
+} = {}) {
+  const addresses = unique(
+    [tokenAddress, ...array(alternativeTokenAddresses)].map((value) => String(value).toLowerCase()),
+  );
+  const proofs = addresses
+    .map((address) =>
+      liveInventoryProof({
+        capitalManagerRefill,
+        chain,
+        asset,
+        tokenAddress: address,
+        requiredUsd,
+      }),
+    )
+    .filter((proof) => proof.reason !== "live_inventory_entry_asset_not_found");
+  if (!proofs.length) {
+    return liveInventoryProof({ capitalManagerRefill, chain, asset, tokenAddress, requiredUsd });
+  }
+  const readyProof = proofs
+    .filter((proof) => proof.ready === true)
+    .sort((left, right) => finiteNumber(right.estimatedUsd, 0) - finiteNumber(left.estimatedUsd, 0))[0];
+  if (readyProof) return readyProof;
+  const insufficientProof = proofs
+    .filter((proof) => proof.status === "insufficient")
+    .sort((left, right) => finiteNumber(right.estimatedUsd, 0) - finiteNumber(left.estimatedUsd, 0))[0];
+  if (insufficientProof) return insufficientProof;
+  return proofs[0];
 }
 
 function inventorySnapshotForSelector(capitalManagerRefill = {}) {
@@ -1131,14 +1168,139 @@ function normalizeGoldReserveCandidates({ strategyCatalog = {}, merklCandidates 
   return [...fromCatalog, ...fromMerkl];
 }
 
-function normalizePendleCandidates({ pendleCandidates = [], strategyCatalog = {}, activeCapitalUsd = null }) {
+function normalizePendleCandidates({
+  pendleCandidates = [],
+  merklQueue = {},
+  strategyCatalog = {},
+  capitalManagerRefill = {},
+  activeCapitalUsd = null,
+  now = null,
+}) {
   const explicit = array(pendleCandidates);
+  const queuePendle = array(merklQueue.queue).filter(
+    (row) =>
+      String(row?.protocolId || "").toLowerCase() === "pendle" ||
+      row?.protocolBindingPlan?.bindingKind === "pendle_yt_buy_sell_redeem" ||
+      row?.pendleYt?.ev,
+  );
   const catalog = [
     ...array(strategyCatalog.btcFamilies),
     ...array(strategyCatalog.entries),
     ...array(strategyCatalog.strategies),
   ].filter((row) => /pendle/i.test(`${row.id || ""} ${row.label || ""} ${row.protocol || ""}`));
-  return [...explicit, ...catalog].map((row) =>
+  const normalizedQueue = queuePendle.map((item) => {
+    const bindingPlan = item.protocolBindingPlan || {};
+    const binding = bindingPlan.resolvedBinding || item.protocolBinding || {};
+    const ev = item.pendleYt?.ev || evaluatePendleYtEv(item, { now });
+    const totalCostUsd =
+      finiteNumber(ev?.entryCostUsd, 0) + finiteNumber(ev?.exitCostUsd, 0) + finiteNumber(ev?.gasCostUsd, 0);
+    const inventoryProof = liveInventoryProofForTokenSet({
+      capitalManagerRefill,
+      chain: item.chain,
+      asset: binding.assetSymbol || first(item.entryAssets) || item.name || "yt_entry_asset",
+      tokenAddress: binding.assetAddress,
+      alternativeTokenAddresses: binding.entryTokenAddresses,
+      requiredUsd: ev?.notionalUsd,
+    });
+    const blockers = unique([
+      ...array(ev?.blockers),
+      ...array(item.autoEntry?.blockers).filter(
+        (blocker) => !/inventory_unknown|inventory_missing|inventory_snapshot_missing/u.test(String(blocker)),
+      ),
+      ...array(item.capabilityGaps).filter((blocker) => blocker !== "current_inventory_entry_route_required"),
+      bindingPlan.status && bindingPlan.status !== "binding_ready" ? bindingPlan.status : null,
+      item.executionReadiness?.executorSupported === true ? null : "protocol_executor_required",
+      inventoryProof.ready === true
+        ? null
+        : inventoryProof.reason || item.executionReadiness?.status || "inventory_unknown",
+      item.executionReadiness?.status === "inventory_unknown" && inventoryProof.ready === true
+        ? null
+        : item.executionReadiness?.status && item.executionReadiness.status !== "inventory_ready"
+          ? item.executionReadiness.status
+          : null,
+    ]);
+    const bindingKind = bindingPlan.bindingKind || null;
+    const intentType = resolveIntentType(bindingKind);
+    const signerIntentAvailability =
+      bindingPlan.status !== "binding_ready"
+        ? {
+            ready: false,
+            reason: bindingPlan.status || "protocol_binding_not_ready",
+            bindingKind,
+            intentType,
+            builder: null,
+          }
+        : !intentType
+          ? {
+              ready: false,
+              reason: "deterministic_signer_intent_builder_missing",
+              bindingKind,
+              intentType: null,
+              builder: null,
+            }
+          : item.executionReadiness?.executorSupported !== true
+            ? {
+                ready: false,
+                reason: "protocol_executor_required",
+                bindingKind,
+                intentType,
+                builder: "pendle_direct_canary",
+              }
+            : inventoryProof.ready !== true
+              ? {
+                  ready: false,
+                  reason: inventoryProof.reason || "live_inventory_entry_route_required",
+                  bindingKind,
+                  intentType,
+                  builder: "pendle_direct_canary",
+                }
+              : blockers.length > 0
+                ? { ready: false, reason: first(blockers), bindingKind, intentType, builder: "pendle_direct_canary" }
+                : { ready: true, reason: null, bindingKind, intentType, builder: "pendle_direct_canary" };
+    return makeCandidate(
+      {
+        source: "pendle",
+        strategyId: item.mappedStrategyId || "pendle-yt-canary",
+        chain: item.chain || "base",
+        asset: inventoryProof.asset || first(item.entryAssets) || binding.assetSymbol || item.name || "pt_or_yt",
+        protocol: item.protocolId || "pendle",
+        opportunityId: item.opportunityId || item.queueId || binding.marketAddress || "pendle",
+        executorBinding: emptyBinding(
+          item.executionReadiness?.executorSupported === true && bindingPlan.status === "binding_ready"
+            ? "ready"
+            : "missing",
+          {
+            bindingKind,
+            market: binding.marketAddress || null,
+          },
+        ),
+        routeRefillBinding: {
+          status: inventoryProof.ready === true ? "ready" : "inventory_or_refill_required",
+          ready: inventoryProof.ready === true,
+          inventoryProof,
+        },
+        notionalUsd: ev?.notionalUsd || item.notionalUsd || 0,
+        holdPeriodDays: ev?.holdDays ?? item.holdPeriodDays ?? null,
+        expectedGrossYieldUsd: ev?.grossYieldUsd ?? null,
+        rewardHaircut: finiteNumber(ev?.rewardHaircutPct) === null ? null : ev.rewardHaircutPct / 100,
+        refillBridgeGasSlippageClaimSwapExitCostUsd: totalCostUsd,
+        p90CostFloorUsd: totalCostUsd,
+        expectedRealizedNetUsd: ev?.expectedNetUsd ?? null,
+        blockers,
+        signerIntentAvailability,
+        metadata: {
+          queueId: item.queueId || null,
+          protocolBindingPlan: bindingPlan,
+          pendleYtEv: ev,
+          inventoryProof,
+          underlyingAsset: binding.assetSymbol || item.name || null,
+          entryTokenAddresses: array(binding.entryTokenAddresses),
+        },
+      },
+      { activeCapitalUsd },
+    );
+  });
+  const normalizedExplicit = [...explicit, ...catalog].map((row) =>
     makeCandidate(
       {
         source: "pendle",
@@ -1162,6 +1324,7 @@ function normalizePendleCandidates({ pendleCandidates = [], strategyCatalog = {}
       { activeCapitalUsd },
     ),
   );
+  return [...normalizedQueue, ...normalizedExplicit];
 }
 
 function buildIntent(candidate, now) {
@@ -1370,9 +1533,11 @@ function addCandidateFamilyCoverage(rows, candidate) {
 }
 
 function addMerklQueueFamilyCoverage(rows, merklQueue = {}) {
+  let pendleQueueCount = 0;
   for (const item of array(merklQueue.queue)) {
     const families = familySetForSurface({ ...item, source: "merkl" });
     for (const family of families) {
+      if (family === "pendle") pendleQueueCount += 1;
       addFamilySurface(rows, family, {
         discoveredCandidateCount: 1,
         activePositionCount: item.executionReadiness?.openPosition ? 1 : 0,
@@ -1390,10 +1555,14 @@ function addMerklQueueFamilyCoverage(rows, merklQueue = {}) {
     finiteNumber(merklQueue.summary?.pendleYtCount, 0),
     finiteNumber(merklQueue.summary?.byStrategy?.["pendle-yt-canary"], 0),
   );
-  if (pendleSummaryCount > 0) {
+  if (pendleSummaryCount > pendleQueueCount) {
     addFamilySurface(rows, "pendle", {
-      discoveredCandidateCount: pendleSummaryCount,
-      signerIntentReadyCount: finiteNumber(merklQueue.summary?.pendleYtCanaryReadyCount, 0),
+      discoveredCandidateCount: pendleSummaryCount - pendleQueueCount,
+      signerIntentReadyCount: Math.max(
+        0,
+        finiteNumber(merklQueue.summary?.pendleYtCanaryReadyCount, 0) -
+          array(merklQueue.queue).filter((item) => item?.pendleYt?.ev?.canaryReady === true).length,
+      ),
       blockingReason: "NO_POLICY_ELIGIBLE_TRADE",
       actionCandidates: ["refill_or_increase"],
     });
