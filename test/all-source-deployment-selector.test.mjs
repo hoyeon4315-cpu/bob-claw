@@ -452,6 +452,20 @@ test("family surface uses same-tick inventory proof before reporting the top EV-
           },
         ],
       },
+      merklOpportunities: {
+        opportunities: [
+          {
+            opportunityId: "zyfai-usdc",
+            chain: "base",
+            protocolId: "zyfai",
+            type: "ENCOMPASSING",
+            action: "DROP",
+            identifier: "0x4bE0228D40Db5Ca43e4eCf93E633be4b9fC52229",
+            explorerAddress: null,
+            protocolBinding: null,
+          },
+        ],
+      },
       capitalManagerRefill: {
         capitalPlan: {
           inventory: {
@@ -481,13 +495,15 @@ test("family surface uses same-tick inventory proof before reporting the top EV-
   assert.equal(candidate.routeRefillBinding.ready, true);
   assert.equal(candidate.metadata.inventoryProof.status, "ready");
   assert.equal(candidate.blockers.includes("inventory_unknown"), false);
+  assert.ok(candidate.blockers.includes("merkl_drop_campaign_entry_contract_missing"));
+  assert.ok(candidate.blockers.includes("protocol_binding_identifier_has_no_code"));
   assert.equal(candidate.signerIntentAvailability.ready, false);
-  assert.equal(candidate.signerIntentAvailability.reason, "unsupported_protocol_binding");
+  assert.equal(candidate.signerIntentAvailability.reason, "merkl_drop_campaign_entry_contract_missing");
 
   const merkl = report.familyCoverage.find((row) => row.family === "merkl");
   const stable = report.familyCoverage.find((row) => row.family === "stable_carry");
-  assert.equal(merkl.firstBlockingReason, "protocol_binding_not_ready");
-  assert.equal(stable.firstBlockingReason, "protocol_binding_not_ready");
+  assert.equal(merkl.firstBlockingReason, "merkl_drop_campaign_entry_contract_missing");
+  assert.equal(stable.firstBlockingReason, "merkl_drop_campaign_entry_contract_missing");
 });
 
 test("family surface proves fresh Radar zero instead of leaving NO_SURFACE_EVIDENCE", async () => {

@@ -406,10 +406,35 @@ function removeResolvedMerklBlockers(blockers, { inventoryReady, rewardExitProof
   });
 }
 
+function merklExecutableBindingBlockers({ item = {}, merklOpportunity = {} } = {}) {
+  const bindingPlan = item.protocolBindingPlan || {};
+  if (bindingPlan.status === "binding_ready") return [];
+  const type = String(merklOpportunity.type || item.type || "").toUpperCase();
+  const action = String(merklOpportunity.action || item.action || "").toUpperCase();
+  const dropLike = action === "DROP" || type === "ENCOMPASSING";
+  if (!dropLike) return [];
+  const resolvedBinding = bindingPlan.resolvedBinding || merklOpportunity.protocolBinding || {};
+  const executableAddressFields = ["vaultAddress", "poolAddress", "marketAddress", "cometAddress", "cTokenAddress"];
+  if (executableAddressFields.some((field) => resolvedBinding[field]) || merklOpportunity.explorerAddress) return [];
+  return ["merkl_drop_campaign_entry_contract_missing", "protocol_binding_identifier_has_no_code"];
+}
+
 function merklSignerIntentAvailability({ item = {}, inventoryProof = {}, blockers = [] } = {}) {
   const bindingPlan = item.protocolBindingPlan || {};
   const bindingKind = bindingPlan.bindingKind || null;
   const intentType = resolveIntentType(bindingKind);
+  const executableBindingBlocker = array(blockers).find((blocker) =>
+    /merkl_drop_campaign_entry_contract_missing|protocol_binding_identifier_has_no_code/.test(blocker),
+  );
+  if (executableBindingBlocker) {
+    return {
+      ready: false,
+      reason: executableBindingBlocker,
+      bindingKind,
+      intentType,
+      builder: null,
+    };
+  }
   if (bindingPlan.status !== "binding_ready") {
     return {
       ready: false,
@@ -571,6 +596,7 @@ function normalizeMerklCandidates({
     const expectedNetUsd = grossUsd === null ? campaign.expectedNetProfitUsd : grossUsd - finiteNumber(costs, 0);
     const blockers = removeResolvedMerklBlockers(
       [
+        ...merklExecutableBindingBlockers({ item, merklOpportunity }),
         ...array(item.autoEntry?.blockers),
         ...array(campaign.blockers),
         item.executionReadiness?.status && item.executionReadiness.status !== "inventory_ready"
