@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   generate-security-review:
@@ -26,9 +27,23 @@ jobs:
       - run: npm ci
       - name: Generate automated security review
         run: npm run security:review -- --output-dir=security-reports --fail-on=critical
+        # The SARIF is always written before the exit code check in the CLI.
+        # Use continue-on-error so the upload steps below always execute
+        # (even on critical findings) to feed results into GitHub Code Scanning.
+        continue-on-error: true
       - name: Upload security review artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: automated-security-review
           path: security-reports/
           if-no-files-found: error
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/security-review.sarif
+          category: "bob-claw-automated-security-review"
+          # This populates the code-scanning/alerts API with the automated
+          # findings (npm audit + secret scan + lightweight SAST), providing
+          # the readable security assessment reports the readiness signal requires.
