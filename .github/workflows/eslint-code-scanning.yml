@@ -1,0 +1,46 @@
+name: "ESLint Code Scanning"
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  eslint:
+    name: ESLint analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint and generate SARIF
+        # Use the Microsoft SARIF formatter to produce GitHub code-scanning compatible output.
+        # This populates the code quality / maintainability metrics dashboard
+        # (Security tab > Code scanning) with historical ESLint results.
+        run: npx eslint . --format @microsoft/eslint-formatter-sarif --output-file eslint-results.sarif
+        # Do not fail the scanning job on lint errors — we want all issues reported
+        # to the dashboard for tracking. The regular "lint" job still enforces quality.
+        continue-on-error: true
+
+      - name: Upload SARIF results to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: eslint-results.sarif
+          category: "eslint"
+          # Results will be available via the code-scanning API and visible
+          # in the repository's code quality / security dashboard with trends over time.
