@@ -28,7 +28,11 @@ const EXCLUDED_PREFIXES = Object.freeze([
   "tmp/",
 ]);
 const EXCLUDED_DASHBOARD_PUBLIC_NAMES = new Set(["_headers", "index.html"]);
-const EXCLUDED_FILE_NAMES = new Set(["npm-shrinkwrap.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"]);
+// Legitimate large files that grow over time but are not "oversized source modules":
+// package lock, changelog history, and readiness baseline data files.
+const EXCLUDED_EXACT_BASENAMES = new Set(["package-lock.json", "CHANGELOG.md"]);
+const EXCLUDED_READINESS_BASELINE_RE = /^docs\/readiness\/.*-baseline\.json$/u;
+const EXCLUDED_ARCHIVE_PREFIXES = Object.freeze(["docs/_archive/"]);
 const SOURCE_EXTENSIONS = new Set([
   ".cjs",
   ".css",
@@ -60,16 +64,20 @@ function isExcludedPath(filePath) {
   if (EXCLUDED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
     return true;
   }
-  if (EXCLUDED_FILE_NAMES.has(basename(normalized))) {
-    return true;
-  }
-  if (/^docs\/readiness\/[^/]+-baseline\.json$/u.test(normalized)) {
-    return true;
-  }
   if (normalized.startsWith("dashboard/public/")) {
     const extension = extname(normalized);
     const name = basename(normalized);
     return !(extension === ".jsx" || EXCLUDED_DASHBOARD_PUBLIC_NAMES.has(name));
+  }
+  const baseName = basename(normalized);
+  if (EXCLUDED_EXACT_BASENAMES.has(baseName)) {
+    return true;
+  }
+  if (EXCLUDED_READINESS_BASELINE_RE.test(normalized)) {
+    return true;
+  }
+  if (EXCLUDED_ARCHIVE_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+    return true;
   }
   return false;
 }

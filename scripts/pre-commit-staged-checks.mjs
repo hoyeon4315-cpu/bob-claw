@@ -4,7 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const PRETTIER_EXTENSIONS = new Set([".cjs", ".html", ".js", ".json", ".jsx", ".md", ".mjs", ".yaml", ".yml"]);
-const NODE_CHECK_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
+const NODE_CHECK_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs"]);
 const GENERATED_PREFIXES = Object.freeze([
   ".cloudflare/",
   ".playwright-cli/",
@@ -134,6 +134,13 @@ function runChecks(files) {
   ]);
   if (complexityStatus !== 0) {
     return complexityStatus;
+  }
+
+  if (plan.includedFiles.length > 0) {
+    const largeFilesStatus = runCommand(process.execPath, ["scripts/check-large-files.mjs", ...plan.includedFiles]);
+    if (largeFilesStatus !== 0) {
+      return largeFilesStatus;
+    }
   }
 
   if (plan.nodeTestFiles.length > 0) {
