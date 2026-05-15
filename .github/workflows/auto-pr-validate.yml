@@ -17,6 +17,7 @@ on:
       - "docs/readiness/dead-feature-flags.md"
       - "docs/structured-logging.md"
       - "docs/trace-context.md"
+      - "docs/readiness/metrics-collection.md"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
@@ -31,6 +32,8 @@ on:
       - "src/cli/check-structured-logger.mjs"
       - "src/trace-context.mjs"
       - "src/cli/check-trace-context.mjs"
+      - "src/metrics/registry.mjs"
+      - "src/cli/report-metrics-snapshot.mjs"
       - "scripts/**"
       - "test/**"
 
@@ -55,6 +58,7 @@ jobs:
       - run: npm run perf:check:dead-feature-flags
       - run: npm run perf:check:structured-logger
       - run: npm run perf:check:trace-context
+      - run: npm run perf:check:metrics-collection
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:agents-freshness
       - run: npm run perf:check:large-files
