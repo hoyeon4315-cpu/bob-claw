@@ -4,6 +4,7 @@ import { OPERATOR_COOLDOWN_WAIVERS } from "../config/operator-waivers.mjs";
 import { computeTinyCanaryMinProfitablePositionUsd, resolveTinyCanaryExpectedHoldDays } from "../config/sizing.mjs";
 import { evaluateNonPrimaryEntryPolicy } from "./non-primary-entry-policy.mjs";
 import { selectMerklCanaryAutopilotCandidate } from "../executor/merkl-canary-autopilot.mjs";
+import { evGate } from "../executor/policy/ev-gate.mjs";
 
 const LIVE_TRADING_ALLOWED = new Set(["ALLOWED", "ENABLED"]);
 const FLASH_LIVE_ALLOWED = new Set(["ALLOWED", "ENABLED", "approved"]);
@@ -185,12 +186,59 @@ function wrappedBtcLoopLiveCapUsd(baseCbBtcCollateral = null) {
 }
 
 function wrappedBtcLoopExpectedNetReady(wrappedBtcLendingLoopSlice = null, validation = null) {
-  return [
+  const readinessFlags = [
     wrappedBtcLendingLoopSlice?.liveExecutionPolicy?.expectedNetReady,
     wrappedBtcLendingLoopSlice?.policyPreview?.expectedNetReady,
     wrappedBtcLendingLoopSlice?.executorIntentPreview?.expectedNetReady,
     validation?.evidence?.perIntentExpectedNetReady,
-  ].some((value) => value === true);
+  ];
+  if (readinessFlags.some((value) => value === true)) return true;
+  return [
+    wrappedBtcLendingLoopSlice?.liveExecutionPolicy?.expectedNetUsd,
+    wrappedBtcLendingLoopSlice?.policyPreview?.expectedNetUsd,
+    wrappedBtcLendingLoopSlice?.executorIntentPreview?.expectedNetUsd,
+    validation?.evidence?.perIntentExpectedNetUsd,
+    wrappedBtcLendingLoopSlice?.pnl?.estimated?.valueUsd,
+  ].some((value) => Number.isFinite(Number(value)));
+}
+
+function wrappedBtcLoopExpectedNetUsd(wrappedBtcLendingLoopSlice = null, validation = null) {
+  const candidates = [
+    wrappedBtcLendingLoopSlice?.liveExecutionPolicy?.expectedNetUsd,
+    wrappedBtcLendingLoopSlice?.policyPreview?.expectedNetUsd,
+    wrappedBtcLendingLoopSlice?.executorIntentPreview?.expectedNetUsd,
+    validation?.evidence?.perIntentExpectedNetUsd,
+    wrappedBtcLendingLoopSlice?.pnl?.estimated?.valueUsd,
+  ];
+  for (const value of candidates) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return null;
+}
+
+function wrappedBtcLoopEvPreview({
+  strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID,
+  chain = "base",
+  expectedNetUsd = null,
+  amountUsd = null,
+  now = new Date().toISOString(),
+} = {}) {
+  const numericExpectedNetUsd = Number(expectedNetUsd);
+  if (!Number.isFinite(numericExpectedNetUsd)) return null;
+  const numericAmountUsd = Number(amountUsd);
+  return evGate(
+    {
+      strategyId,
+      chain,
+      intentType: "wrapped_btc_loop_entry",
+      amountUsd: Number.isFinite(numericAmountUsd) ? numericAmountUsd : undefined,
+      expectedNetUsd: numericExpectedNetUsd,
+      observedAt: now,
+    },
+    null,
+    { now },
+  );
 }
 
 function wrappedBtcLoopProofIsSuccess(proof = null) {
@@ -444,6 +492,14 @@ function buildWrappedBtcLoopExecutorSurface({
     requiredUnits: requiredCollateralUnits,
   });
   const expectedNetReady = wrappedBtcLoopExpectedNetReady(wrappedBtcLendingLoopSlice, validation);
+  const expectedNetUsd = wrappedBtcLoopExpectedNetUsd(wrappedBtcLendingLoopSlice, validation);
+  const evPreview = wrappedBtcLoopEvPreview({
+    strategyId: strategy.id || WRAPPED_BTC_LOOP_STRATEGY_ID,
+    chain: strategy.chain || "base",
+    expectedNetUsd,
+    amountUsd: livePerTradeCapUsd,
+    now,
+  });
   const liveRunControl = evaluateWrappedBtcLoopLiveRunControl({
     liveProof: wrappedBtcLoopLiveProof,
     signerAuditRecords,
@@ -457,7 +513,8 @@ function buildWrappedBtcLoopExecutorSurface({
     dryRunRecorded &&
     collateralReady &&
     !liveRunControl.blocked &&
-    expectedNetReady;
+    expectedNetReady &&
+    evPreview?.allow === true;
   const mode = selectExecutionModeFromPolicy({
     rawLiveEligible,
     fallbackMode: "dry_run",
@@ -470,6 +527,7 @@ function buildWrappedBtcLoopExecutorSurface({
     collateralReady ? null : "base_cbbtc_collateral_unavailable",
     liveRunControl.blocked ? liveRunControl.reason : null,
     expectedNetReady ? null : "expected_net_unmeasured",
+    ...(expectedNetReady ? evPreview?.blockers || [] : []),
   ]);
   const currentLiveEligible = mode.currentLiveEligible && runtimeLiveAllowed;
   const selectedMode = currentLiveEligible
@@ -500,7 +558,12 @@ function buildWrappedBtcLoopExecutorSurface({
       treasuryInventoryObservedAt: baseCbBtcCollateral.observedAt,
       livePerTradeCapUsd,
       expectedNetReady,
+      expectedNetUsd,
       expectedNetPolicySource: expectedNetReady ? "wrapped_btc_loop_policy_preview" : null,
+      expectedNetRequiredUsd: evPreview?.evidence?.requiredNetUsd ?? null,
+      expectedNetP90CostUsd: evPreview?.evidence?.p90CostUsd ?? null,
+      expectedNetCostSource: evPreview?.evidence?.costSource ?? null,
+      expectedNetSampleCount: evPreview?.evidence?.sampleCount ?? null,
       projectedAnnualNetCarryBtc: null,
       projectedAnnualNetCarryUsd: wrappedBtcLendingLoopSlice?.pnl?.paper?.annualNetCarryUsd ?? null,
       estimatedNetCarryBtc: null,

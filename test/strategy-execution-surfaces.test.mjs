@@ -78,11 +78,11 @@ function treasuryInventoryFixture(actual = "33053") {
   ];
 }
 
-function wrappedBtcLoopExpectedNetPolicy() {
+function wrappedBtcLoopExpectedNetPolicy(expectedNetUsd = 6.5) {
   return {
     liveExecutionPolicy: {
       expectedNetReady: true,
-      expectedNetUsd: 0.42,
+      expectedNetUsd,
     },
   };
 }
@@ -730,6 +730,69 @@ test("wrapped BTC loop stays dry-run when per-intent expected net is not measure
   assert.equal(wrapped.fallbackReason, "expected_net_unmeasured");
   assert.equal(wrapped.liveAdmissionBlockers.includes("expected_net_unmeasured"), true);
   assert.equal(wrapped.evidence.expectedNetReady, false);
+  assert.equal(report.summary.liveEligibleCount, 0);
+});
+
+test("wrapped BTC loop stays dry-run when expected net is below the receipt cost floor", () => {
+  const report = buildStrategyExecutionSurfaces({
+    now: "2026-05-06T12:00:00.000Z",
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "ALLOWED",
+        lanePolicy: {
+          candidateId: "wrapped-btc-loop-base-moonwell",
+          stage: "B",
+          policyLiveTrading: "ALLOWED",
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        ...wrappedBtcLoopExpectedNetPolicy(0.42),
+        bindingSupport: {
+          executableFromRepo: true,
+        },
+        dryRunSummary: {
+          dryRunReceiptRecorded: true,
+          signerBackedRunCount: 22,
+        },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: 0.42 },
+          realized: { valueUsd: 0.42 },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+    },
+  });
+
+  const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
+
+  assert.equal(wrapped.currentLiveEligible, false);
+  assert.equal(wrapped.selectedMode, "dry_run");
+  assert.equal(wrapped.fallbackReason, "expected_net_below_receipt_cost_p90_floor");
+  assert.equal(wrapped.liveAdmissionBlockers.includes("expected_net_below_receipt_cost_p90_floor"), true);
+  assert.equal(wrapped.evidence.expectedNetUsd, 0.42);
+  assert.equal(wrapped.evidence.expectedNetRequiredUsd > wrapped.evidence.expectedNetUsd, true);
   assert.equal(report.summary.liveEligibleCount, 0);
 });
 
