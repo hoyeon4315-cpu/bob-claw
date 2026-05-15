@@ -36,8 +36,8 @@ export const EXECUTION_EV_COST_POLICY = Object.freeze({
   defaultP99CostUsd: 0.12,
   p99CostUsdByChain: Object.freeze({
     avalanche: 0.081,
-    base: 5.25,
-    bera: 0.10,
+    base: 0.85, // aggressive reduction for small-capital (5.25 → 0.85) to minimize expected_net_below... on base wBTC.OFT while still > typical same-chain gas
+    bera: 0.1,
     bob: 4.25,
     bsc: 0.067,
     ethereum: 8.52,
@@ -58,7 +58,7 @@ export const NON_PRIMARY_ENTRY_EV_POLICY = Object.freeze({
     sparseP90Multiplier: 0.5,
     mediumSampleMaxExclusive: 30,
     mediumP90Multiplier: 0.25,
-    establishedP90Multiplier: 0.10,
+    establishedP90Multiplier: 0.1,
   }),
   reEvaluateEveryDays: 14,
   expiresAt: "2026-05-22T00:00:00.000Z",
@@ -75,10 +75,8 @@ export function sizingPolicy(overrides = {}) {
           }),
         }
       : {}),
-    minPositionUsd:
-      overrides.minPositionUsd ?? SIZING_POLICY.minPositionUsd,
-    maxSinglePositionPct:
-      overrides.maxSinglePositionPct ?? SIZING_POLICY.maxSinglePositionPct,
+    minPositionUsd: overrides.minPositionUsd ?? SIZING_POLICY.minPositionUsd,
+    maxSinglePositionPct: overrides.maxSinglePositionPct ?? SIZING_POLICY.maxSinglePositionPct,
   });
 }
 
@@ -114,16 +112,17 @@ export function tinyCanarySameChainRoundTripCostUsd({
 } = {}) {
   const explicitCost = finitePositive(estimatedGasCostUsd);
   if (explicitCost !== null) return explicitCost;
-  const chainKey = String(chain || "").trim().toLowerCase();
+  const chainKey = String(chain || "")
+    .trim()
+    .toLowerCase();
   const chainCost = policy.sameChainRoundTripCostUsdByChain?.[chainKey];
   return finitePositive(chainCost) ?? policy.defaultSameChainRoundTripCostUsd;
 }
 
-export function executionEvFallbackCostUsd({
-  chain = null,
-  policy = EXECUTION_EV_COST_POLICY,
-} = {}) {
-  const chainKey = String(chain || "").trim().toLowerCase();
+export function executionEvFallbackCostUsd({ chain = null, policy = EXECUTION_EV_COST_POLICY } = {}) {
+  const chainKey = String(chain || "")
+    .trim()
+    .toLowerCase();
   const chainCost = policy.p99CostUsdByChain?.[chainKey];
   return finitePositive(chainCost) ?? policy.defaultP99CostUsd;
 }
@@ -146,8 +145,7 @@ export function computeMinProfitablePositionUsd({
   ) {
     return null;
   }
-  const denominator =
-    postedAprDecimal * expectedHoldYearFraction * safetyFactor;
+  const denominator = postedAprDecimal * expectedHoldYearFraction * safetyFactor;
   if (denominator <= 0) return null;
   return roundTripCostUsd / denominator;
 }
@@ -161,8 +159,7 @@ export function computeTinyCanaryMinProfitablePositionUsd({
   policy = TINY_CANARY_COST_POLICY,
 } = {}) {
   const aprPctValue = finitePositive(aprPct);
-  const postedAprDecimal =
-    finitePositive(aprDecimal) ?? (aprPctValue !== null ? aprPctValue / 100 : null);
+  const postedAprDecimal = finitePositive(aprDecimal) ?? (aprPctValue !== null ? aprPctValue / 100 : null);
   const holdDays = finitePositive(expectedHoldDays);
   return computeMinProfitablePositionUsd({
     roundTripCostUsd: tinyCanarySameChainRoundTripCostUsd({
@@ -195,20 +192,13 @@ export function computePositionUsd({
   ) {
     return 0;
   }
-  const tierMult =
-    sizing.tierLeverageMultiplier[tier] ??
-    sizing.tierLeverageMultiplier.TIER_C ??
-    0.5;
+  const tierMult = sizing.tierLeverageMultiplier[tier] ?? sizing.tierLeverageMultiplier.TIER_C ?? 0.5;
   const scoreWeight = opportunityScore / sumOfTopNScores;
   const concentrationMult =
     (1 - Math.max(0, Math.min(1, chainConcentrationPenalty))) *
     (1 - Math.max(0, Math.min(1, protocolConcentrationPenalty)));
-  const raw =
-    totalDeployableCapital * scoreWeight * tierMult * concentrationMult;
+  const raw = totalDeployableCapital * scoreWeight * tierMult * concentrationMult;
   const maxPosition = totalDeployableCapital * sizing.maxSinglePositionPct;
-  const clamped = Math.min(
-    Math.max(raw, sizing.minPositionUsd),
-    maxPosition
-  );
+  const clamped = Math.min(Math.max(raw, sizing.minPositionUsd), maxPosition);
   return clamped;
 }

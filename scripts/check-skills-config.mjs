@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SKILL_ROOTS = Object.freeze([".claude/skills", ".skills", ".factory/skills"]);
+const AGENTS_DIR = resolve(ROOT_DIR, ".claude/agents");
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/u;
 
 function parseFrontmatter(sourceText) {
@@ -31,6 +32,55 @@ function parseFrontmatter(sourceText) {
   return { fields: fieldMap, body: match[2] || "" };
 }
 
+/**
+ * Enforce that every tracked SKILL.md and agent .md contains the verbatim
+ * BOB Gateway Protection block (refusal template + literal-word detection),
+ * the full 5-step Mandatory Verification Procedure, and reference to
+ * "Coding Agent Operating Mode". Missing any required phrase fails the check
+ * with a clear actionable error (per docs/skill-usage-guidelines.md).
+ */
+function assertContainsRequiredBobClawBlocks(sourceText, relativePath) {
+  const requiredPhrases = [
+    {
+      phrase: "BOB GATEWAY PROTECTION TRIGGERED",
+      desc: "BOB GATEWAY PROTECTION TRIGGERED refusal template",
+    },
+    {
+      phrase: 'The task name or description contains the literal word "Gateway".',
+      desc: "Gateway literal-word detection message in refusal block",
+    },
+    {
+      phrase: "Mandatory Verification Procedure (5 steps",
+      desc: "5-step Mandatory Verification Procedure header",
+    },
+    {
+      phrase:
+        "Re-read in full: `AGENTS.md`, `docs/system-map.md`, `docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`",
+      desc: "step 1 of the 5-step Mandatory Verification Procedure",
+    },
+    {
+      phrase: "Coding Agent Operating Mode",
+      desc: '"Coding Agent Operating Mode" reference (from AGENTS.md)',
+    },
+    {
+      phrase: "subagent inheritance prevention",
+      desc: "BOB Gateway Protection subagent inheritance prevention clause",
+    },
+  ];
+
+  for (const { phrase, desc } of requiredPhrases) {
+    if (!String(sourceText || "").includes(phrase)) {
+      throw new Error(
+        `${relativePath} does not contain the verbatim BOB Gateway Protection block + 5-step Mandatory Verification Procedure + "Coding Agent Operating Mode" reference.\n` +
+          `Missing required phrase for: ${desc}\n` +
+          `Expected exact substring: ${JSON.stringify(phrase)}\n` +
+          `Per docs/skill-usage-guidelines.md (BOB Gateway Protection section and "Adding or Updating Skills and Role Agents"), every SKILL.md and every agent .md MUST embed (verbatim) the refusal template, the literal-word detection instruction, the full 5-step procedure, and the Coding Agent Operating Mode reference as opening instructions. ` +
+          `Copy the exact block from the guideline into the file, then re-run this check. This is a hard safety requirement with no exceptions.`,
+      );
+    }
+  }
+}
+
 function listSkillFiles(rootPath) {
   if (!existsSync(rootPath)) return [];
   const entries = readdirSync(rootPath, { withFileTypes: true });
@@ -38,6 +88,15 @@ function listSkillFiles(rootPath) {
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(rootPath, entry.name, "SKILL.md"))
     .filter((skillPath) => existsSync(skillPath))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function listAgentFiles() {
+  if (!existsSync(AGENTS_DIR)) return [];
+  const entries = readdirSync(AGENTS_DIR, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && !entry.name.startsWith("."))
+    .map((entry) => join(AGENTS_DIR, entry.name))
     .sort((left, right) => left.localeCompare(right));
 }
 
@@ -76,21 +135,63 @@ function validateSkillFile(filePath) {
     throw new Error(`${relativePath} body must be non-empty`);
   }
 
+  assertContainsRequiredBobClawBlocks(sourceText, relativePath);
+  assertNotIgnored(filePath);
+  return { relativePath, name, description };
+}
+
+function validateAgentFile(filePath) {
+  const relativePath = relative(ROOT_DIR, filePath).replaceAll("\\", "/");
+  if (!relativePath.includes(".claude/agents/") || !relativePath.endsWith(".md")) {
+    throw new Error(`${relativePath} must be under .claude/agents/ and end with .md`);
+  }
+
+  const sourceText = readFileSync(filePath, "utf8");
+  const { fields, body } = parseFrontmatter(sourceText);
+  if (!fields) {
+    throw new Error(`${relativePath} is missing YAML frontmatter`);
+  }
+
+  const name = String(fields.get("name") || "").trim();
+  const description = String(fields.get("description") || "").trim();
+  if (!name) {
+    throw new Error(`${relativePath} frontmatter.name must be non-empty`);
+  }
+  if (!description) {
+    throw new Error(`${relativePath} frontmatter.description must be non-empty`);
+  }
+  if (!String(body || "").trim()) {
+    throw new Error(`${relativePath} body must be non-empty`);
+  }
+
+  assertContainsRequiredBobClawBlocks(sourceText, relativePath);
   assertNotIgnored(filePath);
   return { relativePath, name, description };
 }
 
 function main() {
   const skillFiles = SKILL_ROOTS.flatMap((root) => listSkillFiles(resolve(ROOT_DIR, root)));
-  if (skillFiles.length === 0) {
-    throw new Error("No Claude-compatible skills found under .claude/skills, .skills, or .factory/skills");
+  const agentFiles = listAgentFiles();
+
+  if (skillFiles.length === 0 && agentFiles.length === 0) {
+    throw new Error(
+      "No Claude-compatible skills found under .claude/skills, .skills, or .factory/skills " +
+        "and no agent definitions found under .claude/agents",
+    );
   }
 
   const validatedSkills = skillFiles.map((filePath) => validateSkillFile(filePath));
+  const validatedAgents = agentFiles.map((filePath) => validateAgentFile(filePath));
+
   for (const skill of validatedSkills) {
     console.log(`skill ok: ${skill.relativePath} name=${skill.name} description=${skill.description}`);
   }
-  console.log(`Skills configuration check passed: ${validatedSkills.length} valid skill(s).`);
+  for (const agent of validatedAgents) {
+    console.log(`agent ok: ${agent.relativePath} name=${agent.name} description=${agent.description}`);
+  }
+  console.log(
+    `Skills and agents configuration check passed: ${validatedSkills.length} valid skill(s), ${validatedAgents.length} valid agent(s).`,
+  );
 }
 
 const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

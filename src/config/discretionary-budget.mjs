@@ -2,7 +2,7 @@
 export const dexQuoteCacheTtlMs = 30_000;
 export const refuelMaxSlippagePct = 0.05;
 export const refuelMinAmountUsd = 4.0;
-export const bridgeMaxCostUsd = 1.5;
+export const bridgeMaxCostUsd = 2.5; // raised for small-capital (was 1.5) to reduce manualReview on base wBTC.OFT capital rebalance while keeping risk controlled
 export const consolidationMaxCostUsd = 0.8;
 export const perCategoryDailyUsd = Object.freeze({
   probe: 3,

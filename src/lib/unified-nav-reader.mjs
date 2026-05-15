@@ -9,6 +9,7 @@ import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/
 import { scanTreasuryInventory } from "../treasury/inventory.mjs";
 
 const DEFAULT_DISCREPANCY_THRESHOLD_PCT = 10;
+const DEFAULT_ABSOLUTE_DISCREPANCY_FLOOR_USD = 25; // small-capital noise floor: absolute diff below this does not trigger evm_source_disagreement even if pct high
 const TAIL_CHUNK_BYTES = 256 * 1024;
 const ESPLORA_BASE = process.env.BTC_ESPLORA_BASE || "https://mempool.space/api";
 const BTC_FETCH_TIMEOUT_MS = 10_000;
@@ -172,7 +173,8 @@ async function loadEvmWalletUsd(dataDir, { liveScan = true, allowStaleFallback =
     observedAt,
     ageMs: ageMs(observedAt),
     fallback: true,
-    warning: "treasury-inventory.jsonl is a recorded snapshot, not chain truth; use liveScan:true unless intentionally backtesting",
+    warning:
+      "treasury-inventory.jsonl is a recorded snapshot, not chain truth; use liveScan:true unless intentionally backtesting",
   };
 }
 
@@ -191,7 +193,11 @@ async function loadEvmAutopilotUsd(dataDir) {
 async function loadBobL2WbtcUsd(dataDir) {
   const row = await lastJsonlRow(join(dataDir, "treasury-inventory.jsonl"));
   if (!row || !Array.isArray(row.tokens)) {
-    return { source: "treasury-inventory.jsonl#tokens[chain=bob]", valueUsd: null, observedAt: row?.observedAt || null };
+    return {
+      source: "treasury-inventory.jsonl#tokens[chain=bob]",
+      valueUsd: null,
+      observedAt: row?.observedAt || null,
+    };
   }
   const total = row.tokens
     .filter((token) => token?.chain === "bob")
@@ -258,9 +264,10 @@ async function fetchBtcPriceMultiSource() {
   }
   if (samples.length === 0) return { medianUsd: null, samples: [], spreadPct: null };
   const sorted = [...samples].sort((a, b) => a.price - b.price);
-  const median = sorted.length % 2
-    ? sorted[(sorted.length - 1) / 2].price
-    : (sorted[sorted.length / 2 - 1].price + sorted[sorted.length / 2].price) / 2;
+  const median =
+    sorted.length % 2
+      ? sorted[(sorted.length - 1) / 2].price
+      : (sorted[sorted.length / 2 - 1].price + sorted[sorted.length / 2].price) / 2;
   const min = sorted[0].price;
   const max = sorted[sorted.length - 1].price;
   const spreadPct = max > 0 ? ((max - min) / max) * 100 : 0;
@@ -287,7 +294,14 @@ async function loadBtcL1UsdLive() {
     const totalSats = balances.reduce((s, b) => s + b.confirmedSats, 0);
     const priceUsd = priceQuote.medianUsd;
     if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
-      return { source: "esplora_live", valueUsd: null, observedAt: new Date().toISOString(), error: "btc_price_unavailable", totalSats, priceQuote };
+      return {
+        source: "esplora_live",
+        valueUsd: null,
+        observedAt: new Date().toISOString(),
+        error: "btc_price_unavailable",
+        totalSats,
+        priceQuote,
+      };
     }
     const priceSpreadTooWide = priceQuote.spreadPct != null && priceQuote.spreadPct > BTC_PRICE_MAX_SPREAD_PCT;
     if (priceSpreadTooWide) {
@@ -351,13 +365,19 @@ async function loadBtcL1Usd(dataDir, { liveFetch = true, allowStaleFallback = fa
   let escape = false;
   for (let i = 0; i < contents.length; i += 1) {
     const ch = contents[i];
-    if (escape) { escape = false; continue; }
-    if (inString) {
-      if (ch === "\\") escape = true;
-      else if (ch === "\"") inString = false;
+    if (escape) {
+      escape = false;
       continue;
     }
-    if (ch === "\"") { inString = true; continue; }
+    if (inString) {
+      if (ch === "\\") escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
     if (ch === "{") {
       if (depth === 0) start = i;
       depth += 1;
@@ -380,7 +400,8 @@ async function loadBtcL1Usd(dataDir, { liveFetch = true, allowStaleFallback = fa
     valueUsd: value,
     observedAt: row?.observedAt || null,
     fallback: true,
-    warning: "btc-nav-history.jsonl stores money_loop accumulator projection, not on-chain balance — only used because allowStaleFallback=true",
+    warning:
+      "btc-nav-history.jsonl stores money_loop accumulator projection, not on-chain balance — only used because allowStaleFallback=true",
   };
 }
 
@@ -466,13 +487,29 @@ export async function loadUnifiedOperatingCapital({
     loadProtocolPositionMarksUsd(dataDir),
   ]);
 
-  const evmDiscrepancyPct = discrepancyPct(evmWallet.valueUsd, evmAutopilot.valueUsd);
-  const evmDiscrepancyFlag =
-    evmDiscrepancyPct != null && evmDiscrepancyPct > discrepancyThresholdPct ? "evm_source_disagreement" : null;
+  function computeEvmDiscrepancy(evmWallet, evmAutopilot, discrepancyThresholdPct) {
+    const pct = discrepancyPct(evmWallet.valueUsd, evmAutopilot.valueUsd);
+    const diffAbs =
+      evmWallet.valueUsd != null && evmAutopilot.valueUsd != null
+        ? Math.abs(evmWallet.valueUsd - evmAutopilot.valueUsd)
+        : null;
+    const flag =
+      pct != null &&
+      pct > discrepancyThresholdPct &&
+      (diffAbs == null || diffAbs > DEFAULT_ABSOLUTE_DISCREPANCY_FLOOR_USD)
+        ? "evm_source_disagreement"
+        : null;
 
-  const evmAggregate = evmWallet.valueUsd != null && evmAutopilot.valueUsd != null
-    ? Math.max(evmWallet.valueUsd, evmAutopilot.valueUsd)
-    : (evmWallet.valueUsd ?? evmAutopilot.valueUsd ?? null);
+    const highScanError = (evmWallet.scanErrorCount ?? 0) >= 3;
+    const degraded = highScanError && flag === "evm_source_disagreement";
+
+    return { pct, diffAbs, flag, highScanError, degradedDueToScanErrors: degraded };
+  }
+
+  const evmAggregate =
+    evmWallet.valueUsd != null && evmAutopilot.valueUsd != null
+      ? Math.max(evmWallet.valueUsd, evmAutopilot.valueUsd)
+      : (evmWallet.valueUsd ?? evmAutopilot.valueUsd ?? null);
 
   const missingSources = [];
   if (evmWallet.valueUsd == null) missingSources.push("evmWalletUsd");
@@ -480,20 +517,30 @@ export async function loadUnifiedOperatingCapital({
   if (btcL1.valueUsd == null) missingSources.push("btcL1Usd");
 
   const protocolMarksUsd = protocolMarks?.valueUsd ?? null;
-  const unifiedNavUsd = evmAggregate != null && btcL1.valueUsd != null
-    ? evmAggregate + btcL1.valueUsd + (protocolMarksUsd ?? 0)
-    : null;
+  const unifiedNavUsd =
+    evmAggregate != null && btcL1.valueUsd != null ? evmAggregate + btcL1.valueUsd + (protocolMarksUsd ?? 0) : null;
 
   const flags = [];
   if (evmDiscrepancyFlag) flags.push(evmDiscrepancyFlag);
+  if (degradedDueToScanErrors) flags.push("evm_scan_degraded");
   if (missingSources.length > 0) flags.push("source_missing");
   if (btcL1.fallback === true) flags.push("btc_l1_stale_fallback");
   if (evmWallet.fallback === true) flags.push("evm_wallet_stale_fallback");
   const staleSources = [];
-  for (const [name, slice] of [["evmWalletUsd", evmWallet], ["evmAutopilotUsd", evmAutopilot]]) {
+  for (const [name, slice] of [
+    ["evmWalletUsd", evmWallet],
+    ["evmAutopilotUsd", evmAutopilot],
+  ]) {
     if (slice.ageMs != null && slice.ageMs > maxRecordedAgeMs) staleSources.push(name);
   }
   if (staleSources.length > 0) flags.push("recorded_source_stale");
+
+  const halt =
+    (flags.includes("evm_source_disagreement") && !degradedDueToScanErrors) ||
+    flags.includes("source_missing") ||
+    flags.includes("btc_l1_stale_fallback") ||
+    flags.includes("evm_wallet_stale_fallback") ||
+    flags.includes("recorded_source_stale");
 
   return {
     schemaVersion: 1,
@@ -505,12 +552,7 @@ export async function loadUnifiedOperatingCapital({
     evmDiscrepancyPct,
     flags,
     missingSources,
-    halt:
-      flags.includes("evm_source_disagreement") ||
-      flags.includes("source_missing") ||
-      flags.includes("btc_l1_stale_fallback") ||
-      flags.includes("evm_wallet_stale_fallback") ||
-      flags.includes("recorded_source_stale"),
+    halt,
     staleSources,
     maxRecordedAgeMs,
     protocolMarksUsd,
