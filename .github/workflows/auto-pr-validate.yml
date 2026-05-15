@@ -14,6 +14,9 @@ on:
       - "docs/**"
       - "docs/operations/dashboard-deploy-automation.md"
       - "docs/readiness/dead-code-baseline.json"
+      - "docs/readiness/dead-feature-flags.md"
+      - "docs/structured-logging.md"
+      - "docs/trace-context.md"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
@@ -24,6 +27,10 @@ on:
       - "src/strategy/**"
       - "src/risk/**"
       - "src/executor/**"
+      - "src/logger.mjs"
+      - "src/cli/check-structured-logger.mjs"
+      - "src/trace-context.mjs"
+      - "src/cli/check-trace-context.mjs"
       - "scripts/**"
       - "test/**"
 
@@ -45,6 +52,9 @@ jobs:
       - run: node scripts/track-build-performance.mjs --label=npm-ci --artifact-dir=artifacts/build-performance -- npm ci
       - run: npm run check:agents-freshness
       - run: npm run perf:check:dead-code
+      - run: npm run perf:check:dead-feature-flags
+      - run: npm run perf:check:structured-logger
+      - run: npm run perf:check:trace-context
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:agents-freshness
       - run: npm run perf:check:large-files
