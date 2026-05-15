@@ -138,6 +138,8 @@ export function createErrorTracker({
   component = "app",
   release = "local",
   transport = null,
+  org = "",
+  project = "",
 } = {}) {
   const breadcrumbs = [];
   const contexts = new Map();
@@ -151,6 +153,8 @@ export function createErrorTracker({
     environment: sanitizeErrorTrackingValue(environment),
     component: sanitizeErrorTrackingValue(component),
     release: sanitizeErrorTrackingValue(release),
+    org: sanitizeErrorTrackingValue(org),
+    project: sanitizeErrorTrackingValue(project),
   });
 
   function preview(kind, payload, options) {
@@ -202,6 +206,14 @@ function envDsn(env) {
   return env.BOB_CLAW_SENTRY_DSN || env.SENTRY_DSN || "";
 }
 
+function envOrg(env) {
+  return env.BOB_CLAW_SENTRY_ORG || env.SENTRY_ORG || "";
+}
+
+function envProject(env) {
+  return env.BOB_CLAW_SENTRY_PROJECT || env.SENTRY_PROJECT || "";
+}
+
 function sentryScopeOptions(options = {}) {
   return {
     tags: options.tags ? normalizeTags(options.tags) : undefined,
@@ -218,6 +230,8 @@ export async function createSentryErrorTracker({
   const dsn = envDsn(env);
   const environment = env.BOB_CLAW_ERROR_TRACKING_ENVIRONMENT || env.NODE_ENV || "local";
   const release = env.SENTRY_RELEASE || "local";
+  const org = envOrg(env);
+  const project = envProject(env);
 
   if (!enabled) {
     return createErrorTracker({
@@ -226,6 +240,8 @@ export async function createSentryErrorTracker({
       environment,
       component,
       release,
+      org,
+      project,
     });
   }
   if (!dsn) {
@@ -235,6 +251,8 @@ export async function createSentryErrorTracker({
       environment,
       component,
       release,
+      org,
+      project,
     });
   }
 

@@ -29,6 +29,21 @@ Allowed context is anonymous and operational, such as component name,
 environment, release, command family, or bounded status values like `blocked`
 or `ok`.
 
+## Sentry GitHub Integration (Error to Insight)
+
+To automatically turn Sentry errors into GitHub issues (the "error to insight" pipeline):
+
+1. Install the official Sentry GitHub App on this repository (gives Sentry permission to create issues).
+2. In the Sentry project settings → Integrations → GitHub, connect the repository.
+3. Set the following environment variables in the deployment environment:
+   - `BOB_CLAW_SENTRY_ORG` (or `SENTRY_ORG`)
+   - `BOB_CLAW_SENTRY_PROJECT` (or `SENTRY_PROJECT`)
+4. The custom `error-to-issue` pipeline (`src/observability/error-to-issue.mjs` and `src/cli/error-to-issue.mjs`) will include a direct link to the corresponding Sentry issue in every created GitHub issue.
+
+When configured, Sentry will automatically create GitHub issues for new error groups (with the repo linked in the integration). The custom sanitizer ensures no secrets or high-risk data ever reaches the GitHub issue body.
+
+The `error-to-insight.yml` workflow supports both the native Sentry integration and manual sanitized report creation for high-severity or custom cases.
+
 Never attach these to events, breadcrumbs, tags, context, source map uploads,
 logs, or user context:
 
