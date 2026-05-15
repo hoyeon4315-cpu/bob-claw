@@ -15,6 +15,7 @@ on:
       - "docs/operations/dashboard-deploy-automation.md"
       - "docs/readiness/dead-code-baseline.json"
       - "docs/readiness/dead-feature-flags.md"
+      - "docs/structured-logging.md"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
@@ -25,6 +26,8 @@ on:
       - "src/strategy/**"
       - "src/risk/**"
       - "src/executor/**"
+      - "src/logger.mjs"
+      - "src/cli/check-structured-logger.mjs"
       - "scripts/**"
       - "test/**"
 
@@ -47,6 +50,7 @@ jobs:
       - run: npm run check:agents-freshness
       - run: npm run perf:check:dead-code
       - run: npm run perf:check:dead-feature-flags
+      - run: npm run perf:check:structured-logger
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:agents-freshness
       - run: npm run perf:check:large-files
