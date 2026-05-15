@@ -27,6 +27,10 @@ export const SAFE_PROFILE_TARGETS = Object.freeze({
     description: "Profiles the dependency release age policy validation.",
     command: ["node", "scripts/check-dependency-release-age-policy.mjs"],
   },
+  "check:product-analytics": {
+    description: "Profiles the product analytics tracker (dry-run PostHog adapter).",
+    command: ["node", "src/cli/check-product-analytics.mjs"],
+  },
   "check:architecture": {
     description: "Profiles the dependency-cruiser architecture scan.",
     command: ["node", DEPCRUISE_BIN, "src", "scripts", "test", "dashboard/public"],
