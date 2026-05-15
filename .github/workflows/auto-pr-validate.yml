@@ -18,6 +18,7 @@ on:
       - "docs/structured-logging.md"
       - "docs/trace-context.md"
       - "docs/readiness/metrics-collection.md"
+      - "docs/readiness/profiling-instrumentation.md"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
@@ -34,6 +35,9 @@ on:
       - "src/cli/check-trace-context.mjs"
       - "src/metrics/registry.mjs"
       - "src/cli/report-metrics-snapshot.mjs"
+      - "scripts/profile-*.mjs"
+      - "scripts/run-profile-target.mjs"
+      - "scripts/profile-targets.mjs"
       - "scripts/**"
       - "test/**"
 
@@ -67,6 +71,7 @@ jobs:
       - run: npm run perf:check:architecture
       - run: npm run perf:test
       - run: npm run perf:dashboard:build
+      - run: npm run perf:profile:smoke
       - name: dryrun opportunity candidate
         run: npm run dryrun:opportunity-candidate -- --id=placeholder || true
       - name: audit evidence
