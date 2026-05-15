@@ -14,6 +14,7 @@ on:
       - "docs/**"
       - "docs/operations/dashboard-deploy-automation.md"
       - "docs/readiness/dead-code-baseline.json"
+      - "docs/readiness/dead-feature-flags.md"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
@@ -45,6 +46,7 @@ jobs:
       - run: node scripts/track-build-performance.mjs --label=npm-ci --artifact-dir=artifacts/build-performance -- npm ci
       - run: npm run check:agents-freshness
       - run: npm run perf:check:dead-code
+      - run: npm run perf:check:dead-feature-flags
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:agents-freshness
       - run: npm run perf:check:large-files

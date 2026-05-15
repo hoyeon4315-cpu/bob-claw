@@ -14,6 +14,7 @@ non-live code paths. They are not runtime controls for trading authority.
 
 - Manifest and lookup API: `src/config/feature-flags.mjs`
 - Focused verification: `npm run check:feature-flags`
+- Dead / stale flag detection: `npm run check:dead-feature-flags` (part of agent-readiness CI)
 - Current non-live consumer: `src/status/feature-flag-catalog-slice.mjs`
 
 The manifest is validated at import/use time. Validation fails for unknown
@@ -59,8 +60,24 @@ law and deterministic policy/config review.
 3. Keep the value committed in source. Do not add env, dashboard, Telegram,
    LLM harness, or runtime-file overrides.
 4. Add a real non-live consumer or a focused test that demonstrates the lookup.
-5. Run `npm run check:feature-flags`.
+5. Run `npm run check:feature-flags && npm run check:dead-feature-flags`.
 6. Review the final diff and stage only source/docs/tests/package files.
+
+## Dead Flag Detection & Cleanup
+
+`npm run check:dead-feature-flags` (wired into `perf:agent-readiness` and
+`auto-pr-validate.yml`) statically detects:
+
+- Dead flags: entries in `FEATURE_FLAGS` that have no `isFeatureEnabled` /
+  `getFeatureFlagDefinition` call sites or bare mentions in consumer code, tests,
+  docs, or scripts (definition file itself does not count as usage).
+- Stale references: calls to the feature flag APIs with IDs absent from the manifest
+  (negative test cases inside `test/` are exempted).
+
+Any dead flag or non-test stale reference fails the check and blocks the PR.
+See `docs/readiness/dead-feature-flags.md` for the full detector contract and
+lifecycle rules. The only way to keep a flag "green" is to maintain at least one
+real committed consumer path.
 
 ## Live-Safety Boundary
 
