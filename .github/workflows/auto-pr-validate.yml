@@ -20,6 +20,8 @@ on:
       - "docs/readiness/metrics-collection.md"
       - "docs/readiness/profiling-instrumentation.md"
       - "docs/readiness/dependency-release-age-policy.md"
+      - "docs/product-analytics.md"
+      - "docs/readiness/product-analytics-instrumentation.md"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
@@ -36,6 +38,8 @@ on:
       - "src/cli/check-trace-context.mjs"
       - "src/metrics/registry.mjs"
       - "src/cli/report-metrics-snapshot.mjs"
+      - "src/analytics/product-analytics.mjs"
+      - "src/cli/check-product-analytics.mjs"
       - "scripts/profile-*.mjs"
       - "scripts/run-profile-target.mjs"
       - "scripts/profile-targets.mjs"
@@ -65,6 +69,7 @@ jobs:
       - run: npm run perf:check:trace-context
       - run: npm run perf:check:metrics-collection
       - run: npm run perf:check:dependency-release-age
+      - run: npm run perf:check:product-analytics
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:agents-freshness
       - run: npm run perf:check:large-files
