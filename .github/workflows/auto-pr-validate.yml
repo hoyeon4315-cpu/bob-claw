@@ -19,6 +19,7 @@ on:
       - "docs/trace-context.md"
       - "docs/readiness/metrics-collection.md"
       - "docs/readiness/profiling-instrumentation.md"
+      - "docs/readiness/dependency-release-age-policy.md"
       - "docs/readiness/tech-debt-baseline.json"
       - "docs/readiness/duplicate-code-baseline.json"
       - "docs/readiness/duplicate-code.md"
@@ -63,6 +64,7 @@ jobs:
       - run: npm run perf:check:structured-logger
       - run: npm run perf:check:trace-context
       - run: npm run perf:check:metrics-collection
+      - run: npm run perf:check:dependency-release-age
       - run: npm run perf:check:tech-debt
       - run: npm run perf:check:agents-freshness
       - run: npm run perf:check:large-files

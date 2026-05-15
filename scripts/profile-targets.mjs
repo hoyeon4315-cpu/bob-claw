@@ -23,6 +23,10 @@ export const SAFE_PROFILE_TARGETS = Object.freeze({
     description: "Profiles the duplicate-code readiness scan.",
     command: ["node", "scripts/check-duplicate-code.mjs"],
   },
+  "check:dependency-release-age": {
+    description: "Profiles the dependency release age policy validation.",
+    command: ["node", "scripts/check-dependency-release-age-policy.mjs"],
+  },
   "check:architecture": {
     description: "Profiles the dependency-cruiser architecture scan.",
     command: ["node", DEPCRUISE_BIN, "src", "scripts", "test", "dashboard/public"],
