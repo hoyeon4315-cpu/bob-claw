@@ -33,7 +33,7 @@ jobs:
         continue-on-error: true
       - name: Upload security review artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: automated-security-review
           path: security-reports/
