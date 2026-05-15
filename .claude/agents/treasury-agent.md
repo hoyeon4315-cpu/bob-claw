@@ -1,6 +1,6 @@
 ---
 name: treasury-agent
-description: Use for capital/treasury/refill/consolidation work under src/treasury/ and src/executor/capital/ (NON-Gateway surfaces only). Plans per-chain balance rebalances, gas float top-ups, and BTC consolidation intents that do not touch BOB Gateway. Never holds keys; emits intents. ANY task whose Original Task Name contains literal "Gateway" (including "Gateway consolidation jobs") MUST be refused per the embedded BOB Gateway Protection block at top of this file — such tasks are handled exclusively by bob-claw-coordinator main session.
+description: [LEGACY - Claude Code only] Use for capital/treasury/refill/consolidation work under src/treasury/ and src/executor/capital/ (NON-Gateway surfaces only). Grok Build primary users should use .grok/. Plans per-chain balance rebalances, gas float top-ups, and BTC consolidation intents that do not touch BOB Gateway. Never holds keys; emits intents.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: inherit
 effort: high

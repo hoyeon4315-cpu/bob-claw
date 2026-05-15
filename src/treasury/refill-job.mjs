@@ -90,7 +90,13 @@ function jobEconomicReviewReasons(job = {}) {
   const isGatewayCapitalRefill =
     isGatewayMethod(job.executionMethod || "") || job.executionMethod === "cross_chain_swap_via_btc_intermediate";
   if (isCapitalRebalance && isGatewayCapitalRefill) {
-    return [];
+    // Tightened for small-capital safety: only fully skip economic review for tiny losses.
+    // Large negative effectiveSystemNetPnlUsd (e.g. -3.6 from fragmentation drag on micro refills)
+    // still produces "route_refill_economically_unjustified" so they require manual review or are blocked.
+    const pnl = finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd);
+    if (pnl === null || pnl > -0.65) {
+      return [];
+    }
   }
   const effectiveSystemNetPnlUsd = finiteOrNull(job.systemEconomics?.effectiveSystemNetPnlUsd);
   if (effectiveSystemNetPnlUsd === null || effectiveSystemNetPnlUsd >= 0) return [];

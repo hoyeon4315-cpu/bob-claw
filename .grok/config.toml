@@ -1,0 +1,11 @@
+# Grok Build Project Configuration - Phase 1
+
+[subagents]
+enabled = true
+default_model = "grok-build"
+
+[skills]
+paths = [".grok/skills"]
+
+[plugins]
+# Phase 1에서는 기존 플러그인 유지, 필요시 정리 예정

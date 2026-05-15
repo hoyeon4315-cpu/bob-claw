@@ -1,6 +1,6 @@
 ---
 name: bob-claw-readiness-safety-verification
-description: Use when verifying BOB Claw readiness, live-safety status, or blocker state before making code, dashboard, deploy, or operational claims in this repo. This SKILL.md embeds the FULL VERBATIM BOB Gateway Protection section (Hard Rules + Enforcement Procedure + refusal block), the 5-step Mandatory Verification Procedure, and Execution Mode rules as the absolute opening/highest-priority instructions (per docs/skill-usage-guidelines.md and AGENTS.md). All new skills and agents MUST embed these verbatim blocks identically.
+description: [LEGACY - Claude Code only] Use when verifying BOB Claw readiness, live-safety status, or blocker state. Grok Build primary users should use the native version under .grok/skills/. This is the Claude Code compatibility version.
 ---
 
 # BOB Claw Readiness And Safety Verification

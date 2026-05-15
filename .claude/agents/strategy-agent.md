@@ -1,6 +1,6 @@
 ---
 name: strategy-agent
-description: Use for strategy proposal/receipt work under src/strategy/ and related CLIs. Edits strategy modules, dry-run/OOS/live-proof scripts, and ingest-*/report-* CLIs. Never touches keys, signer, payback config, or caps.
+description: [LEGACY - Claude Code only] Use for strategy proposal/receipt work under src/strategy/ and related CLIs. Grok Build primary users should use .grok/ structure. Edits strategy modules, dry-run/OOS/live-proof scripts, and ingest-*/report-* CLIs. Never touches keys, signer, payback config, or caps.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: inherit
 effort: high

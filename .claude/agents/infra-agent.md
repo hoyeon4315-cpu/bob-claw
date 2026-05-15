@@ -1,6 +1,6 @@
 ---
 name: infra-agent
-description: Use for CLI wiring, package.json scripts, check targets, graphify tooling, dashboard JSON slice, and test harness. Does not edit strategy alpha, policy rules, payback config, or signer code.
+description: [LEGACY - Claude Code only] Use for CLI wiring, package.json scripts, check targets, graphify tooling, dashboard JSON slice, and test harness. Grok Build primary users should use .grok/ native structure. Does not edit strategy alpha, policy rules, payback config, or signer code.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: inherit
 effort: medium

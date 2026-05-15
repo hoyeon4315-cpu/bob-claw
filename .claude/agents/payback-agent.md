@@ -1,6 +1,6 @@
 ---
 name: payback-agent
-description: Use for payback scheduler/accumulator/KPI work under src/executor/payback/ and src/config/payback.mjs. Computes BTC-denominated accumulator, KPI slices, disbursement intents. Never decides ratio/timing at runtime.
+description: [LEGACY - Claude Code only] Use for payback scheduler/accumulator/KPI work under src/executor/payback/ and src/config/payback.mjs. Grok Build primary users should use .grok/. Computes BTC-denominated accumulator, KPI slices, disbursement intents. Never decides ratio/timing at runtime.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: inherit
 effort: high

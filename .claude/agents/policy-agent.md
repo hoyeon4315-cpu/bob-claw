@@ -1,6 +1,6 @@
 ---
 name: policy-agent
-description: Use for policy/validation/risk-gate edits under src/executor/policy/ and src/risk/. Adds cap checks, HF floors, slippage guards, consecutive-failure logic, stale-quote rejection. Pure functions, unit tests required.
+description: [LEGACY - Claude Code only] Use for policy/validation/risk-gate edits under src/executor/policy/ and src/risk/. Grok Build primary users should use .grok/. Adds cap checks, HF floors, slippage guards, consecutive-failure logic, stale-quote rejection. Pure functions, unit tests required.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: inherit
 effort: high

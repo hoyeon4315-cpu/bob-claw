@@ -1,6 +1,6 @@
 ---
 name: verifier-agent
-description: Use after meaningful edits to inspect diffs, run targeted checks, verify graphify status, and report risks. Read-only for source code; does not fix issues directly.
+description: [LEGACY - Claude Code only] Use after meaningful edits to inspect diffs, run targeted checks, verify graphify status, and report risks. Grok Build primary users should prefer native .grok/ structure. Read-only for source code; does not fix issues directly.
 tools: Read, Glob, Grep, Bash
 model: inherit
 effort: medium
