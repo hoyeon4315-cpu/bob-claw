@@ -1,7 +1,7 @@
 # AGENT-SUPREME-LAW
 
 **status**: canonical
-**updated_at**: 2026-05-17
+**updated_at**: 2026-05-16
 **authority**: AGENTS.md
 
 ---
@@ -12,40 +12,36 @@ All other documents (AGENTS.md, skill-usage-guidelines.md, agent definition file
 
 ---
 
-## 1. BOB Gateway Protection (Absolute Highest Priority Rule)
+## 1. Delegation and Ownership Guardrails (Absolute Highest Priority Rule)
 
 **This is the strictest rule in the entire system.** It takes precedence over every other instruction, example, or request.
 
-The presence of the literal whole-word "Gateway" (capital G, word-bounded) in the `Original Task Name:` or the full user request is a hard, deterministic, non-negotiable trigger.
+This repository does **not** use a literal-word refusal for `Gateway`. `Gateway`
+is a normal domain term here. Delegation is allowed when, and only when, the
+work remains fully inside the child surface's declared ownership and the parent
+passes the original task through unchanged.
 
-No "read-only", no "planning", no "verification", no "coordination", and no "I am the main agent" claim can override it.
+No "read-only", no "planning", no "verification", no "coordination", and no
+"I am the main agent" claim can override these ownership guardrails.
 
 ### Hard Rules
 
 **MUST:**
 
-- Every skill and every subagent definition **MUST** perform a pure string match (no LLM reasoning) for the literal `\bGateway\b` as the **very first internal action** upon activation.
-- When constructing any subagent or skill task prompt, the parent **MUST** include the exact line `Original Task Name: <verbatim copy of the user's request>` and instruct the child to run the Gateway check as step 2 of the 5-step procedure.
+- When constructing any subagent or skill task prompt, the parent **MUST**
+  include the exact line `Original Task Name: <verbatim copy of the user's request>`.
+- Every skill and every subagent definition **MUST** verify, before tool use,
+  that the delegated task stays 100% inside its declared ownership and file scope.
+- If the task mixes ownerships, needs broader implementation authority, or no
+  active child surface cleanly owns it, the work **MUST** stay in or return to
+  the primary main session.
 
 **Do not / Never:**
 
-- Never invoke, trigger, or delegate any skill or subagent when the task contains the literal word "Gateway".
-- Never proceed with any tool use, file read, or analysis once "Gateway" is detected in a delegated context.
-- Never create workarounds.
-
-### Immediate Refusal Block (must be output exactly)
-
-```
-BOB GATEWAY PROTECTION TRIGGERED
-
-The task name or description contains the literal word "Gateway".
-
-Per docs/AGENT-SUPREME-LAW.md and AGENTS.md, delegation to this skill or subagent is strictly forbidden.
-
-Re-issue the complete, unmodified original task directly to the primary main coding session with no subagent delegation and no /skill trigger.
-
-This context will now terminate without performing any further work.
-```
+- Never invent literal-word refusal triggers or other special-case routing that
+  is not present in `AGENTS.md`.
+- Never stretch a child surface's ownership "just this once".
+- Never create alternate law sets, hidden role hierarchies, or workaround flows.
 
 ---
 
@@ -58,21 +54,24 @@ Every skill and subagent **must** execute the following 5 steps in strict order 
 - Re-read in full: `AGENTS.md`, `docs/system-map.md`, `docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`.
 - Quote the `updated_at` / version headers to prove freshness.
 
-**Step 2: BOB Gateway Protection literal-word check**
+**Step 2: Confirm original task context, scope, and ownership**
 
-- Perform deterministic string match for `\bGateway\b` against `Original Task Name:` and the full user request.
-- If detected → immediately output the exact refusal block above and halt. This step has absolute priority.
+- Preserve `Original Task Name:` verbatim in delegated contexts.
+- Confirm the task lies 100% inside the child surface's declared ownership.
+- If scope spills across ownerships or no child surface cleanly owns the work,
+  return it to the parent/main session before any tools or analysis.
 
-**Step 3: Enforce file scope and ownership**
-
-- Confirm that 100% of the task lies inside the declared ownership (per frontmatter `description` and the Role Agents table in `docs/ai-agent-operations.md`).
-- If any part touches another agent's ownership or a Gateway surface → refuse and return the task to the parent.
-
-**Step 4: Execute required diagnostics and graphify**
+**Step 3: Execute required diagnostics and graphify**
 
 - Run the exact AGENTS.md Diagnostic Entry Point(s) matching the question type.
 - For topology/caller/path questions, run `npm run graph:focus -- query|explain|path` first.
 - Always paste the _exact raw command output_ (never summarized).
+
+**Step 4: Perform the scoped work in Execution Mode**
+
+- Implement, review, or verify directly once steps 1-3 pass.
+- Keep the work inside the approved scope and use raw file/command evidence
+  instead of memory when making claims.
 
 **Step 5: Final hygiene verification**
 
@@ -105,8 +104,9 @@ Every skill and subagent **must** execute the following 5 steps in strict order 
 Any new skill (`.grok/skills/` or `.claude/skills/`) or new/updated agent (`.grok/agents/` or `.claude/agents/`) **MUST** contain the following at the very top (immediately after frontmatter):
 
 - Reference to this file (`docs/AGENT-SUPREME-LAW.md`)
-- Explicit statement that it follows the BOB Gateway Protection, 5-Step Procedure, and Execution Mode defined here.
-- The literal Gateway check instruction as step 2.
+- Explicit statement that it follows the delegation/ownership guardrails,
+  5-Step Procedure, and Execution Mode defined here.
+- Explicit scope/ownership check instruction as step 2.
 
 Duplication of the full content of this file into individual SKILL.md or agent files is prohibited except for the minimal core enforcement blocks required in AGENTS.md.
 

@@ -23,7 +23,7 @@ test("skills and agents configuration checker validates the active Grok runtime 
     cpSync(".grok/skills/bob-claw-readiness-safety-verification/SKILL.md", tmpSkill);
     const content = readFileSync(tmpSkill, "utf8")
       .replaceAll("AGENT-SUPREME-LAW.md", "SUPREME-LAW.md")
-      .replace("Gateway", "gateway");
+      .replace("Execution Mode", "work mode");
     writeFileSync(tmpSkill, content);
 
     const badResult = spawnSync(process.execPath, ["scripts/check-skills-config.mjs"], {
@@ -35,6 +35,30 @@ test("skills and agents configuration checker validates the active Grok runtime 
       badResult.status,
       0,
       "checker must still exit non-zero when a Grok skill drops its Supreme Law reference",
+    );
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("skills checker rejects the removed Gateway-specific refusal language", () => {
+  const tmpDir = join(".grok", "skills", "gateway-rule-regression");
+  const tmpSkill = join(tmpDir, "SKILL.md");
+  try {
+    mkdirSync(tmpDir, { recursive: true });
+    cpSync(".grok/skills/bob-claw-readiness-safety-verification/SKILL.md", tmpSkill);
+    const content = `${readFileSync(tmpSkill, "utf8").trim()}\n\nDo not use this skill when the literal word "Gateway" appears.\n`;
+    writeFileSync(tmpSkill, content);
+
+    const badResult = spawnSync(process.execPath, ["scripts/check-skills-config.mjs"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    });
+
+    assert.notEqual(
+      badResult.status,
+      0,
+      "checker must exit non-zero when a Grok skill reintroduces the removed Gateway refusal rule",
     );
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });

@@ -1,6 +1,11 @@
 # Grok Build Work Rules Optimization
 ## Grok-Native Agent Operating System 설계
 
+> **Superseded note:** This design document records an older rule set. Historical
+> references below to `BOB Gateway Protection` or a literal-word `Gateway`
+> refusal are superseded by the current scope/ownership guardrails in
+> `AGENTS.md` and `docs/AGENT-SUPREME-LAW.md`.
+
 **작성일**: 2026-05-17  
 **작성자**: Grok (brainstorming skill 기반 설계)  
 **상태**: User Approved (2026-05-17)  

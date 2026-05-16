@@ -103,8 +103,8 @@ Detailed delegation procedure lives in `docs/skill-usage-guidelines.md`; this
 section states the non-negotiable law they inherit.
 
 - `AGENTS.md` applies to every coding agent, skill, and delegated session.
-- If the task name or description contains the literal word **`Gateway`**, do
-  not use a skill or subagent. The primary session handles it directly.
+- Delegation is allowed only when the child surface owns the task end-to-end.
+  Cross-ownership or mixed-scope work stays in the primary session.
 - Every delegated prompt must start with:
   `Original Task Name: <verbatim user request>`.
 - Every delegated session must execute the full 5-step Mandatory Verification
@@ -127,21 +127,18 @@ section states the non-negotiable law they inherit.
 skill/subagent activation; no shortcuts; integrate then continue):**
 
 1. Re-read in full: `AGENTS.md`, `docs/system-map.md`,
-   `docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`
-   (BOB Gateway Protection section). Quote the `updated_at`/version headers to
-   prove freshness.
-2. Run the BOB Gateway Protection literal-word check (`\bGateway\b` or
-   equivalent) against `Original Task Name:` and the full user request. If the
-   word appears, emit the exact refusal block from
-   `docs/skill-usage-guidelines.md` and halt. Absolute priority over later
-   steps.
-3. Enforce file scope: confirm the task is 100% inside this skill/agent's
-   declared ownership (frontmatter + Role Agents table in
-   `docs/ai-agent-operations.md`). Any other ownership or Gateway surface means
-   refusal and return to the parent/coordinator.
-4. Execute the AGENTS Diagnostic Entry Point(s) appropriate to the question type
+   `docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`. Quote
+   the `updated_at`/version headers to prove freshness.
+2. Confirm delegated fit: preserve `Original Task Name:` verbatim and verify the
+   task is 100% inside this skill/agent's declared ownership (frontmatter + Role
+   Agents table in `docs/ai-agent-operations.md`). Any cross-ownership scope
+   returns to the parent/coordinator before tools are used.
+3. Execute the AGENTS Diagnostic Entry Point(s) appropriate to the question type
    plus any graphify `query/explain/path` needed to keep reads minimal. Paste
    the exact raw command output; never summarize it as evidence.
+4. Perform the scoped work in **Execution Mode**. Implementation, review, or
+   verification must stay inside the approved ownership and remain grounded in
+   raw file/command evidence instead of memory.
 5. Perform final hygiene verification: `git diff --stat`,
    `git diff --name-only`, `rg` caller search for deleted/renamed symbols, and
    the narrow Verification Matrix row(s) from `docs/harness-engineering.md`.

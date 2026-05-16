@@ -39,13 +39,17 @@ Then run the narrow relevant checks from `docs/harness-engineering.md`.
 
 The strictest rules live in `docs/AGENT-SUPREME-LAW.md`:
 
-- BOB Gateway Protection
+- Delegation and ownership guardrails
 - 5-step Mandatory Verification Procedure
 - Execution Mode
 - Evidence-complete confidence
 
 Every `.grok/agents/*.md` and `.grok/skills/*/SKILL.md` file must reference that
 law and follow it.
+
+There is **no** repo rule that treats the word `Gateway` as an automatic refusal
+trigger. Gateway work follows the same ownership and verification rules as any
+other task.
 
 ## Active Grok surfaces
 
@@ -67,7 +71,8 @@ law and follow it.
 
 ## Prohibited patterns
 
-- Delegating any task containing the literal word `Gateway`
+- Treating the word `Gateway` as a special refusal trigger
+- Delegating work outside the child surface's declared ownership
 - Referencing or spawning `reviewer-agent`
 - Referencing or spawning `16-team-manager`
 - Using `.grok/teams/live-16/`

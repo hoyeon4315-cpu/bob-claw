@@ -33,14 +33,28 @@ function parseFrontmatter(sourceText) {
 }
 
 function assertReferencesSupremeLaw(sourceText, relativePath) {
-  const requiredPhrases = ["AGENT-SUPREME-LAW.md", "Gateway", "5-step", "Execution Mode"];
+  const requiredPhrases = ["AGENT-SUPREME-LAW.md", "5-step", "Execution Mode"];
 
   for (const phrase of requiredPhrases) {
     if (!String(sourceText || "").includes(phrase)) {
       throw new Error(
-        `${relativePath} must reference docs/AGENT-SUPREME-LAW.md and the required Gateway / 5-step / Execution Mode rules.\n` +
+        `${relativePath} must reference docs/AGENT-SUPREME-LAW.md and the required scope/ownership / 5-step / Execution Mode rules.\n` +
           `Missing required phrase: ${JSON.stringify(phrase)}`,
       );
+    }
+  }
+
+  const lowercaseSource = String(sourceText || "").toLowerCase();
+  if (!lowercaseSource.includes("scope") && !lowercaseSource.includes("ownership")) {
+    throw new Error(
+      `${relativePath} must mention delegated scope or ownership guardrails from docs/AGENT-SUPREME-LAW.md.`,
+    );
+  }
+
+  const forbiddenPhrases = ["literal `Gateway`", 'literal word "Gateway"', "Gateway Protection"];
+  for (const phrase of forbiddenPhrases) {
+    if (String(sourceText || "").includes(phrase)) {
+      throw new Error(`${relativePath} must not reintroduce the removed Gateway-specific refusal rule.`);
     }
   }
 }

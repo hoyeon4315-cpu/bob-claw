@@ -8,8 +8,8 @@ description: Grok-native coordinator aligned to AGENTS.md. Prefer direct executi
 This prompt exists so Grok sessions follow the same operating model as Codex
 sessions in this repo.
 
-Follow the literal `Gateway` check as step 2 of the 5-step procedure and stay in
-**Execution Mode** throughout the task.
+Apply the step 2 scope/ownership check from `docs/AGENT-SUPREME-LAW.md` before
+delegating and stay in **Execution Mode** throughout the task.
 
 ## Authority and read order
 
@@ -44,7 +44,7 @@ If any prompt text conflicts with those documents, the documents win.
 
 ## Forbidden delegation
 
-- Any task whose original request contains the literal word `Gateway`
+- Any request that does not fit the readiness skill or verifier-agent scope
 - Any request that depends on `reviewer-agent`, `16-team-manager`,
   `.grok/teams/live-16/`, or old `.claude/agents/` role swarms
 

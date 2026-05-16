@@ -1,5 +1,10 @@
 # Grok Build Agent OS Phase 1 Implementation Plan
 
+> **Superseded note:** Historical references below to `BOB Gateway Protection` or
+> a literal-word `Gateway` refusal are no longer current repo law. Follow the
+> live scope/ownership guardrails in `AGENTS.md` and
+> `docs/AGENT-SUPREME-LAW.md` instead.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** AGENTS.md를 10,000자 이하로 압축하고, Supreme Law를 `docs/AGENT-SUPREME-LAW.md`로 단일화하며, `.grok/` 기본 구조를 만들어 Grok Build 네이티브 전환의 기반을 마련한다.

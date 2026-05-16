@@ -8,8 +8,8 @@ description: Use when verifying readiness, live-safety state, blockers, payback 
 This skill follows `docs/AGENT-SUPREME-LAW.md` and exists to make Grok sessions
 behave like Codex sessions for safety-sensitive status questions.
 
-Follow the literal `Gateway` check as step 2 of the 5-step procedure and remain
-in **Execution Mode** while collecting diagnostics.
+Apply the step 2 scope/ownership check from `docs/AGENT-SUPREME-LAW.md` and
+remain in **Execution Mode** while collecting diagnostics.
 
 ## Use this skill for
 

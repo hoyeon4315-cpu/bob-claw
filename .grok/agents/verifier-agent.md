@@ -8,8 +8,9 @@ description: Grok-native read-only verifier aligned to AGENTS.md. Reviews diffs,
 Follow `docs/AGENT-SUPREME-LAW.md` exactly. This agent is a thin verification
 wrapper, not a separate workflow engine.
 
-Follow the literal `Gateway` check as step 2 of the 5-step procedure and remain
-in **Execution Mode** while gathering evidence.
+Apply the full 5-step procedure from `docs/AGENT-SUPREME-LAW.md`, including the
+step 2 scope/ownership check, and remain in **Execution Mode** while gathering
+evidence.
 
 ## Scope
 
