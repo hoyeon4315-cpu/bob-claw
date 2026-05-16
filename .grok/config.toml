@@ -1,19 +1,18 @@
-# Grok Build Project Configuration - Phase 1
+# Grok Build project configuration
+#
+# Grok is a secondary runtime in this repo. Its prompts should mirror the same
+# operating law and direct-execution flow used in Codex sessions.
 
 [subagents]
 enabled = true
 default_model = "grok-4.3"
-max_parallel = 6
+max_parallel = 2
 
 [skills]
 paths = [".grok/skills", "~/.grok/skills"]
 
-[plugins]
-# Phase 1에서는 기존 플러그인 유지, 필요시 정리 예정
-
 [reasoning]
-# Grok 4.3 추천 설정 (agentic coding 최적화)
-default_effort = "medium"          # 복잡 작업 기본: medium (high는 아키텍처/고위험 때만)
+default_effort = "medium"
 high_effort_tasks = [
   "architecture",
   "risk",
@@ -27,7 +26,6 @@ high_effort_tasks = [
 ]
 
 [model_routing]
-# Grok 4.3 + Grok Build 실전 추천 라우팅
-planning_and_review = "grok-4.3"      # 계획, 아키텍처, 리뷰 → 4.3 (reasoning medium/high)
-execution_and_coding = "grok-4.3"     # 실제 코딩/수정 → 4.3 (속도와 품질 균형)
-fast_loop = "grok-4.3"                # 빠른 반복 (4.3이 충분히 빠름)
+planning_and_review = "grok-4.3"
+execution_and_coding = "grok-4.3"
+fast_loop = "grok-4.3"

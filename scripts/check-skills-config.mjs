@@ -32,50 +32,14 @@ function parseFrontmatter(sourceText) {
   return { fields: fieldMap, body: match[2] || "" };
 }
 
-/**
- * Enforce that every tracked SKILL.md and agent .md contains the verbatim
- * BOB Gateway Protection block (refusal template + literal-word detection),
- * the full 5-step Mandatory Verification Procedure, and reference to
- * "Coding Agent Operating Mode". Missing any required phrase fails the check
- * with a clear actionable error (per docs/skill-usage-guidelines.md).
- */
-function assertContainsRequiredBobClawBlocks(sourceText, relativePath) {
-  const requiredPhrases = [
-    {
-      phrase: "BOB GATEWAY PROTECTION TRIGGERED",
-      desc: "BOB GATEWAY PROTECTION TRIGGERED refusal template",
-    },
-    {
-      phrase: 'The task name or description contains the literal word "Gateway".',
-      desc: "Gateway literal-word detection message in refusal block",
-    },
-    {
-      phrase: "Mandatory Verification Procedure (5 steps",
-      desc: "5-step Mandatory Verification Procedure header",
-    },
-    {
-      phrase:
-        "Re-read in full: `AGENTS.md`, `docs/system-map.md`, `docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`",
-      desc: "step 1 of the 5-step Mandatory Verification Procedure",
-    },
-    {
-      phrase: "Coding Agent Operating Mode",
-      desc: '"Coding Agent Operating Mode" reference (from AGENTS.md)',
-    },
-    {
-      phrase: "subagent inheritance prevention",
-      desc: "BOB Gateway Protection subagent inheritance prevention clause",
-    },
-  ];
+function assertReferencesSupremeLaw(sourceText, relativePath) {
+  const requiredPhrases = ["AGENT-SUPREME-LAW.md", "Gateway", "5-step", "Execution Mode"];
 
-  for (const { phrase, desc } of requiredPhrases) {
+  for (const phrase of requiredPhrases) {
     if (!String(sourceText || "").includes(phrase)) {
       throw new Error(
-        `${relativePath} does not contain the verbatim BOB Gateway Protection block + 5-step Mandatory Verification Procedure + "Coding Agent Operating Mode" reference.\n` +
-          `Missing required phrase for: ${desc}\n` +
-          `Expected exact substring: ${JSON.stringify(phrase)}\n` +
-          `Per docs/skill-usage-guidelines.md (BOB Gateway Protection section and "Adding or Updating Skills and Role Agents"), every SKILL.md and every agent .md MUST embed (verbatim) the refusal template, the literal-word detection instruction, the full 5-step procedure, and the Coding Agent Operating Mode reference as opening instructions. ` +
-          `Copy the exact block from the guideline into the file, then re-run this check. This is a hard safety requirement with no exceptions.`,
+        `${relativePath} must reference docs/AGENT-SUPREME-LAW.md and the required Gateway / 5-step / Execution Mode rules.\n` +
+          `Missing required phrase: ${JSON.stringify(phrase)}`,
       );
     }
   }
@@ -95,7 +59,10 @@ function listAgentFiles() {
   if (!existsSync(AGENTS_DIR)) return [];
   const entries = readdirSync(AGENTS_DIR, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && !entry.name.startsWith(".") && entry.name !== "README.md")
+    .filter(
+      (entry) =>
+        entry.isFile() && entry.name.endsWith(".md") && !entry.name.startsWith(".") && entry.name !== "README.md",
+    )
     .map((entry) => join(AGENTS_DIR, entry.name))
     .sort((left, right) => left.localeCompare(right));
 }
@@ -135,16 +102,7 @@ function validateSkillFile(filePath) {
     throw new Error(`${relativePath} body must be non-empty`);
   }
 
-  // For .grok/ native slim agents/skills: they reference docs/AGENT-SUPREME-LAW.md
-  // instead of embedding hundreds of lines of verbatim blocks (per the "Grok Build native version" design).
-  // Only enforce the heavy verbatim requirement on legacy .claude/ paths.
-  if (relativePath.includes(".claude/")) {
-    assertContainsRequiredBobClawBlocks(sourceText, relativePath);
-  } else if (!String(sourceText || "").includes("AGENT-SUPREME-LAW.md")) {
-    throw new Error(
-      `${relativePath} (Grok native) must reference docs/AGENT-SUPREME-LAW.md instead of embedding the full Supreme Law blocks.`,
-    );
-  }
+  assertReferencesSupremeLaw(sourceText, relativePath);
   assertNotIgnored(filePath);
   return { relativePath, name, description };
 }
@@ -173,14 +131,7 @@ function validateAgentFile(filePath) {
     throw new Error(`${relativePath} body must be non-empty`);
   }
 
-  // Grok native: reference SUPREME-LAW.md, do not require old embedded verbatim blocks
-  if (relativePath.includes(".claude/")) {
-    assertContainsRequiredBobClawBlocks(sourceText, relativePath);
-  } else if (!String(sourceText || "").includes("AGENT-SUPREME-LAW.md")) {
-    throw new Error(
-      `${relativePath} (Grok native) must reference docs/AGENT-SUPREME-LAW.md instead of embedding the full Supreme Law blocks.`,
-    );
-  }
+  assertReferencesSupremeLaw(sourceText, relativePath);
   assertNotIgnored(filePath);
   return { relativePath, name, description };
 }
@@ -190,9 +141,7 @@ function main() {
   const agentFiles = listAgentFiles();
 
   if (skillFiles.length === 0 && agentFiles.length === 0) {
-    throw new Error(
-      "No skills found under .grok/skills and no agent definitions found under .grok/agents",
-    );
+    throw new Error("No skills found under .grok/skills and no agent definitions found under .grok/agents");
   }
 
   const validatedSkills = skillFiles.map((filePath) => validateSkillFile(filePath));

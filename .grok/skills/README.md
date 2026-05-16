@@ -1,7 +1,9 @@
 # .grok/skills/
 
-Grok Build native skills (post-2026-05 slim).
+Grok keeps a single active skill:
 
-Only bob-claw-readiness-safety-verification remains (the one that actually runs the capital diagnostic entry points and quotes raw before safety claims).
+- `bob-claw-readiness-safety-verification` — runs the required readiness,
+  capital, payback, and graphify diagnostics before safety or blocker claims.
 
-Legacy .claude/skills/ purged.
+Like the Grok agents, this skill follows the same operating law as Codex
+sessions. It is a runtime-specific wrapper, not an alternate policy source.

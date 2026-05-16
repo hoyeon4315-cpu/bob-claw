@@ -1,17 +1,21 @@
 # .grok/agents/
 
-Grok Build native agents (slim post-2026-05 cleanup).
+Grok uses a **minimal, Codex-aligned** agent layer in this repo.
 
-Only the minimal set remains:
-- coordinator (lightweight router + diagnostics first for capital questions)
-- verifier-agent (read-only post-edit hygiene + graph + readiness dispatch)
+Active agents:
 
-Heavy machinery removed:
-- 16-team-manager + entire .grok/teams/live-16/ (B-Model 16-person simulation)
-- reviewer-agent (Benjamin + Lucas forced adversarial review)
+- `coordinator` — thin Grok entry point for checklist-first routing
+- `verifier-agent` — read-only post-edit verification
 
-Legacy .claude/agents/ completely purged.
+The Grok runtime is **not** a separate operating system. These prompts are thin
+wrappers around `AGENTS.md`, `docs/AGENT-SUPREME-LAW.md`,
+`docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`.
 
-All remaining agents follow `docs/AGENT-SUPREME-LAW.md` (Gateway literal protection + 5-Step on delegation, Evidence-Complete).
+Removed from the active Grok runtime:
 
-Run `npm run check:skills-config` or `ls .grok/agents .grok/skills` to inspect current state.
+- `reviewer-agent`
+- `16-team-manager`
+- `.grok/teams/live-16/`
+
+Use `npm run ai:grok:inspect` to verify the local Grok runtime and
+`npm run check:skills-config` to validate the tracked Grok agent surfaces.
