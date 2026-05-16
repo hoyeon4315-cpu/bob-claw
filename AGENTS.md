@@ -1,99 +1,174 @@
-# BOB Claw Rules (Compressed - Phase 1)
+# BOB Claw Operating Law
 
-**Note**: This is a compressed version under 10,000 characters. Full Supreme Law details have been moved to `docs/AGENT-SUPREME-LAW.md`.
-
----
+`AGENTS.md` is the top-level operating law. Keep this file short and durable. If
+any runbook, research note, skill prompt, or historical memory conflicts with
+this file, `AGENTS.md` wins.
 
 ## Engineering Map
 
-- Before any work, read `docs/system-map.md`, `docs/harness-engineering.md` after this file.
-- Multi-domain / ambitious work → **16-Team (B Model)부터 활성화**. Isolated single-file work만 Normal Execution Mode.
-- The engineering confidence standard is **evidence-complete confidence**.
+Read in this order:
+
+1. `AGENTS.md`
+2. `docs/system-map.md`
+3. `docs/harness-engineering.md`
+4. `docs/skill-usage-guidelines.md` when using or editing skills/subagents
+5. `docs/ai-agent-operations.md` for role ownership and delegation boundaries
+6. `docs/dashboard-context.md` before dashboard UI or public-status work
+7. `docs/operator-memory.md` only for historical context; never as live truth
+
+Engineering confidence standard: **evidence-complete confidence**.
+
+Put durable law here. Put architecture, runbooks, checklists, and role-specific
+procedures in `docs/*.md`.
 
 ## Diagnostic Entry Points
 
-진단 / 평가 / 분석 답을 만들기 전에 다음 명령을 먼저 호출한다.
+Run the exact entry point first for these question types and quote the raw
+output. If the command returns no usable data, report **"데이터 부족"** exactly.
 
-| 질문 종류                                     | 먼저 호출할 entry point                                    |
-| --------------------------------------------- | ---------------------------------------------------------- |
-| NAV 변동 / gas burn / slippage / payback 누적 | `npm run report:capital-audit -- --json`                   |
-| 완전 자동 readiness blocker                   | `node src/cli/check-full-automation-readiness.mjs --json`  |
-| refill 거부 사유 / capital plan decision      | `node src/cli/plan-capital-manager-refill-jobs.mjs --json` |
-| payback 상태 / 누적 sats / carry 사유         | `npm run report:payback-status -- --json`                  |
-| dashboard 표면 상태                           | `dashboard/public/dashboard-status.json` 조회              |
-| 코드 호출 그래프 / 심볼 관계                  | `python3 -m graphify query/explain/path`                   |
+| Question type                              | First entry point                                          |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| NAV change / gas burn / slippage / capital | `npm run report:capital-audit -- --json`                   |
+| Full automation readiness blocker          | `node src/cli/check-full-automation-readiness.mjs --json`  |
+| Refill refusal / capital plan decision     | `node src/cli/plan-capital-manager-refill-jobs.mjs --json` |
+| Payback status / accrued sats / carry      | `npm run report:payback-status -- --json`                  |
+| Dashboard truth                            | `dashboard/public/dashboard-status.json`                   |
+| Call graph / symbol relation / path        | `npm run graph:focus -- query/explain/path`                |
 
-규칙:
+## Core Context
 
-- 명령 결과는 **그대로 인용**. 요약 금지.
-- 데이터 없으면 "데이터 부족"이라고 그대로 보고.
+- Product model: unattended **native BTC payback agent**.
+- Accounting order: **BTC-denominated first**. Sats are policy truth; USD is
+  projection only.
+- Operator model: the operator is the user in single-account mode.
+- Official BOB Gateway destination set is fixed to 11 chains:
+  Ethereum, BOB, Base, BNB, Avalanche, Unichain, Berachain, Optimism,
+  Soneium, Sei, Sonic.
+- Arbitrum and Polygon are **not** official Gateway destinations.
+- Small-capital mode is active while operating capital is below `$1,000`.
+- Current execution state, dated funding notes, and historical snapshots belong
+  in `docs/operator-memory.md`, not here.
 
-## Core Operating Rules (요약)
+## Objective Review
 
-- **Product model**: Native BTC payback agent. BTC-denominated first.
-- **Operator = user**. Single-account mode.
-- **All 11 official BOB Gateway destinations** in scope.
-- **Small-capital mode** active while operating capital < $1,000.
-- **No LLM in trade execution decision path**. Policy engine only.
-- **No embedded runtime LLM**.
-- Private keys never appear in LLM context, logs, or tool calls.
-- Emergency stop is a file (`$KILL_SWITCH_PATH`).
+- Fresh diagnostics beat memory, docs, and prior transcripts.
+- Source code beats research docs and planning docs.
+- Status, capital, payback, readiness, and dashboard answers must cite the raw
+  diagnostic/file output, not a remembered summary.
+- Live NAV/balance conclusions require same-tick on-chain reads or the dedicated
+  status/report command that performs them.
 
-## Risk Limits (핵심)
+## Execution Safety
 
-- Caps are code, not env vars.
-- A strategy without per-tx / per-day / `maxDailyLossUsd` must not run.
-- Max consecutive failures: 3 → auto-pause.
-- Drawdown kill-switch: 24h PnL < `maxDailyLossUsd` → halt for the day.
-- Auto kill-switch triggers: `src/risk/auto-kill-triggers.mjs`
+- No LLM in the live execution decision path. Runtime decisions come from
+  deterministic policy and executor code only.
+- Do not embed runtime LLM dependencies into signer, policy, capital, or
+  payback execution paths.
+- Private keys stay inside the signer daemon via env-referenced paths only.
+- Runtime authority lives in committed code. Caps, policy thresholds, payback
+- ratios, and safety gates are not raised by dashboard, Telegram, env, or ad-hoc
+  operator prompts.
+- `autoExecute: true` with committed caps means the lane is live; there is no
+  separate manual promotion phase.
+- Payback must remain deterministic, receipt-backed, and must **never**
+  escalate position sizing.
+- `logs/signer-audit.jsonl` and other audit logs are append-only records.
 
-## Execution Safety (핵심)
+## Risk Limits
 
-- Unattended, multichain, fully-automated execution.
-- No manual promotion step.
-- Private keys only inside signer daemon via env-referenced paths.
-- **Payback never escalates sizing**.
-- Live-read mandate: All NAV/balance queries must come from on-chain reads in the same tick.
-
-## Supreme Law Reference
-
-모든 코딩 에이전트, skill, subagent는 `docs/AGENT-SUPREME-LAW.md`에 정의된 다음 규칙을 따른다:
-
-- BOB Gateway Protection (literal word check as first action)
-- 5-Step Mandatory Verification Procedure
-- Execution Mode (integrate and continue, no unsolicited status reports)
-- Evidence-Complete Confidence
-
-AGENTS.md에는 최소 강제 블록만 남기고, 상세 내용은 위 파일 참조.
-
-## Grok Build Execution (Slim)
-
-- Primary: `grok-4.3`.
-- For capital/NAV/payback/refill questions or safety claims: **always run the Diagnostic Entry Points first** and quote the raw `--json` output exactly (see table above). No exceptions.
-- For genuinely ambiguous or high-risk multi-file changes, use the `enter_plan_mode` tool yourself before coding.
-- After meaningful edits on non-trivial work, consider dispatching verifier-agent or the readiness skill for independent hygiene.
-- Tool results: quote raw stdout/stderr on diagnostics and verification. No silent summarization on critical paths.
-- The old heavy 16-Team B-Model, mandatory reviewer-agent (Benjamin+Lucas), and "must use Plan Mode for non-trivial" ritual have been removed (2026-05 cleanup). Direct execution is now preferred. The 3 kept native agents (coordinator, verifier, readiness skill) still enforce Supreme Law + Gateway literal protection when delegating.
-
-## graphify
-
-- 토폴로지/호출자/경로 질문 시 `npm run graph:focus -- query|explain|path`를 Read 전에 먼저 실행.
-- 3개 이상 파일이 필요할 가능성이 있으면 graphify 우선.
+- Every live strategy must have committed `perTx`, `perDay`, and
+  `maxDailyLossUsd` limits.
+- Max consecutive failures is `3`; then auto-pause.
+- If 24h PnL drops below `maxDailyLossUsd`, halt for the day.
+- Capital and risk decisions must use live reads, not stale snapshots.
+- Expected yield must subtract full round-trip costs:
+  onramp fee + destination gas + offramp fee + slippage buffer.
+- Policy/risk failures must surface explicitly; do not add silent fallbacks.
 
 ## graphify
 
-- 토폴로지/호출자/경로 질문 시 `npm run graph:focus -- query|explain|path`를 Read 전에 먼저 실행.
-- 3개 이상 파일이 필요할 가능성이 있으면 graphify 우선.
+- Use graphify first for callers, paths, symbol relationships, architecture
+  questions, or any task likely to require reading 3 or more source files.
+- Preferred entry point: `npm run graph:focus -- query|explain|path`.
+- Use `npm run graph:focus -- status` for docs-only, architecture, or repo-shape
+  checks before broad reading.
+- Do not use graphify for exact numbers, version strings, `.md` research facts,
+  or when the task is to edit a specific file directly.
+- Graph reports live in `src/graphify-out/` and `graphify-out/`.
+
+## Subagent Usage
+
+Subagents and skills are optional execution aids, not a second source of truth.
+Detailed delegation procedure lives in `docs/skill-usage-guidelines.md`; this
+section states the non-negotiable law they inherit.
+
+- `AGENTS.md` applies to every coding agent, skill, and delegated session.
+- If the task name or description contains the literal word **`Gateway`**, do
+  not use a skill or subagent. The primary session handles it directly.
+- Every delegated prompt must start with:
+  `Original Task Name: <verbatim user request>`.
+- Every delegated session must execute the full 5-step Mandatory Verification
+  Procedure from the next section before reading files or calling tools.
+- Delegation stays inside the declared ownership in
+  `docs/ai-agent-operations.md`. Cross-ownership work returns to the parent.
+
+## Coding Agent Operating Mode
+
+**Execution Mode** is the default for every coding session and delegated agent.
+
+- Read the required docs, run the required diagnostics/graphify step, then do
+  the implementation work.
+- Integrate subagent output and continue the main unit of work; do not stop to
+  emit summaries after intermediate results.
+- Finish with a concise natural summary; do not force a
+  `현재 단계: Ln` reporting template unless the user explicitly asks for it.
+
+**Mandatory Verification Procedure (5 steps - execute in order on every
+skill/subagent activation; no shortcuts; integrate then continue):**
+
+1. Re-read in full: `AGENTS.md`, `docs/system-map.md`,
+   `docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`
+   (BOB Gateway Protection section). Quote the `updated_at`/version headers to
+   prove freshness.
+2. Run the BOB Gateway Protection literal-word check (`\bGateway\b` or
+   equivalent) against `Original Task Name:` and the full user request. If the
+   word appears, emit the exact refusal block from
+   `docs/skill-usage-guidelines.md` and halt. Absolute priority over later
+   steps.
+3. Enforce file scope: confirm the task is 100% inside this skill/agent's
+   declared ownership (frontmatter + Role Agents table in
+   `docs/ai-agent-operations.md`). Any other ownership or Gateway surface means
+   refusal and return to the parent/coordinator.
+4. Execute the AGENTS Diagnostic Entry Point(s) appropriate to the question type
+   plus any graphify `query/explain/path` needed to keep reads minimal. Paste
+   the exact raw command output; never summarize it as evidence.
+5. Perform final hygiene verification: `git diff --stat`,
+   `git diff --name-only`, `rg` caller search for deleted/renamed symbols, and
+   the narrow Verification Matrix row(s) from `docs/harness-engineering.md`.
+   Only then produce the deliverable. Never emit an unprompted multi-item
+   checklist or Lx-style status report.
 
 ## Reporting Style
 
-- 추측 금지. 데이터에 기반.
-- 작업 종료 시 자연스럽고 간결한 요약만 제공한다. `현재 단계: Ln`, `이번에 한 일`, `왜 아직 그 단계인지` 같은 강제 abbreviated template은 사용하지 않는다.
-- 사용자가 작업을 요청하면, 해야 할 작업을 **markdown 체크리스트**(`- [ ]` / `- [x]`)로 먼저 명확히 나열한다. 완료된 항목은 `[x]`, 미완료 항목은 `[ ]`로 표시하며 진행에 따라 업데이트한다.
+- Be concise, factual, and data-first.
+- When the user asks for work, begin with a markdown checklist using
+  `- [ ]` / `- [x]`.
+- For readiness, capital, payback, and dashboard questions, quote raw evidence
+  first.
+- If a required command/file does not provide enough evidence, say
+  **"데이터 부족"** instead of filling gaps with guesses.
+- End with a natural concise summary. Do not force
+  `현재 단계: Ln`, `이번에 한 일`, `왜 아직 그 단계인지`, `다음 체크리스트`
+  unless the user explicitly asks for that status format.
 
 ## Workspace Hygiene
 
-- `data/`, `dashboard/public/*.json`, `logs/` 등 생성 산출물은 기본적으로 git 추적 대상에서 제외.
-- 의미 있는 실행 단위(CLI+테스트, 정책+회귀테스트 등)마다 자동 커밋.
-
-이 파일은 slim Grok-native 버전입니다 (2026-05 대대적 정리 후). 16-Team B-Model, reviewer-agent 강제, 과도한 subagent ritual은 제거되었습니다. 핵심 안전 규칙 (Diagnostic Entry Points, Supreme Law, no LLM in execution path) 은 그대로 유지됩니다.
+- Source of truth: `src/**`, `test/**`, `scripts/**`, `docs/**`, `dashboard/**`
+  source files, config, and agent definitions.
+- Generated/operational artifacts: `dashboard/public/*.json`, `data/**`,
+  `logs/**`, caches, coverage, temp outputs, and local scratch files.
+- Do not stage generated artifacts unless the task explicitly says to publish a
+  refreshed artifact.
+- Do not delete audit histories as "cleanup".
+- Use `docs/harness-engineering.md` for the Final Review Loop, Verification
+  Matrix, Source Vs Generated rules, cleanup rules, and dashboard checklist.
