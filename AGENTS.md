@@ -66,7 +66,7 @@ output. If the command returns no usable data, report **"데이터 부족"** exa
   payback execution paths.
 - Private keys stay inside the signer daemon via env-referenced paths only.
 - Runtime authority lives in committed code. Caps, policy thresholds, payback
-- ratios, and safety gates are not raised by dashboard, Telegram, env, or ad-hoc
+  ratios, and safety gates are not raised by dashboard, Telegram, env, or ad-hoc
   operator prompts.
 - `autoExecute: true` with committed caps means the lane is live; there is no
   separate manual promotion phase.
