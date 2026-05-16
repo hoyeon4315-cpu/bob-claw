@@ -135,6 +135,65 @@ test("treasury refill executor builds same-chain token-to-token refill preview",
   assert.equal(preparation.coverage.coversTarget, true);
 });
 
+test("treasury refill executor forwards capital rebalance policy revision into token dex intents", async () => {
+  const baseWbtc = "0x0555e30da8f98308edb960aa94c0db47230d2b9c";
+  const baseCbbtc = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  let capturedInput = null;
+  const preparation = await buildTreasuryRefillExecutionPlan({
+    job: {
+      jobId: "job-base-capital-rebalance",
+      type: "refill_token",
+      chain: "base",
+      asset: "wBTC.OFT",
+      token: baseWbtc,
+      targetAmount: "17910",
+      targetAmountDecimal: 0.0001791,
+      estimatedAssetValueUsd: 13.98,
+      executionMethod: "same_chain_token_to_token_swap",
+      executionReason: "capital_rebalance",
+      policyRevision: "capital_rebalance_ev_gate_v2",
+      fundingSource: {
+        source: {
+          chain: "base",
+          token: baseCbbtc,
+          ticker: "cbBTC",
+          actual: "26889",
+          actualDecimal: 0.00026889,
+          estimatedUsd: 21.0,
+        },
+      },
+      systemEconomics: {
+        effectiveSystemNetPnlUsd: -0.52,
+      },
+    },
+    senderAddress: ADDRESS,
+    buildTokenDexPlanImpl: async (input) => {
+      capturedInput = input;
+      return {
+        schemaVersion: 1,
+        observedAt: "2026-05-16T00:00:00.000Z",
+        planStatus: "ready",
+        strategyId: input.strategyId,
+        chain: input.chain,
+        senderAddress: input.senderAddress,
+        inputToken: input.inputToken,
+        outputToken: input.outputToken,
+        amount: input.amount,
+        minimumOutputAmount: "19646",
+        quote: { outputAmount: "19745" },
+        steps: [{ id: "approve_input_token" }, { id: "swap_input_to_output" }],
+      };
+    },
+  });
+
+  assert.equal(preparation.status, "ready");
+  assert.equal(capturedInput.executionReason, "capital_rebalance");
+  assert.deepEqual(capturedInput.intentMetadata, {
+    policyRevision: "capital_rebalance_ev_gate_v2",
+    jobId: "job-base-capital-rebalance",
+  });
+});
+
 test("treasury refill executor caps token-to-token refill input at token dex per-tx limit", async () => {
   const baseUsdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
   const baseWbtc = "0x0555e30da8f98308edb960aa94c0db47230d2b9c";

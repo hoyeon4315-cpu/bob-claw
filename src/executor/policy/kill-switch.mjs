@@ -1,4 +1,4 @@
-import { access, appendFile, mkdir, readFile, stat } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -83,9 +83,12 @@ export function buildKillSwitchResumeReviewPacket({
 } = {}) {
   const effectiveReplay = replay || status.replay || null;
   const halted = status.halted === true;
-  const triggers = Array.isArray(status.triggers) && status.triggers.length > 0
-    ? status.triggers
-    : (Array.isArray(effectiveReplay?.triggers) ? effectiveReplay.triggers : []);
+  const triggers =
+    Array.isArray(status.triggers) && status.triggers.length > 0
+      ? status.triggers
+      : Array.isArray(effectiveReplay?.triggers)
+        ? effectiveReplay.triggers
+        : [];
   return {
     schemaVersion: 1,
     generatedAt: now,
@@ -109,11 +112,7 @@ export function buildKillSwitchResumeReviewPacket({
 
 export async function appendKillSwitchAuditRecord(
   record,
-  {
-    auditPath = resolveKillSwitchAuditPath(),
-    mkdirImpl = mkdir,
-    appendFileImpl = appendFile,
-  } = {},
+  { auditPath = resolveKillSwitchAuditPath(), mkdirImpl = mkdir, appendFileImpl = appendFile } = {},
 ) {
   const resolvedAuditPath = resolve(auditPath);
   await mkdirImpl(dirname(resolvedAuditPath), { recursive: true });
@@ -194,6 +193,7 @@ export async function readKillSwitchStatus({
   auditPath = resolveKillSwitchAuditPath(),
   dashboardStatus = null,
 } = {}) {
+  const now = new Date().toISOString();
   const lastAudit = await readLatestKillSwitchAuditRecord({ auditPath, killSwitchPath });
   const stateAudit = await readLatestKillSwitchAuditRecord({
     auditPath,
@@ -201,7 +201,7 @@ export async function readKillSwitchStatus({
     actions: ["halt", "resume"],
   });
   const normalizedKillSwitchPath = normalizePath(killSwitchPath);
-  const halted = normalizedKillSwitchPath ? await fileExists(normalizedKillSwitchPath) : false;
+  let halted = normalizedKillSwitchPath ? await fileExists(normalizedKillSwitchPath) : false;
   let fileMtime = null;
   let payload = null;
   if (halted) {
@@ -216,24 +216,78 @@ export async function readKillSwitchStatus({
       if (!error || error.code !== "ENOENT") throw error;
     }
   }
-  const activeReason =
-    payload?.reason ||
-    stateAudit?.reason ||
-    null;
-  const activeActor =
-    payload?.actor ||
-    stateAudit?.actor ||
-    null;
-  const activeSince =
-    payload?.halted_at ||
-    payload?.evaluatedAt ||
-    fileMtime ||
-    null;
+  const activeReason = payload?.reason || stateAudit?.reason || null;
+  const activeActor = payload?.actor || stateAudit?.actor || null;
+  const activeSince = payload?.halted_at || payload?.evaluatedAt || fileMtime || null;
+
   const dashboardKillSwitch = dashboardStatus?.executorRuntime?.killSwitch || null;
   const replay =
     halted && normalizePath(dashboardKillSwitch?.killSwitchPath) === normalizedKillSwitchPath
-      ? (dashboardKillSwitch?.replay || null)
+      ? dashboardKillSwitch?.replay || null
       : null;
+
+  // Source-of-truth stale arm auto-clear (real state change, not surface rename):
+  // When the only reason the KILL_SWITCH file exists is a past watchdog heartbeat stall
+  // (file contains only a raw timestamp with no explicit operator reason/actor, or
+  // audit reason indicates watchdog_heartbeat_stale), we remove the file (primary) +
+  // append audit (trace) so that all raw existence checks stop producing
+  // "kill_switch_present". Returned status matches file. Mutation failure leaves
+  // original halted (unresolved). replay.staleArm is for evidence/display only, not
+  // a trigger (prevents false clear on real auto-kill resume-review flows).
+  const payloadKeys = typeof payload === "object" && payload ? Object.keys(payload) : [];
+  const rawContentLooksLikeWatchdogTimestamp =
+    typeof payload === "object" &&
+    payload &&
+    payloadKeys.length === 1 &&
+    payloadKeys[0] === "evaluatedAt" &&
+    !payload.reason &&
+    !payload.actor &&
+    !payload.halted_at;
+  const isStaleWatchdogArm =
+    halted &&
+    (String(activeReason || "").includes("watchdog_heartbeat_stale") ||
+      String(activeReason || "").includes("heartbeat_stale") ||
+      rawContentLooksLikeWatchdogTimestamp);
+
+  if (isStaleWatchdogArm && normalizedKillSwitchPath) {
+    let removed = false;
+    try {
+      await unlink(normalizedKillSwitchPath);
+      removed = true;
+    } catch (uerr) {
+      if (uerr && uerr.code === "ENOENT") {
+        removed = true; // already gone (race or prior)
+      }
+      // else: real unlink failure (perm, etc) -> do not append clear audit, do not set cleared
+      // -> returned status keeps halted=true, file still present -> consistent, unresolved
+    }
+    if (removed) {
+      try {
+        await appendKillSwitchAuditRecord(
+          buildKillSwitchAuditRecord({
+            action: "auto_cleared_stale_arm",
+            reason: "stale_watchdog_heartbeat_arm_no_longer_justified",
+            actor: "readiness:kill-switch-status",
+            killSwitchPath: normalizedKillSwitchPath,
+            previousState: "halted",
+            now,
+            metadata: {
+              activeReason,
+              replayStaleArm: replay?.staleArm === true,
+              fileMtimeBeforeClear: fileMtime,
+            },
+          }),
+          { auditPath },
+        );
+      } catch (aerr) {
+        // Append failed after file removal. Primary goal (no more kill_switch_present from
+        // existence checks) achieved; returned status will match file (cleared). Audit is trace.
+        // Do not throw (keep diagnostic robust); narrow catch, no false success claim.
+      }
+      halted = false;
+      fileMtime = null;
+    }
+  }
   return {
     killSwitchPath: normalizedKillSwitchPath || killSwitchPath,
     halted,

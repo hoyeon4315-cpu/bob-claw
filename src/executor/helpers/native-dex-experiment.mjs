@@ -107,9 +107,11 @@ function resolveQuotedGasLimit(quote, gasBufferBps) {
 }
 
 function canUseDirectSwapGasFallback({ error, providerName, executableQuote } = {}) {
-  return providerName === "pancake_swap"
-    && executableQuote?.executionTrust === "on_chain_verified"
-    && classifyGasEstimateError(error) === "execution_reverted";
+  return (
+    providerName === "pancake_swap" &&
+    executableQuote?.executionTrust === "on_chain_verified" &&
+    classifyGasEstimateError(error) === "execution_reverted"
+  );
 }
 
 function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationBalanceBefore = null }) {
@@ -117,7 +119,9 @@ function assertSourceBalanceCoversPlan({ plan, sourceBalanceBefore, destinationB
   const required = BigInt(plan?.amount ?? 0);
   if (available >= required) return;
 
-  const error = new Error(`Insufficient source balance: required ${required.toString()}, available ${available.toString()}`);
+  const error = new Error(
+    `Insufficient source balance: required ${required.toString()}, available ${available.toString()}`,
+  );
   error.name = "InsufficientSourceBalance";
   error.partialExecution = {
     schemaVersion: 1,
@@ -166,6 +170,7 @@ export async function buildNativeDexExperimentPlan({
   slippageBps = config.slippageBps,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   systemEconomics = null,
+  intentMetadata = null,
   executionReason = "strategy_execution",
   now = new Date().toISOString(),
 } = {}) {
@@ -279,6 +284,7 @@ export async function buildNativeDexExperimentPlan({
         skipAutoIngest: true,
         expectedTxTo: tx?.to || null,
         executionReason,
+        ...(intentMetadata || {}),
         ...metadata,
       },
     });
@@ -468,17 +474,19 @@ export async function executeNativeDexExperimentPlan({
     });
   }
   const destinationProof = awaitDestinationSettlement
-    ? classifySettlementTimeout(await waitForEvmAssetDelta({
-        asset: plan.outputAsset,
-        owner: plan.senderAddress,
-        initialBalance: destinationBalanceBefore,
-        requiredDelta: plan.minimumOutputAmount,
-        readErc20BalanceImpl,
-        readNativeBalanceImpl,
-        timeoutMs: destinationSettlementTimeoutMs,
-        pollIntervalMs: destinationPollIntervalMs,
-        sleepImpl,
-      }))
+    ? classifySettlementTimeout(
+        await waitForEvmAssetDelta({
+          asset: plan.outputAsset,
+          owner: plan.senderAddress,
+          initialBalance: destinationBalanceBefore,
+          requiredDelta: plan.minimumOutputAmount,
+          readErc20BalanceImpl,
+          readNativeBalanceImpl,
+          timeoutMs: destinationSettlementTimeoutMs,
+          pollIntervalMs: destinationPollIntervalMs,
+          sleepImpl,
+        }),
+      )
     : null;
   const sourceBalanceAfter = await readEvmAssetBalance({
     asset: plan.inputAsset || tokenAsset(plan.chain, ZERO_TOKEN),

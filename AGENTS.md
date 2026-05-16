@@ -144,10 +144,67 @@ Subagents and skills are useful tools that can be actively used to improve focus
 - When delegation is used, the parent stays responsible for dynamic summons:
   call the next role only when its slice is ready, independent, and has a clear
   reintegration path.
+- Blocker-remediation work has two modes. **Fix mode** is the default while
+  investigating, tracing producer paths, implementing a change, and validating
+  it. **Judge mode** is only for the final verdict pass. Do not collapse a Fix
+  mode task into Judge mode unless the prompt explicitly asks for a final
+  verdict-only output.
 - For blocker-driven debugging or remediation work, completion requires the full
   loop: identify the direct blocker, implement the fix, re-run the relevant
   command or refresh path, and confirm the governing status fields actually
   changed. Code changes alone are not completion.
+- Do not claim a blocker is fixed by suppressing, renaming, or reclassifying it
+  in only one downstream status surface while the same underlying condition is
+  still reported by other official entry points. Fix the source-of-truth state
+  or producer path first.
+- If blocker semantics or precedence intentionally change, update every
+  official consumer and the affected tests in the same unit of work, then prove
+  the new blocker set is consistent across the relevant dashboard, readiness,
+  and runtime surfaces. Mixed blocker codes across official surfaces mean the
+  blocker is still unresolved.
+- If a diagnostic, status, or read path mutates source-of-truth state (for
+  example auto-clearing a stale runtime lock), the mutation must be explicit,
+  auditable, and reflected in the returned state from that same call. Do not
+  delete or rewrite live state in a way that leaves the persisted state, audit
+  trail, and returned status out of sync.
+- Do not hide state-mutation failures behind broad catch blocks on the same path
+  that claims recovery. If a repair step requires file deletion, audit append,
+  or status transition, prove each step succeeded or report the blocker as still
+  unresolved.
+- Do not claim a blocker is fixed merely because the producer path was changed
+  and the blocker is expected to disappear on a future refresh, future receipt,
+  or future runtime recovery. Until the blocker is gone in the required
+  official outputs for the current run, it remains unresolved.
+- When the task defines exact governing blocker fields (for example
+  `allChainAutopilot ... blocker:...` or `liveAutomation.refillBlockers[*].reason`),
+  the only acceptable success verdict is that those exact fields no longer
+  contain the target blocker in the current official outputs. If any governing
+  field still carries the blocker, report `unresolved` and do not substitute a
+  greener top-level summary, different blocker ordering, or a lower-level
+  "directionally improved" claim.
+- If a governing diagnostic run returns `error`, `Command timed out`, or an
+  equivalent execution failure, that run is not valid final evidence for either
+  `resolved` or `unresolved` on its own. Re-run the same governing command until
+  it returns usable output, or explicitly report the verdict as blocked by
+  diagnostic failure rather than treating the timeout text as the target
+  blocker.
+- Do not relax policy gates, EV thresholds, fallback costs, or blocker-detection
+  logic solely to make the current blocker disappear unless the new semantics
+  are justified at the policy layer and protected by targeted tests for both the
+  newly allowed case and the previously blocked case. If a policy relaxation
+  causes an existing blocker-path test to fail, treat that as a regression, not
+  a workaround.
+- Treat narrow cost caps, per-key EV overrides, broadened bypass detection, and
+  similar one-off policy suppressions as policy relaxation too. They are not
+  acceptable blocker fixes unless the changed semantics are intentional,
+  explicitly justified, preserved by targeted tests, and proven to clear the
+  governing blocker fields in the current official outputs.
+- When an official output contains both a top-level summary and a more specific
+  nested blocker surface (for example `ready` vs `liveAutomation.refillBlockers`
+  or `blockers=none` vs `allChainAutopilot ... blocker:...`), the more specific
+  blocker-carrying field wins for remediation and reporting. Do not claim
+  success from a green top-level summary while a deeper official field still
+  reports the target blocker.
 - Prioritize direct blocker removal before adjacent cleanup. Do not expand into
   UI, docs, dashboards, or secondary refactors until the primary blocker path
   has been re-run and its status re-checked, unless that secondary work is
@@ -211,6 +268,81 @@ skill/subagent activation; no shortcuts; integrate then continue):**
   the before/after status fields or blocker list, and any remaining blocker.
   Do not stop at the code diff when the task definition is about changing a live
   status, readiness verdict, or dashboard state.
+- In **Fix mode**, detailed diagnosis is required and allowed: producer proof,
+  rejected hypotheses, targeted test results, state-path explanation, and any
+  evidence-backed remaining blockers. Do not reject a Fix mode report merely
+  because it contains more than the eventual Judge mode terminal verdict.
+- A blocker is not removed if any other official diagnostic or status surface
+  still reports the original blocker for the same underlying condition. In that
+  case, report the blocker as unresolved and name the disagreeing surfaces
+  explicitly.
+- Do not mix governing evidence from different rerun bundles, different refresh
+  cycles, or different timestamps into one blocker verdict. The quoted
+  `status-dashboard`, `check-full-automation-readiness`, and related governing
+  outputs must come from the same rerun bundle for that report.
+- If the refreshed planner or job builder shows viable candidate methods
+  (`blocker:null`, different `selectedMethod`, or lower-cost legal routes) while
+  the governing blocker surface still points at an older blocked method, do not
+  close the slice as `NO_LEGITIMATE_FIX` or infrastructure-only yet. Treat that
+  mismatch as evidence of a synchronization, refresh, persistence, or method
+  selection bug until the planner output and governing surface agree.
+- While that planner-vs-governing mismatch remains unresolved, the correct
+  verdict for the slice is `UNRESOLVED`, not `NO_LEGITIMATE_FIX`.
+- Do not accept `NO_LEGITIMATE_FIX` until the report proves, with exact-copy raw
+  evidence, that the governing surface and the refreshed planner now agree on
+  the same selected method or candidate set, and includes the numeric EV inputs
+  for the still-blocked path (`expectedNetUsd`, `requiredNetUsd`, `p90CostUsd`,
+  effective floor or equivalent). A conclusion without those raw values and
+  method-agreement proof is incomplete.
+- When a fix auto-clears or mutates runtime state, the response must include the
+  state-change proof itself (for example file absence/presence, audit record, or
+  returned status payload) in addition to downstream status output. Downstream
+  summaries alone are not enough evidence for state mutation.
+- Do not present projected improvement ("will clear on next successful reads",
+  "should drop after fresh receipts", similar) as before/after proof. Evidence
+  must come from the current re-run outputs and current test results.
+- For blocker-remediation tasks, do not use future-tense success language
+  (`will clear`, `should disappear`, `expected to resolve`, `moves in the right
+direction`, similar) as the verdict. If the current governing fields still
+  carry the blocker, the report must say `unresolved`.
+- For blocker-remediation tasks, the response must name the exact field path or
+  output line that defines success (`allChainAutopilot ... blocker`, specific
+  `refillBlockers[i].reason`, similar) and show that exact field changed. A
+  different green summary elsewhere is not substitute evidence.
+- If the original target blocker disappears from its governing fields and a
+  different blocker becomes active in the same surfaces, close the old blocker
+  slice as resolved once the disappearance is proven by exact-copy raw lines,
+  then open a new slice for the replacement blocker. Do not keep the old slice
+  open by describing the new blocker under the old name.
+- When a blocker slice names a specific governing line (for example
+  `allChainAutopilot=... blocker:...`), do not substitute a nearby top-level
+  summary line such as `blockers=...` as proof of disappearance. The exact named
+  governing line must be quoted.
+- Governing lines and field values quoted in the report must be exact-copy
+  strings from the current raw output. Do not paraphrase, normalize, trim into a
+  different value, or reuse a line from an earlier run.
+- In **Judge mode**, when a constrained blocker verdict asks for exact raw
+  offending lines only,
+  quote only the requested governing lines. Do not pad the output with adjacent
+  non-governing lines such as summary counters, `blockers=none`, status labels,
+  or explanatory context unless the prompt explicitly asks for them.
+- When the task or delegated prompt explicitly enters **Judge mode** or
+  specifies a constrained terminal format for blocker results, follow that
+  format exactly. Do not append extra checklist items, producer commentary,
+  future-state explanations, or test summaries after an `UNRESOLVED` or
+  `BLOCKED_BY_DIAGNOSTIC_FAILURE` verdict if the prompt says the output must
+  contain only the verdict plus exact-copy raw lines.
+- If the task or delegated prompt explicitly forbids a technique class (for
+  example per-key cost caps, broad EV relaxation, bypass widening, or one-off
+  suppressions), do not preserve that technique in the claimed fix, do not cite
+  it as part of the success rationale, and do not defend it as acceptable
+  progress. Remove it or report unresolved without relying on that forbidden
+  technique.
+- For blocker-remediation tasks, the response must also include producer proof:
+  name the function or code path that emits the blocker, state the exact
+  condition that made it fire in this run, and show what changed in that
+  producer path or its inputs. Surface-only before/after output is insufficient
+  when the producer evidence is missing.
 - Treat freshness fields (`generatedAt`, `observedAt`, `ageMinutes`, similar
   status timestamps) as semantic state, not cosmetic metadata. Do not refresh
   or rewrite them unless the underlying artifact has been recomputed from its

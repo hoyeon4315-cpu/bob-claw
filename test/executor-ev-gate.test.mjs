@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
-import {
-  buildEvCostModel,
-  evGate,
-} from "../src/executor/policy/ev-gate.mjs";
+import { buildEvCostModel, evGate } from "../src/executor/policy/ev-gate.mjs";
 import { evaluateEvMarginFloor } from "../src/risk/ev-margin-floor.mjs";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
 import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../src/config/sizing.mjs";
@@ -31,12 +28,7 @@ function makeAuditRecord({
   };
 }
 
-function makeReceiptRecord({
-  txHash,
-  chain = "base",
-  costUsd = 0.1,
-  observedAt = "2026-05-01T00:00:00.000Z",
-} = {}) {
+function makeReceiptRecord({ txHash, chain = "base", costUsd = 0.1, observedAt = "2026-05-01T00:00:00.000Z" } = {}) {
   return {
     observedAt,
     chain,
@@ -86,11 +78,7 @@ function makeIntent(overrides = {}) {
 
 test("evGate allows high-EV intent when expected net clears history-backed p90", () => {
   const history = makeHistory([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]);
-  const verdict = evGate(
-    makeIntent({ expectedNetUsd: 1.01 }),
-    history,
-    { now: "2026-05-15T00:00:00.000Z" },
-  );
+  const verdict = evGate(makeIntent({ expectedNetUsd: 1.01 }), history, { now: "2026-05-15T00:00:00.000Z" });
 
   assert.equal(verdict.allow, true);
   assert.equal(verdict.evidence.costSource, "history_p90");
@@ -99,11 +87,7 @@ test("evGate allows high-EV intent when expected net clears history-backed p90",
 
 test("evGate rejects marginal EV when expected net is at the receipt-backed threshold", () => {
   const history = makeHistory([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]);
-  const verdict = evGate(
-    makeIntent({ expectedNetUsd: 0.9 }),
-    history,
-    { now: "2026-05-15T00:00:00.000Z" },
-  );
+  const verdict = evGate(makeIntent({ expectedNetUsd: 0.9 }), history, { now: "2026-05-15T00:00:00.000Z" });
 
   assert.equal(verdict.allow, false);
   assert.deepEqual(verdict.blockers, ["expected_net_below_receipt_cost_p90_floor"]);
@@ -141,11 +125,9 @@ test("evGate wires gas margin floor into policy rejection", () => {
 });
 
 test("evGate rejects non-safety live intents when expected net is unmeasured", () => {
-  const verdict = evGate(
-    makeIntent({ expectedNetUsd: undefined }),
-    makeHistory([]),
-    { now: "2026-05-15T00:00:00.000Z" },
-  );
+  const verdict = evGate(makeIntent({ expectedNetUsd: undefined }), makeHistory([]), {
+    now: "2026-05-15T00:00:00.000Z",
+  });
 
   assert.equal(verdict.allow, false);
   assert.deepEqual(verdict.blockers, ["expected_net_unmeasured"]);
@@ -214,6 +196,77 @@ test("evGate keeps normal EV pass/fail when transport plumbing carries expectedN
   assert.equal(verdict.allow, false);
   assert.deepEqual(verdict.blockers, ["expected_net_below_receipt_cost_p90_floor"]);
   assert.notEqual(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
+});
+
+test("evGate ignores derived negative system economics for marked capital rebalance approvals", () => {
+  const verdict = evGate(
+    makeIntent({
+      strategyId: "token-dex-experiment",
+      intentType: "approve_exact",
+      executionReason: "capital_rebalance",
+      expectedNetUsd: undefined,
+      systemEconomics: { effectiveSystemNetPnlUsd: -0.52 },
+      metadata: {
+        executionReason: "capital_rebalance",
+        policyRevision: "capital_rebalance_ev_gate_v2",
+      },
+      approval: {
+        token: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+        spender: "0x0D05a7D3448512B78fa8A9e46c4872C88C4a0D05",
+        amount: "19689",
+        mode: "per_tx",
+      },
+    }),
+    makeHistory([], { strategyId: "token-dex-experiment", intentType: "approve_exact" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
+});
+
+test("evGate ignores derived negative system economics for marked capital rebalance swaps", () => {
+  const verdict = evGate(
+    makeIntent({
+      strategyId: "token-dex-experiment",
+      intentType: "dex_swap",
+      executionReason: "capital_rebalance",
+      expectedNetUsd: undefined,
+      systemEconomics: { effectiveSystemNetPnlUsd: -0.52 },
+      metadata: {
+        executionReason: "capital_rebalance",
+        policyRevision: "capital_rebalance_ev_gate_v2",
+      },
+    }),
+    makeHistory([0.01, 0.02, 0.03], { strategyId: "token-dex-experiment", intentType: "dex_swap" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, true);
+  assert.deepEqual(verdict.blockers, []);
+  assert.equal(verdict.evidence.bypassReason, "transport_plumbing_zero_pnl_surface");
+});
+
+test("evGate still blocks marked capital rebalance when explicit expected net is present", () => {
+  const verdict = evGate(
+    makeIntent({
+      strategyId: "token-dex-experiment",
+      intentType: "dex_swap",
+      executionReason: "capital_rebalance",
+      expectedNetUsd: 0,
+      systemEconomics: { effectiveSystemNetPnlUsd: -0.52 },
+      metadata: {
+        executionReason: "capital_rebalance",
+        policyRevision: "capital_rebalance_ev_gate_v2",
+      },
+    }),
+    makeHistory([0.1, 0.2, 0.3], { strategyId: "token-dex-experiment", intentType: "dex_swap" }),
+    { now: "2026-05-15T00:00:00.000Z" },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.deepEqual(verdict.blockers, ["expected_net_below_receipt_cost_p90_floor"]);
 });
 
 test("evGate accepts expectedNetProfitUsd aliases from campaign proposers", () => {

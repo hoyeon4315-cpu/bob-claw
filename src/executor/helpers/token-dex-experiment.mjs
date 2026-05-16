@@ -205,6 +205,7 @@ export async function buildTokenDexExperimentPlan({
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   quoteOnly = false,
   systemEconomics = null,
+  intentMetadata = null,
   executionReason = "strategy_execution",
   now = new Date().toISOString(),
 } = {}) {
@@ -471,6 +472,7 @@ export async function buildTokenDexExperimentPlan({
         skipAutoIngest: true,
         expectedTxTo: tx?.to || null,
         executionReason,
+        ...(intentMetadata || {}),
         ...metadata,
       },
     });

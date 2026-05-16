@@ -387,6 +387,16 @@ function expectedNetUsdFromIntent(intent = {}) {
     intent.metadata?.expectedNetUsd,
     intent.expectedNetProfitUsd,
     intent.metadata?.expectedNetProfitUsd,
+  ];
+  for (const candidate of candidates) {
+    const parsed = finiteNumber(candidate);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function derivedExpectedNetUsdFromIntent(intent = {}) {
+  const candidates = [
     intent.systemEconomics?.effectiveSystemNetPnlUsd,
     intent.systemEconomics?.estimatedNetPnlUsd,
     intent.metadata?.systemEconomics?.effectiveSystemNetPnlUsd,
@@ -403,6 +413,13 @@ function expectedNetUsdFromIntent(intent = {}) {
     if (parsed !== null) return parsed;
   }
   return null;
+}
+
+function suppressDerivedExpectedNetForCapitalRebalance(intent = {}) {
+  return (
+    normalizeString(intent.metadata?.policyRevision || intent.policyRevision) === "capital_rebalance_ev_gate_v2" &&
+    normalizeString(intent.executionReason || intent.metadata?.executionReason) === "capital_rebalance"
+  );
 }
 
 function gasEstimateUsdFromIntent(intent = {}) {
@@ -446,7 +463,10 @@ export function evGate(
   const strategyId = normalizeString(intent.strategyId);
   const chain = normalizeChain(intent.chain);
   const intentType = normalizeString(intent.intentType);
-  const expectedNetUsd = expectedNetUsdFromIntent(intent);
+  const explicitExpectedNetUsd = expectedNetUsdFromIntent(intent);
+  const expectedNetUsd =
+    explicitExpectedNetUsd ??
+    (suppressDerivedExpectedNetForCapitalRebalance(intent) ? null : derivedExpectedNetUsdFromIntent(intent));
 
   if (isSafetyCriticalIntent(intent)) {
     return buildAllowResult(strategyId, chain, intentType, "safety_critical_intent");
