@@ -2,12 +2,16 @@
 
 import { join, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
+import { createCliMetricsSession, parseMetricsArgs } from "../metrics/cli-run.mjs";
 import { collectExecutorRuntimeReadiness } from "../runtime/executor-runtime-readiness.mjs";
 import { collectAutomationHealthReport } from "../system/automation-health-report.mjs";
 
-function parseArgs(argv) {
+const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
+
+export function parseArgs(argv) {
   const flags = new Set(argv);
   const entries = Object.fromEntries(
     argv
@@ -17,57 +21,113 @@ function parseArgs(argv) {
         return [key, rest.join("=")];
       }),
   );
+  const metrics = parseMetricsArgs(argv, { resolvePath: resolve });
   return {
     json: flags.has("--json"),
     write: flags.has("--write"),
     skipRuntimeProbe: flags.has("--skip-runtime-probe"),
     rootDir: entries["root-dir"] ? resolve(entries["root-dir"]) : process.cwd(),
     output: entries.output ? resolve(entries.output) : join(config.dataDir, "automation-health-report.json"),
+    metricsOut: metrics.metricsOut,
+    metricsFormat: metrics.metricsFormat,
   };
 }
 
-function printSummary(report) {
-  console.log(`status=${report.status}`);
-  console.log(`runtimeReady=${report.runtimeReadiness.ready ?? "unknown"}`);
-  console.log(`launchdConfigured=${report.launchd.summary.configuredCount}/${report.launchd.summary.expectedCount}`);
-  console.log(`dashboardLiveTrading=${report.dashboard.liveTrading || "unknown"}`);
-  console.log(`allChainStatus=${report.allChain.status || "unknown"}`);
-  console.log(`allChainRefillBlocked=${report.allChain.refillBlockedCount ?? "unknown"}`);
-  console.log(`queueCandidates=${report.queues.totalCandidates}`);
-  console.log(`queueChains=${Object.entries(report.queues.byChain).map(([chain, count]) => `${chain}:${count}`).join(",") || "none"}`);
-  console.log(`representativeMissingChains=${report.queues.representativeCoverage.missingRepresentativeChainCount ?? "unknown"}`);
-  console.log(`routeRemediation=${report.routeRemediation.present ? report.routeRemediation.status || "unknown" : "missing"}`);
-  console.log(`topBlockers=${report.topBlockers.map((item) => `${item.reason}:${item.count}`).join(",") || "none"}`);
+function renderSummary(report) {
+  return [
+    `status=${report.status}`,
+    `runtimeReady=${report.runtimeReadiness.ready ?? "unknown"}`,
+    `launchdConfigured=${report.launchd.summary.configuredCount}/${report.launchd.summary.expectedCount}`,
+    `dashboardLiveTrading=${report.dashboard.liveTrading || "unknown"}`,
+    `allChainStatus=${report.allChain.status || "unknown"}`,
+    `allChainRefillBlocked=${report.allChain.refillBlockedCount ?? "unknown"}`,
+    `queueCandidates=${report.queues.totalCandidates}`,
+    `queueChains=${
+      Object.entries(report.queues.byChain)
+        .map(([chain, count]) => `${chain}:${count}`)
+        .join(",") || "none"
+    }`,
+    `representativeMissingChains=${report.queues.representativeCoverage.missingRepresentativeChainCount ?? "unknown"}`,
+    `routeRemediation=${report.routeRemediation.present ? report.routeRemediation.status || "unknown" : "missing"}`,
+    `topBlockers=${report.topBlockers.map((item) => `${item.reason}:${item.count}`).join(",") || "none"}`,
+  ].join("\n");
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+function buildAutomationHealthMetrics(report) {
+  return [
+    {
+      name: "bobclaw_automation_health_runtime_ready",
+      value: report.runtimeReadiness?.ready === true ? 1 : 0,
+    },
+    {
+      name: "bobclaw_automation_health_queue_candidates",
+      value: report.queues?.totalCandidates ?? 0,
+    },
+    {
+      name: "bobclaw_automation_health_top_blocker_count",
+      value: report.topBlockers?.[0]?.count ?? 0,
+    },
+    {
+      name: "bobclaw_automation_health_refill_blocked_count",
+      value: report.allChain?.refillBlockedCount ?? 0,
+    },
+    {
+      name: "bobclaw_automation_health_launchd_configured_count",
+      value: report.launchd?.summary?.configuredCount ?? 0,
+    },
+  ];
+}
+
+export async function main(argv = process.argv.slice(2), deps = {}) {
+  const args = parseArgs(argv);
+  const stdout = deps.stdout || process.stdout;
+  const stderr = deps.stderr || process.stderr;
+  const metrics = createCliMetricsSession({
+    command: "report_automation_health",
+    metricsOut: args.metricsOut,
+    metricsFormat: args.metricsFormat,
+    now: deps.now || (() => new Date()),
+    nowMs: deps.nowMs || (() => Date.now()),
+    writeTextImpl: deps.writeTextImpl,
+  });
   const sourceOverrides = {};
   if (!args.skipRuntimeProbe) {
+    const collectExecutorRuntimeReadinessImpl =
+      deps.collectExecutorRuntimeReadinessImpl || collectExecutorRuntimeReadiness;
     sourceOverrides.runtimeReadiness = {
       path: "live:collectExecutorRuntimeReadiness",
       present: true,
-      json: await collectExecutorRuntimeReadiness(),
+      json: await collectExecutorRuntimeReadinessImpl(),
     };
   }
-  const report = await collectAutomationHealthReport({
-    rootDir: args.rootDir,
-    sourceOverrides,
-  });
+  try {
+    const collectAutomationHealthReportImpl = deps.collectAutomationHealthReportImpl || collectAutomationHealthReport;
+    const report = await collectAutomationHealthReportImpl({
+      rootDir: args.rootDir,
+      sourceOverrides,
+    });
 
-  if (args.write) {
-    await writeTextIfChanged(args.output, `${JSON.stringify(report, null, 2)}\n`);
+    if (args.write) {
+      await (deps.writeReportImpl || writeTextIfChanged)(args.output, `${JSON.stringify(report, null, 2)}\n`);
+    }
+
+    const output = args.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderSummary(report)}\n`;
+    stdout.write(output);
+
+    await metrics.finalize({
+      result: report.status === "healthy" ? "ok" : "blocked",
+      gauges: buildAutomationHealthMetrics(report),
+    });
+    return report;
+  } catch (error) {
+    await metrics.finalize({ result: "error" }).catch(() => {});
+    stderr.write(`${error?.stack || error?.message || String(error)}\n`);
+    throw error;
   }
-
-  if (args.json) {
-    console.log(JSON.stringify(report, null, 2));
-    return;
-  }
-
-  printSummary(report);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (IS_MAIN) {
+  main().catch((_error) => {
+    process.exitCode = 1;
+  });
+}
