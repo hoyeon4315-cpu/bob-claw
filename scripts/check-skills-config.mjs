@@ -5,8 +5,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const SKILL_ROOTS = Object.freeze([".claude/skills", ".skills", ".factory/skills"]);
-const AGENTS_DIR = resolve(ROOT_DIR, ".claude/agents");
+const SKILL_ROOTS = Object.freeze([".grok/skills"]);
+const AGENTS_DIR = resolve(ROOT_DIR, ".grok/agents");
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/u;
 
 function parseFrontmatter(sourceText) {
@@ -95,7 +95,7 @@ function listAgentFiles() {
   if (!existsSync(AGENTS_DIR)) return [];
   const entries = readdirSync(AGENTS_DIR, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && !entry.name.startsWith("."))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && !entry.name.startsWith(".") && entry.name !== "README.md")
     .map((entry) => join(AGENTS_DIR, entry.name))
     .sort((left, right) => left.localeCompare(right));
 }
@@ -135,15 +135,24 @@ function validateSkillFile(filePath) {
     throw new Error(`${relativePath} body must be non-empty`);
   }
 
-  assertContainsRequiredBobClawBlocks(sourceText, relativePath);
+  // For .grok/ native slim agents/skills: they reference docs/AGENT-SUPREME-LAW.md
+  // instead of embedding hundreds of lines of verbatim blocks (per the "Grok Build native version" design).
+  // Only enforce the heavy verbatim requirement on legacy .claude/ paths.
+  if (relativePath.includes(".claude/")) {
+    assertContainsRequiredBobClawBlocks(sourceText, relativePath);
+  } else if (!String(sourceText || "").includes("AGENT-SUPREME-LAW.md")) {
+    throw new Error(
+      `${relativePath} (Grok native) must reference docs/AGENT-SUPREME-LAW.md instead of embedding the full Supreme Law blocks.`,
+    );
+  }
   assertNotIgnored(filePath);
   return { relativePath, name, description };
 }
 
 function validateAgentFile(filePath) {
   const relativePath = relative(ROOT_DIR, filePath).replaceAll("\\", "/");
-  if (!relativePath.includes(".claude/agents/") || !relativePath.endsWith(".md")) {
-    throw new Error(`${relativePath} must be under .claude/agents/ and end with .md`);
+  if (!relativePath.includes(".grok/agents/") || !relativePath.endsWith(".md")) {
+    throw new Error(`${relativePath} must be under .grok/agents/ and end with .md`);
   }
 
   const sourceText = readFileSync(filePath, "utf8");
@@ -164,7 +173,14 @@ function validateAgentFile(filePath) {
     throw new Error(`${relativePath} body must be non-empty`);
   }
 
-  assertContainsRequiredBobClawBlocks(sourceText, relativePath);
+  // Grok native: reference SUPREME-LAW.md, do not require old embedded verbatim blocks
+  if (relativePath.includes(".claude/")) {
+    assertContainsRequiredBobClawBlocks(sourceText, relativePath);
+  } else if (!String(sourceText || "").includes("AGENT-SUPREME-LAW.md")) {
+    throw new Error(
+      `${relativePath} (Grok native) must reference docs/AGENT-SUPREME-LAW.md instead of embedding the full Supreme Law blocks.`,
+    );
+  }
   assertNotIgnored(filePath);
   return { relativePath, name, description };
 }
@@ -175,8 +191,7 @@ function main() {
 
   if (skillFiles.length === 0 && agentFiles.length === 0) {
     throw new Error(
-      "No Claude-compatible skills found under .claude/skills, .skills, or .factory/skills " +
-        "and no agent definitions found under .claude/agents",
+      "No skills found under .grok/skills and no agent definitions found under .grok/agents",
     );
   }
 

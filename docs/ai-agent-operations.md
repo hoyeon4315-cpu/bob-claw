@@ -35,15 +35,17 @@ Ollama documents `ollama launch claude --model ...` for Claude Code and notes Cl
 npm run ai:claude:kimi:coordinator
 ```
 
-## Role Agents
+## Current Agents (Grok Build Native Only)
 
-- `bob-claw-coordinator` - planning and delegation only; routes work to specialized agents.
-- `strategy-agent` - strategy modules, receipt-backed evidence, strategy reports.
-- `policy-agent` - deterministic policy and risk gates.
-- `payback-agent` - BTC-denominated payback scheduler, accumulator, KPI slice.
-- `treasury-agent` - capital movement planning, refills, Gateway consolidation intents.
-- `infra-agent` - CLI wiring, graphify, dashboard slices, package scripts, test harness.
-- `verifier-agent` - read-only diff inspection, targeted checks, graphify status, and residual-risk report.
+After the 2026-05 cleanup (complete removal of .claude/ legacy agents and the 16-Team B-Model):
+
+- `coordinator` (in `.grok/agents/`) — lightweight main entry point for Grok sessions.
+- `verifier-agent` (in `.grok/agents/`) — read-only post-change verification.
+- `bob-claw-readiness-safety-verification` skill (in `.grok/skills/`) — runs the mandatory capital diagnostics and raw quotes before any readiness/safety claim.
+
+Use `npm run check:skills-config` to see the current active set.
+
+The old Claude role agents (bob-claw-coordinator, strategy-agent, policy-agent, payback-agent, treasury-agent, infra-agent) and all 15 B-Model roles have been deleted.
 
 ## Memory Policy
 
@@ -73,44 +75,17 @@ The dev-agent lifecycle is report-only. It may describe coding and research task
 
 The lifecycle never grants live execution authority. A task with `runtimeAuthority: "none"` may propose source, tests, reports, or committed config diffs. It may not call the signer, sign transactions, bypass policy, raise caps at runtime, decide payback timing or ratio, mutate `autoExecute` through a side channel, or publish raw wallet/route/inventory artifacts.
 
-## 16-Person Live Team (B Model) — First-Class Parallel Operating Mode
+## Current Grok Native Agents (Post-2026-05 Slim)
 
-Alongside the main `bob-claw-coordinator`, verifier-agent, and single-ownership role agents (strategy-agent, policy-agent, payback-agent, treasury-agent, infra-agent), BOB Claw now supports the **16-Person Live Team (B Model)** as a first-class high-velocity collaborative mode.
+After the major cleanup (removal of 16-Team B-Model, reviewer-agent, and all .claude/ legacy duplication), the active Grok Build native agents are:
 
-**When to activate**:
-- Multi-domain tasks (2+ ownership areas) such as YCE (Yield & Campaign Opportunity) feature development, receipt validation, dashboard surfaces, capital + risk + payback co-evolution, E2E verification campaigns, or large refactors.
-- User requests: "16-team으로 시작해", "16인 라이브 팀으로 ... 해줘", "/16-team <task>", or "16-Person Live Team (B Model)으로 parallel work 해줘".
+- **coordinator** — lightweight main router. Prefers direct execution. Dispatches to readiness skill for safety/blocker/readiness questions and verifier-agent for post-edit hygiene.
+- **verifier-agent** — read-only diff + graphify + harness + readiness dispatch for evidence-complete verification after non-trivial changes.
+- **bob-claw-readiness-safety-verification** skill (in `.grok/skills/`) — the one that actually runs the AGENTS.md Diagnostic Entry Points (`report:capital-audit --json`, `check-full-automation-readiness --json`, `plan-capital-manager-refill-jobs --json`, `report:payback-status --json`, graph:focus, etc.) and quotes raw before any safety or readiness claim.
 
-**Structure**:
-- 1 Engineering Manager & Coordinator (orchestrates via `.grok/teams/live-16/16-team-manager.md` integration point)
-- 6 Domain Leads (active hubs): Capital & Treasury, Risk/Safety & Resilience, Execution & Policy, Payback & Gateway Settlement, Opportunity & Research, Evidence/Data & Quality
-- 9 Specialists (T-shaped): Refill & Capital Automation, Allocation & Rebalancing, Resilience & Self-Healing, Policy & Intent Evaluation, Signer & Audit Integrity, Settlement & Proof, Yield & Campaign Opportunity (YCE), Protocol Reader & On-chain Data, Receipt & Reconciliation
+All three still strictly follow `docs/AGENT-SUPREME-LAW.md` (literal `Gateway` protection on delegation + 5-Step + Evidence-Complete).
 
-**All 15 role definitions** (including the 6 Domain Lead files completed by the Role Scaffolder) live in the canonical `.grok/teams/live-16/roles/*.md`. See `docs/team/live-16/roles/` for the docs-visible mirror.
-
-**Key operating principles** (detailed in `docs/16-team-operations.md`):
-- Direct Address by exact full role title ("Evidence, Data & Quality Domain Lead + Receipt & Reconciliation Engineer, ...")
-- Domain Leads proactively pull specialists and decide assignments (flexibility rule)
-- `fork_context: true` + `background: true` + parallel spawning as default
-- Standardized patterns: Direct Call, Joint Session (2–4 agents), Explicit Handoff, Live Sync Call, Proactive Pull-In
-- Reusable templates in `.grok/teams/live-16/templates/` (joint-session.md, handoff.md, call-another-agent.md) and docs mirror base-*.md
-- **Relaxed Gateway Policy (team-internal only)**: literal "Gateway" refusal suspended inside the team for dev velocity on related surfaces (still execute 5-Step, quote raw diagnostics from AGENTS.md entry points, never weaken caps/invariants). Full strict Supreme Law (`docs/AGENT-SUPREME-LAW.md`) applies outside the team and for production changes.
-- Artifact transparency mandatory: all work in `.grok/teams/live-16/active-work/<slug>.md`, `decisions/`, `harness/` (canonical) and mirrored under `docs/team/live-16/`
-
-**Activation & Monitoring**:
-- Main coordinator detects multi-ownership via Master Decision Matrix (`docs/skill-usage-guidelines.md`) and spawns the 16-team manager or directly relevant Leads/Specialists.
-- Monitor parallel streams with repeated `get_command_or_subagent_output <task_id>`
-- All output returns to parent for integration + verifier-agent + harness Verification Matrix before commit.
-
-**User guides**:
-- `docs/16-team-operations.md` — complete activation, policy, team map, artifact locations, integration flow
-- `docs/16-team-quickstart.md` — copy-paste examples for YCE feature, multi-domain refactor, verification campaign, Direct Call, Joint Session, handoff, escalation
-- `.grok/teams/live-16/README.md` + `protocol.md` — the operational law loaded by every 16-team agent
-- `docs/team/live-16/16-team-manager.md` — Engineering Manager role + Phase 3 main-coordinator delegation recipe
-
-**Core invariants never relaxed**: BTC payback first, no LLM in execution path, private keys out of context, operator = user, evidence-complete confidence, 5-Step on every activation (Gateway check as step 2, treated per protocol inside team), diagnostic entry points with raw `--json` quotes.
-
-This mode delivers the velocity demonstrated on DefiLlama yield lane revival, role definition completion, receipt E2E validation, dashboard wiring, and harness bootstrap streams.
+The old 16-Person Live Team (B Model), 15 role definitions, `.grok/teams/live-16/`, `docs/16-team-*` docs, and Claude role agents have been removed.
 
 ## Sources
 

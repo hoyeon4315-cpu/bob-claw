@@ -1,7 +1,7 @@
 # .grok/skills/
 
-Grok Build 네이티브 Skills가 위치하는 디렉토리.
+Grok Build native skills (post-2026-05 slim).
 
-Phase 1에서는 readiness verification skill 등을 이곳에 배치할 예정.
+Only bob-claw-readiness-safety-verification remains (the one that actually runs the capital diagnostic entry points and quotes raw before safety claims).
 
-기존 `.claude/skills/`는 Claude Code 호환용 Legacy로 유지.
+Legacy .claude/skills/ purged.

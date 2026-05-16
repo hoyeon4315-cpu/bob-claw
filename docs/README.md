@@ -10,8 +10,7 @@ This page is the documentation entry point. Keep `AGENTS.md` small enough to loa
 4. `docs/skill-usage-guidelines.md` - automatic skill judgment for coding agents under Execution Mode (Master Decision Matrix for 12 BOB Claw situations, BOB Gateway Protection, graphify-first rule, subagent patterns, and 5-step Mandatory Verification with diagnostic re-execution).
 5. `CLAUDE.md` - short bootstrap for Claude Code sessions.
 6. `docs/operator-memory.md` - dated implementation/status memory archive. Read only when historical context is needed.
-7. `docs/ai-agent-operations.md` - Ollama + Claude Code + subagent setup + 16-Person Live Team (B Model) as first-class parallel mode.
-8. `docs/16-team-operations.md` + `docs/16-team-quickstart.md` - activation commands ("16-team으로 시작해"), Domain Leads (6) + Specialists (9), Direct Call / Joint Session / Handoff, relaxed Gateway (team-internal only), Parallel as Default, artifact locations (active-work/, decisions/, harness/, roles/), and copy-paste examples.
+7. `docs/ai-agent-operations.md` - Grok Build native agents (coordinator + verifier + readiness skill after 2026-05 slim cleanup). The old 16-Team B-Model and Claude role agents have been removed.
 9. `docs/current-status.md` - generated/local status snapshot when present. Treat it as operational output, not policy.
 
 ## Active Runbooks / Role-Specific Workflows
@@ -26,7 +25,7 @@ This page is the documentation entry point. Keep `AGENTS.md` small enough to loa
 - `docs/dashboard-context.md` - required reading before dashboard UI changes.
 - `docs/known-failures-2026-04-22.md` - known test failure context.
 - `docs/research/README.md` - research source index.
-- `docs/16-team-operations.md` + `docs/16-team-quickstart.md` + `docs/team/live-16/` - 16-Person Live Team (B Model) activation, protocol, Domain Lead role files (including all 6 completed by Role Scaffolder), collaboration templates, harness/, and active-work/ mirrors.
+- (removed in 2026-05 cleanup) Old 16-Team B-Model docs and .grok/teams/live-16/ were deleted. Current agent setup is minimal (.grok/agents/ + .grok/skills/ only).
 
 ## Hygiene Rules
 

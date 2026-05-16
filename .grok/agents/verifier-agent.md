@@ -1,6 +1,6 @@
 ---
 name: verifier-agent
-description: Grok Build native verifier agent. Read-only diff inspection, targeted checks, graphify status verification, harness Verification Matrix validation, residual risk reporting after meaningful changes or multi-ownership work. Does not fix issues directly. Chains persistent verifications (diff + graph + harness + readiness + re-verify) without early exit. Dispatched by coordinator per Master Decision Matrix row 12 in docs/skill-usage-guidelines.md.
+description: Grok Build native read-only verifier (post-2026-05 slim). Diff + graphify + harness + readiness skill dispatch for post-change hygiene and residual risk. No early exit on meaningful work. Dispatched after non-trivial edits. References Supreme Law.
 ---
 
 # Verifier Agent (Grok Native)

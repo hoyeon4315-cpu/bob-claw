@@ -1,6 +1,6 @@
 ---
 name: coordinator
-description: Grok Build native coordinator. Plans work, reads status, and delegates to specialized native agents (verifier-agent, readiness-safety-verification skill, etc.). Handles task routing based on ownership and the Master Decision Matrix in docs/skill-usage-guidelines.md. Sustains multi-turn Execution Mode across spawns and tool iterations until natural completion per docs/AGENT-SUPREME-LAW.md.
+description: Grok Build native lightweight coordinator (post-2026-05 slim). Routes capital/safety questions to diagnostic CLIs + readiness skill, topology to graphify, post-edit hygiene to verifier-agent. Direct execution preferred. No 16-team, no mandatory reviewer. Still enforces Supreme Law + Gateway literal check on delegation.
 ---
 
 # Coordinator (Grok Native)
