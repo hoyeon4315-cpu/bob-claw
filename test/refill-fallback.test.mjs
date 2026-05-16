@@ -92,8 +92,7 @@ function sourceGasFailureEvent(observedAt, method = "cross_chain_bridge_or_swap"
   return {
     ...failureEvent(observedAt, method),
     error: {
-      message:
-        "insufficient_native_balance_for_gas: chain=base requiredWei=64197647637376 balanceWei=7282796333254",
+      message: "insufficient_native_balance_for_gas: chain=base requiredWei=64197647637376 balanceWei=7282796333254",
     },
   };
 }
@@ -101,10 +100,10 @@ function sourceGasFailureEvent(observedAt, method = "cross_chain_bridge_or_swap"
 test("refill bridge fallback candidates keep executable methods in rank order", () => {
   const candidates = refillBridgeCandidates(jobFixture());
 
-  assert.deepEqual(candidates.map((item) => item.method), [
-    "cross_chain_bridge_or_swap",
-    "cross_chain_bridge_across",
-  ]);
+  assert.deepEqual(
+    candidates.map((item) => item.method),
+    ["cross_chain_bridge_or_swap", "cross_chain_bridge_across", "cross_chain_bridge_lifi"],
+  );
   assert.equal(candidates[1].source.chain, "optimism");
 });
 

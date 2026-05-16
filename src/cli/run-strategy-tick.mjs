@@ -40,6 +40,7 @@ import { normalizeExecutionIntent } from "../executor/signer/signer-interface.mj
 import { buildObservedGasFloats } from "../executor/bootstrap/gas-float-observation.mjs";
 import { evaluateBeefyFoldingAdapter, buildDefaultBeefyFoldingConfig } from "../strategy/beefy-folding-adapter.mjs";
 import { evaluateDefiLlamaYieldAdapter, buildDefaultDefiLlamaYieldConfig } from "../strategy/defillama-yield-adapter.mjs";
+import { loadYieldReceiptEvidence } from "../ledger/receipt-reconciliation.mjs";
 import { evaluatePendlePtLbtcAdapter, buildDefaultPendlePtLbtcConfig } from "../strategy/pendle-pt-lbtc-adapter.mjs";
 import { evaluateAerodromeClAdapter, buildDefaultAerodromeClConfig } from "../strategy/aerodrome-cl-adapter.mjs";
 import { evaluatePendlePtSolvBtcAdapter, buildDefaultPendlePtSolvBtcConfig } from "../strategy/pendle-pt-solvbtc-bbn-adapter.mjs";
@@ -717,7 +718,10 @@ async function main() {
       snapshotPaths: snapshots.map((s) => s.path),
     });
     const market = mergeMarket(snapshots);
-    const receipts = auditRecords.filter((record) => record?.strategyId === sid);
+    const rawReceipts = auditRecords.filter((record) => record?.strategyId === sid);
+    const receipts = sid === "defillama-yield-portfolio"
+      ? loadYieldReceiptEvidence(rawReceipts)
+      : rawReceipts;
     const caps = getStrategyCaps(sid);
     const rawConfig = adapter.buildConfig();
     const config = {

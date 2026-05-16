@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ZERO_TOKEN } from "../../assets/tokens.mjs";
 import { config } from "../../config/env.mjs";
-import { buildReceiptReconciliation } from "../../ledger/receipt-reconciliation.mjs";
+import { buildReceiptReconciliation, YIELD_KINDS } from "../../ledger/receipt-reconciliation.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../../market/prices.mjs";
 import { readJsonl } from "../../lib/jsonl-read.mjs";
 import { JsonlStore } from "../../lib/jsonl-store.mjs";
@@ -388,6 +388,49 @@ function ingestionDescriptorForExecution(execution) {
       },
     };
   }
+  // YCE-002: DefiLlama yield portfolio support (deposit/withdraw/reward). Reuses dex helpers for route/output MVP;
+  // yieldContext carries pool metadata for pairDefiLlamaYieldEntryExit + adapter.
+  if (strategyId === "defillama-yield-portfolio") {
+    const plan = execution?.plan || {};
+    const action = String(plan.action || plan.type || plan.intent || "deposit").toLowerCase();
+    const kind = action.includes("withdraw") || action.includes("redeem") || action.includes("exit")
+      ? "defillama_yield_withdraw"
+      : action.includes("claim") || action.includes("reward")
+        ? "defillama_yield_reward_claim"
+        : "defillama_yield_deposit";
+    const poolId = plan.poolId || plan.target?.poolId || plan.metadata?.poolId || "defillama-unknown";
+    const protocol = plan.protocol || plan.target?.protocol || plan.family || "defillama";
+    return {
+      kind,
+      routeContext: (typeof routeContextForDexExecution === "function" ? routeContextForDexExecution(execution) : null) || {
+        routeKey: `${plan.srcChain || plan.chain}:${plan.srcAsset || "unknown"}->${plan.dstChain || plan.chain}:${plan.dstAsset || "share"}`,
+        amount: plan.amount || "0",
+        srcChain: plan.srcChain || plan.chain || null,
+        dstChain: plan.dstChain || plan.chain || null,
+        inputUsd: plan.inputUsd || null,
+        outputUsd: plan.outputUsd || null,
+        poolId,
+        protocol,
+      },
+      output: (typeof outputForDexExecution === "function" ? outputForDexExecution(execution) : null) || {
+        actualOutputUnits: execution?.destinationProof?.observedDelta || plan.actualOutputUnits || null,
+        chain: plan.dstChain || plan.chain || null,
+        token: plan.dstAsset?.token || ZERO_TOKEN,
+        priceUsd: plan.priceUsd || null,
+      },
+      yieldContext: {
+        poolId,
+        protocol,
+        chain: plan.dstChain || plan.chain || null,
+        entrySharePrice: plan.entrySharePrice || null,
+        // Capture decision-time values from plan (populated by adapter/catalog tick using snapshot at allocation)
+        // Snapshot fallback enrichment happens later in append for cases where plan omits them.
+        apy: Number.isFinite(plan.apy) ? plan.apy : (Number.isFinite(plan.apyBps) ? plan.apyBps / 10000 : null),
+        tvlUsd: Number.isFinite(plan.tvlUsd) ? plan.tvlUsd : null,
+        newPool: typeof plan.newPool === "boolean" ? plan.newPool : null,
+      },
+    };
+  }
   return null;
 }
 
@@ -413,6 +456,35 @@ export async function appendExecutionReceiptReconciliation({
       reason: "unsupported_execution_type",
       receiptRecord: null,
     };
+  }
+
+  // Schema enhancement: if this is a DefiLlama yield execution, enrich yieldContext from snapshot (if available)
+  // so that entry/exit apy, tvlUsd, newPool flag are captured at (near) execution time for richer yieldProof.
+  // Plan-provided values (from tick decision snapshot) take precedence; snapshot fills gaps.
+  let finalYieldContext = descriptor.yieldContext ?? null;
+  if (finalYieldContext?.poolId && descriptor.kind && YIELD_KINDS.has(descriptor.kind)) {
+    try {
+      const snapPath = join(dataDir || "data", "snapshots", "defillama-yield-latest.json");
+      const snap = await readJsonIfExists(snapPath);
+      const pools = snap?.snapshot?.pools || [];
+      const pool = pools.find((p) => p && p.pool === finalYieldContext.poolId);
+      if (pool) {
+        const snapApy = finiteNumber(pool.apy);
+        const snapTvl = finiteNumber(pool.tvlUsd);
+        const snapCount = finiteNumber(pool.count);
+        const snapOutlier = pool.outlier === true;
+        const snapNew = (snapTvl != null && snapTvl < 5_000_000) || (snapCount != null && snapCount < 100) || snapOutlier;
+        finalYieldContext = {
+          ...finalYieldContext,
+          apy: finalYieldContext.apy != null ? finalYieldContext.apy : snapApy,
+          tvlUsd: finalYieldContext.tvlUsd != null ? finalYieldContext.tvlUsd : snapTvl,
+          newPool: finalYieldContext.newPool != null ? finalYieldContext.newPool : snapNew,
+          apyMean30d: finalYieldContext.apyMean30d != null ? finalYieldContext.apyMean30d : finiteNumber(pool.apyMean30d),
+        };
+      }
+    } catch {
+      // snapshot enrichment is best-effort and optional; never fail ingestion on it
+    }
   }
 
   const signerResult = signerResultFromExecution(execution);
@@ -448,6 +520,7 @@ export async function appendExecutionReceiptReconciliation({
     prices,
     output: descriptor.output,
     observedAt: normalizeObservedAt(execution?.observedAt),
+    yieldContext: finalYieldContext,
   });
   await store.append("receipt-reconciliations", receiptRecord);
   return {

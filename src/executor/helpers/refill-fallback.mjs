@@ -6,6 +6,7 @@ const EXECUTABLE_BRIDGE_METHODS = new Set([
   "cross_chain_bridge_or_swap",
   "cross_chain_swap_via_btc_intermediate",
   "cross_chain_bridge_across",
+  "cross_chain_bridge_lifi",
 ]);
 
 const EXECUTABLE_REFILL_METHODS = new Set([
@@ -22,11 +23,11 @@ const FAILURE_STATUSES = new Set([
   "execution_failed",
   "source_failed",
   "settlement_failed",
+  "signer_rejected",
+  "rejected",
+  "routing_exhausted",
 ]);
-const SOURCE_NATIVE_GAS_BLOCKERS = new Set([
-  "insufficient_funds",
-  "insufficient_native_gas_balance",
-]);
+const SOURCE_NATIVE_GAS_BLOCKERS = new Set(["insufficient_funds", "insufficient_native_gas_balance"]);
 
 function sameAction(event = {}, job = {}) {
   if (!event || !job) return false;
@@ -40,14 +41,16 @@ function eventText(event = {}) {
     event.error,
     event.blockedReason,
     ...(Array.isArray(event.blockers) ? event.blockers : []),
-  ].filter(Boolean).join("\n").toLowerCase();
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
 }
 
 function isSourceNativeGasFailure(event = {}) {
-  const blockers = new Set([
-    event.blockedReason,
-    ...(Array.isArray(event.blockers) ? event.blockers : []),
-  ].filter(Boolean));
+  const blockers = new Set(
+    [event.blockedReason, ...(Array.isArray(event.blockers) ? event.blockers : [])].filter(Boolean),
+  );
   if ([...blockers].some((blocker) => SOURCE_NATIVE_GAS_BLOCKERS.has(blocker))) return true;
   return /insufficient_native_balance_for_gas|insufficient_native_gas_balance|insufficient funds for gas \* price \+ value/u.test(
     eventText(event),
@@ -56,10 +59,18 @@ function isSourceNativeGasFailure(event = {}) {
 
 function isFailureOutcome(event = {}, method) {
   if (isSourceNativeGasFailure(event)) return false;
+  const status = event?.status;
+  const text = eventText(event);
+  const hasFailureStatus =
+    FAILURE_STATUSES.has(status) ||
+    status === "signer_rejected" ||
+    status === "rejected" ||
+    status === "routing_exhausted" ||
+    /routing_exhausted|signer_rejected|lifi.*(reject|exhaust|fail|unavailable)/iu.test(text);
   return (
     event.eventType === "execution_funding_outcome" &&
     event.executionMethod === method &&
-    (FAILURE_STATUSES.has(event.status) || Boolean(event.error))
+    (hasFailureStatus || Boolean(event.error))
   );
 }
 
@@ -128,9 +139,11 @@ export function consecutiveBridgeFailureCount({ events = [], job, method } = {})
 }
 
 function latestFallbackEvent({ events = [], job } = {}) {
-  return [...events]
-    .filter((event) => sameAction(event, job) && event.eventType === "bridge_fallback_triggered")
-    .sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null;
+  return (
+    [...events]
+      .filter((event) => sameAction(event, job) && event.eventType === "bridge_fallback_triggered")
+      .sort((left, right) => new Date(right.observedAt || 0) - new Date(left.observedAt || 0))[0] || null
+  );
 }
 
 export function refillCandidateExecutable(candidate = {}) {
@@ -150,7 +163,7 @@ export function jobWithCandidate(job, candidate) {
   ]);
   const retainedReviewReasons = executable
     ? (job.reviewReasons || []).filter((reason) => !fundingReviewReasons.has(reason))
-    : (job.reviewReasons || []);
+    : job.reviewReasons || [];
   return {
     ...job,
     requiresManualReview: retainedReviewReasons.length > 0,
@@ -158,9 +171,7 @@ export function jobWithCandidate(job, candidate) {
     executionMethod: candidate.method,
     fundingSource: {
       ...(job.fundingSource || {}),
-      selectionStatus: executable
-        ? "ready"
-        : candidate.availability || job.fundingSource?.selectionStatus || "ready",
+      selectionStatus: executable ? "ready" : candidate.availability || job.fundingSource?.selectionStatus || "ready",
       method: candidate.method,
       source: candidate.source,
       expectedExecutionRefillCostUsd:
@@ -205,14 +216,26 @@ export function resolveRefillBridgeFallback({
   const activeMethod = lastFallback?.toExecutionMethod || job.executionMethod;
   const activeIndex = candidates.findIndex((candidate) => candidate.method === activeMethod);
   const activeCandidate = activeIndex >= 0 ? candidates[activeIndex] : null;
-  const activeJob = activeCandidate && activeMethod !== job.executionMethod ? jobWithCandidate(job, activeCandidate) : job;
+  const activeJob =
+    activeCandidate && activeMethod !== job.executionMethod ? jobWithCandidate(job, activeCandidate) : job;
   const failureCount = consecutiveBridgeFailureCount({ events, job: activeJob, method: activeMethod });
 
   if (failureCount < failureThreshold) {
     return { job: activeJob, activeMethod, fallbackEvent: null, failureCount, candidates };
   }
 
-  const nextCandidate = candidates.slice(activeIndex + 1).find(refillCandidateExecutable) || null;
+  let nextCandidate = candidates.slice(activeIndex + 1).find(refillCandidateExecutable) || null;
+  if (!nextCandidate && activeMethod === "cross_chain_bridge_lifi" && failureCount >= failureThreshold) {
+    // Minimal safe auto-fallback: exhausted Lifi (routing_exhausted) -> proven Gateway BTC-intermediate
+    // when the Gateway candidate is executable. This reduces refill_routes_unresolved for
+    // capital_rebalance wBTC.OFT jobs on optimism/sei (and similar) without touching caps,
+    // policy thresholds, or BOB Gateway onramp/settlement/payback core. Gateway remains the
+    // stable preferred lane; lifi stays as last-resort standby.
+    const allExecutable = refillExecutionCandidates(job);
+    nextCandidate =
+      allExecutable.find((c) => c.method === "cross_chain_swap_via_btc_intermediate" && refillCandidateExecutable(c)) ||
+      null;
+  }
   if (!nextCandidate) {
     return { job: activeJob, activeMethod, fallbackEvent: null, failureCount, candidates };
   }

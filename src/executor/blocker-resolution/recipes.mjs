@@ -42,7 +42,8 @@ function capitalRoutingRequiresExternalDeposit(params = {}, context = {}) {
   const row = capitalRoutingRow(params, context);
   if (!row) return params.requiresExternalDeposit === true;
   if (row.classification === "needs_capital_acquisition") return true;
-  if (row.classification === "ready_no_capital_change" || row.classification === "ready_with_capital_addition") return false;
+  if (row.classification === "ready_no_capital_change" || row.classification === "ready_with_capital_addition")
+    return false;
   return params.requiresExternalDeposit === true;
 }
 
@@ -101,23 +102,32 @@ function proofCommandRecipe({ recipeId, script, dependencies = [], costClass = "
   };
 }
 
-registerBlockerRecipe("proof_acquisition:route_quote_stale", proofCommandRecipe({
-  recipeId: "refresh_route_quote",
-  script: "npm run verify:gateway -- --once",
-  dependencies: ["gateway-api"],
-}));
+registerBlockerRecipe(
+  "proof_acquisition:route_quote_stale",
+  proofCommandRecipe({
+    recipeId: "refresh_route_quote",
+    script: "npm run verify:gateway -- --once",
+    dependencies: ["gateway-api"],
+  }),
+);
 
-registerBlockerRecipe("proof_acquisition:gateway_route_unknown", proofCommandRecipe({
-  recipeId: "refresh_gateway_route_availability",
-  script: "npm run inventory:gateway",
-  dependencies: ["gateway-api"],
-}));
+registerBlockerRecipe(
+  "proof_acquisition:gateway_route_unknown",
+  proofCommandRecipe({
+    recipeId: "refresh_gateway_route_availability",
+    script: "npm run inventory:gateway",
+    dependencies: ["gateway-api"],
+  }),
+);
 
-registerBlockerRecipe("proof_acquisition:inventory_snapshot_stale", proofCommandRecipe({
-  recipeId: "refresh_wallet_holdings",
-  script: "npm run report:wallet-holdings -- --json",
-  dependencies: ["rpc-base"],
-}));
+registerBlockerRecipe(
+  "proof_acquisition:inventory_snapshot_stale",
+  proofCommandRecipe({
+    recipeId: "refresh_wallet_holdings",
+    script: "npm run report:wallet-holdings -- --json",
+    dependencies: ["rpc-base"],
+  }),
+);
 
 registerBlockerRecipe("proof_acquisition:rewards_unclaimed", {
   recipeId: "claim_and_swap_rewards",
@@ -141,18 +151,24 @@ registerBlockerRecipe("proof_acquisition:rewards_unclaimed", {
   }),
 });
 
-registerBlockerRecipe("proof_acquisition:missing_yield_evidence", proofCommandRecipe({
-  recipeId: "run_yield_position_shadow_simulation",
-  script: "npm run run:yield-position-sims -- --write-shadow-edge",
-  dependencies: [],
-}));
+registerBlockerRecipe(
+  "proof_acquisition:missing_yield_evidence",
+  proofCommandRecipe({
+    recipeId: "run_yield_position_shadow_simulation",
+    script: "npm run run:yield-position-sims -- --write-shadow-edge",
+    dependencies: [],
+  }),
+);
 
-registerBlockerRecipe("proof_acquisition:share_price_unwind_proof_missing", proofCommandRecipe({
-  recipeId: "collect_share_price_unwind_proof",
-  script: "npm run collect:share-price-unwind-proof -- --json",
-  dependencies: ["rpc-base"],
-  costClass: "medium",
-}));
+registerBlockerRecipe(
+  "proof_acquisition:share_price_unwind_proof_missing",
+  proofCommandRecipe({
+    recipeId: "collect_share_price_unwind_proof",
+    script: "npm run collect:share-price-unwind-proof -- --json",
+    dependencies: ["rpc-base"],
+    costClass: "medium",
+  }),
+);
 
 registerBlockerRecipe("refill_or_inventory:chain_under_target", {
   recipeId: "capital_refill_chain_under_target",
@@ -217,6 +233,90 @@ registerBlockerRecipe("refill_or_inventory:idle_dust_consolidation_due", {
   }),
 });
 
+// NEW: exact recipes for blockers observed in 2026-05 fresh diagnostics (capital utilization / reader class)
+registerBlockerRecipe("refill_or_inventory:expected_net_below_receipt_cost_p90_floor", {
+  recipeId: "refill_tighten_ev_or_reduce_target",
+  kind: "auto_operational",
+  costClass: "medium",
+  dependencies: ["rpc-base", "gateway-api"],
+  expectedDailyUsdOnResolve: roiFromParams,
+  build: ({ code, params }) => ({
+    type: "operational_intent",
+    code,
+    params,
+    authority: "capital_manager_queue",
+    receiptRequired: true,
+    intent: {
+      intentType: "refill_adjust_target_or_ev_gate",
+      chain: params.chain || "base",
+      asset: params.asset || "wBTC.OFT",
+      reason: "expected_net_below_p90_floor",
+      suggestedAction: "lower_target_or_wait_for_better_route",
+    },
+  }),
+});
+
+registerBlockerRecipe("refill_or_inventory:bridge_quote_cost_above_discretionary_ceiling", {
+  recipeId: "refill_mark_manual_review_or_split",
+  kind: "manual_operator_review",
+  costClass: "cheap",
+  dependencies: [],
+  build: ({ code, params }) => ({
+    type: "manual_review_ticket",
+    code,
+    params,
+    authority: "capital_manager",
+    reason: "bridge_quote_cost_above_discretionary_ceiling",
+    suggestedAction: "split_refill_or_accept_higher_cost_or_wait",
+  }),
+});
+
+registerBlockerRecipe("refill_or_inventory:routing_exhausted", {
+  recipeId: "refill_mark_routing_exhausted_backoff",
+  kind: "time_bounded_wait",
+  costClass: "cheap",
+  dependencies: ["gateway-api"],
+  build: ({ code, params }) => ({
+    type: "time_bounded_wait",
+    code,
+    params,
+    authority: "capital_manager_queue",
+    waitHours: 2,
+    retryCommand: "npm run executor:all-chain-autopilot -- --dry-run-first --json",
+  }),
+});
+
+registerBlockerRecipe("reader:evm_source_disagreement", {
+  recipeId: "force_fresh_unified_nav_and_inventory_rescan",
+  kind: "auto_proof_acquisition",
+  costClass: "medium",
+  dependencies: ["rpc-base"],
+  build: ({ code, params }) => ({
+    type: "refresh_command",
+    code,
+    command: "node src/cli/measure-operating-capital.mjs --json",
+    args: [],
+    authority: "capital_audit",
+    note: "Re-scan live EVM wallet + force autopilot summary refresh to close evmWallet vs evmAutopilot gap",
+  }),
+});
+
+registerBlockerRecipe("reader:base_rpc_degraded", {
+  recipeId: "base_rpc_health_check_and_rotate",
+  kind: "auto_proof_acquisition",
+  costClass: "medium",
+  dependencies: ["rpc-base"],
+  build: ({ code, params }) => ({
+    type: "refresh_command",
+    code,
+    command:
+      "node src/cli/check-base-rpc-health.mjs --json || echo 'base RPC health check script not yet present - placeholder'",
+    args: [],
+    authority: "infrastructure",
+    note: "Detect and mitigate base RPC degradation causing receipt_read_failed flood",
+  }),
+});
+
 registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
   recipeId: "variance_floor_capital_routing_plan",
   kind: "auto_operational",
@@ -259,22 +359,31 @@ registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
         receiptRequired: false,
       };
     }
-    if (row.classification === "thin_evidence" || row.classification === "missing_input" || row.classification === "missing_yield_evidence") {
+    if (
+      row.classification === "thin_evidence" ||
+      row.classification === "missing_input" ||
+      row.classification === "missing_yield_evidence"
+    ) {
       return {
         type: "refresh_command",
         code,
-        command: row.classification === "missing_yield_evidence"
-          ? "npm run run:yield-position-sims -- --write-shadow-edge"
-          : row.classification === "missing_input"
-          ? "npm run run:prelive-simulations -- --source=objective --limit=4 --write --write-shadow-edge"
-          : "npm run report:strategy-execution-surfaces -- --write",
+        command:
+          row.classification === "missing_yield_evidence"
+            ? "npm run run:yield-position-sims -- --write-shadow-edge"
+            : row.classification === "missing_input"
+              ? "npm run run:prelive-simulations -- --source=objective --limit=4 --write --write-shadow-edge"
+              : "npm run report:strategy-execution-surfaces -- --write",
         args: [],
         params,
         reason: row.classification,
         receiptRequired: false,
       };
     }
-    if (row.classification === "ready_with_yield_shadow_evidence" || row.classification === "ready_with_shadow_evidence" || row.classification === "ready_with_sibling_proxy") {
+    if (
+      row.classification === "ready_with_yield_shadow_evidence" ||
+      row.classification === "ready_with_shadow_evidence" ||
+      row.classification === "ready_with_sibling_proxy"
+    ) {
       return {
         type: "refresh_command",
         code,
@@ -292,15 +401,17 @@ registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
         params: {
           ...params,
           classification: row.classification,
-          recommendedFile: row.classification === "floor_infeasible_at_committed_caps"
-            ? "src/config/strategy-caps.mjs"
-            : "src/strategy/strategy-catalog.mjs",
+          recommendedFile:
+            row.classification === "floor_infeasible_at_committed_caps"
+              ? "src/config/strategy-caps.mjs"
+              : "src/strategy/strategy-catalog.mjs",
         },
         queue: "codex-blocker",
         reason: row.classification,
-        fileToEdit: row.classification === "floor_infeasible_at_committed_caps"
-          ? "src/config/strategy-caps.mjs"
-          : "src/strategy/strategy-catalog.mjs",
+        fileToEdit:
+          row.classification === "floor_infeasible_at_committed_caps"
+            ? "src/config/strategy-caps.mjs"
+            : "src/strategy/strategy-catalog.mjs",
         receiptRequired: false,
       };
     }
@@ -315,11 +426,14 @@ registerBlockerRecipe("economic_no_go:edge_below_variance_floor", {
   },
 });
 
-registerCategoryRecipe("proof_acquisition", proofCommandRecipe({
-  recipeId: "refresh_strategy_execution_surfaces",
-  script: "npm run report:strategy-execution-surfaces -- --write",
-  dependencies: [],
-}));
+registerCategoryRecipe(
+  "proof_acquisition",
+  proofCommandRecipe({
+    recipeId: "refresh_strategy_execution_surfaces",
+    script: "npm run report:strategy-execution-surfaces -- --write",
+    dependencies: [],
+  }),
+);
 
 registerCategoryRecipe("refill_or_inventory", {
   recipeId: "capital_manager_refill_plan",
@@ -437,7 +551,9 @@ registerCategoryRecipe("payback_lifecycle", {
 export function getRecipeForBlocker({ code, params = {} } = {}) {
   assertBlockerCode(code);
   if (isHardSafetyStop(code)) return null;
-  return exactRecipes.get(code) || categoryRecipes.get(BLOCKER_CODES[code].category) || categoryRecipes.get("manual_review");
+  return (
+    exactRecipes.get(code) || categoryRecipes.get(BLOCKER_CODES[code].category) || categoryRecipes.get("manual_review")
+  );
 }
 
 export function listRegisteredRecipeCodes() {

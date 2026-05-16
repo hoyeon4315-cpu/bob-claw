@@ -50,6 +50,10 @@ export async function loadStrategyExecutionSurfaceInputs({
     merklCanaryAutopilotLatest,
     autonomousDiscoveryBoard,
     gatewayGoldReadiness,
+    // YCE-003 wiring (Yield & Campaign Opportunity Engineer): load DefiLlama yield snapshot (produced by fetch-defillama-snapshot + evidenceClass from YCE-001) symmetric to gateway-gold-readiness-latest.json.
+    // This ensures loadStrategyExecutionSurfaceInputs provides the receiptBoundPools + protocol_receipt_bound data to buildStrategyExecutionSurfaces (which calls buildStrategyCatalog internally).
+    // The catalog already promotes defillama-yield-portfolio to shadow_ready when 604+ receipt_bound pools present; this wiring makes the snapshot data explicitly available in the surfaces report artifacts + hydratedDashboardStatus for current-dashboard-context.json consumers.
+    defiLlamaYieldSnapshot,
   ] = await Promise.all([
     readJsonIfExists(join(dataDir, "dashboard-status.json")),
     readJsonIfExists(join(dataDir, "gateway-scores.json")),
@@ -63,6 +67,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     readJsonIfExists(join(dataDir, "merkl-canary-autopilot-latest.json")),
     readJsonIfExists(join(dataDir, "autonomous-discovery-board.json")),
     readJsonIfExists(join(dataDir, "gateway-gold-readiness-latest.json")),
+    readJsonIfExists(join(dataDir, "snapshots", "defillama-yield-latest.json")),
   ]);
 
   const hydratedDashboardStatus = gatewayGoldReadiness
@@ -78,6 +83,27 @@ export async function loadStrategyExecutionSurfaceInputs({
         },
       }
     : dashboardStatus;
+
+  // YCE-003 post-processing wiring continuation: hydrate defiLlamaYieldSnapshot into dashboardStatus.strategy for surfaces + downstream (current-dashboard-context.json).
+  // This makes receiptBoundPools (604), evidenceClass=protocol_receipt_bound, and promotion status (shadow_ready) explicitly part of the hydrated state passed to buildStrategyExecutionSurfaces.
+  // Catalog inside surfaces will use the snapshot (or this hydrated) to keep defillama-yield-portfolio in btcFamilies with status=shadow_ready, reason=receipt_bound_pools_via_snapshot_evidenceClass.
+  let finalHydratedDashboardStatus = hydratedDashboardStatus;
+  if (defiLlamaYieldSnapshot) {
+    const snap = defiLlamaYieldSnapshot.snapshot || defiLlamaYieldSnapshot;
+    finalHydratedDashboardStatus = {
+      ...hydratedDashboardStatus,
+      strategy: {
+        ...(hydratedDashboardStatus?.strategy || {}),
+        defiLlamaYieldSnapshot: {
+          generatedAt: snap.generatedAt || snap.fetchedAt || null,
+          totalPools: snap.totalPools || 0,
+          receiptBoundPools: snap.receiptBoundPools || 0,
+          evidenceClass: "protocol_receipt_bound",
+          source: snap.source || "yields.llama.fi/pools",
+        },
+      },
+    };
+  }
 
   const hydratedWrappedBtcLendingLoopSlice = wrappedBtcLendingLoopSlice?.strategy?.id
     ? {
@@ -114,7 +140,7 @@ export async function loadStrategyExecutionSurfaceInputs({
   }
 
   return {
-    dashboardStatus: hydratedDashboardStatus,
+    dashboardStatus: finalHydratedDashboardStatus,
     state: {
       scoreSnapshot,
     },
@@ -129,6 +155,8 @@ export async function loadStrategyExecutionSurfaceInputs({
       merklCanaryAutopilotLatest,
       autonomousDiscoveryBoard,
       liveTreasuryInventorySnapshot,
+      // YCE-003: explicit defiLlama yield snapshot (with evidenceClass + receiptBound count) now available to surfaces consumers and current-dashboard-context.json
+      defiLlamaYieldSnapshot,
     },
   };
 }

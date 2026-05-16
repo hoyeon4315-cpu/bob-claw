@@ -8,9 +8,20 @@ import { config } from "../config/env.mjs";
 import { BLOCKER_RESOLUTION_CONFIG, buildBlockerResolutionConfig } from "../config/blocker-resolution.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { normalizeBlocker, paramsHash as blockerParamsHash, isFilterBlockerCode, isHardSafetyStop } from "../executor/policy/blocker-codes.mjs";
+import {
+  normalizeBlocker,
+  paramsHash as blockerParamsHash,
+  isFilterBlockerCode,
+  isHardSafetyStop,
+} from "../executor/policy/blocker-codes.mjs";
 import { planProofAcquisition } from "../executor/blocker-resolution/proof-acquisition.mjs";
-import { readCircuitState, writeCircuitState, circuitAllowsDependency } from "../executor/blocker-resolution/circuit-breaker.mjs";
+// Side-effect import ensures all blocker recipes (including newly registered capital/reader ones) are registered before any resolution run
+import "../executor/blocker-resolution/recipes.mjs";
+import {
+  readCircuitState,
+  writeCircuitState,
+  circuitAllowsDependency,
+} from "../executor/blocker-resolution/circuit-breaker.mjs";
 import {
   readPendingDispatches,
   writePendingDispatches,
@@ -141,7 +152,8 @@ function sortGroupsByRoi(groups = [], plans = new Map()) {
   return [...groups].sort((left, right) => {
     const l = plans.get(left.paramsKey)?.expectedDailyUsdOnResolve;
     const r = plans.get(right.paramsKey)?.expectedDailyUsdOnResolve;
-    if (Number.isFinite(l) || Number.isFinite(r)) return (r ?? Number.NEGATIVE_INFINITY) - (l ?? Number.NEGATIVE_INFINITY);
+    if (Number.isFinite(l) || Number.isFinite(r))
+      return (r ?? Number.NEGATIVE_INFINITY) - (l ?? Number.NEGATIVE_INFINITY);
     return left.code.localeCompare(right.code);
   });
 }
@@ -149,30 +161,40 @@ function sortGroupsByRoi(groups = [], plans = new Map()) {
 function edgeFloorClassificationFor(group = {}, plan = {}, capitalRoutingByStrategy = new Map()) {
   if (group.code !== "economic_no_go:edge_below_variance_floor") return null;
   const strategyId = group.params?.strategyId || group.strategyId || group.affectedStrategies?.[0] || null;
-  return plan.actions?.[0]?.classification ||
+  return (
+    plan.actions?.[0]?.classification ||
     plan.actions?.[0]?.params?.classification ||
     capitalRoutingByStrategy.get(strategyId)?.classification ||
-    null;
+    null
+  );
 }
 
 function previewResolverActionable(group = {}, plan = {}, capitalRoutingByStrategy = new Map()) {
   const category = group.code.split(":")[0];
   const classification = edgeFloorClassificationFor(group, plan, capitalRoutingByStrategy);
-  if (group.code === "economic_no_go:edge_below_variance_floor" && classification === "ready_with_capital_addition") return true;
+  if (group.code === "economic_no_go:edge_below_variance_floor" && classification === "ready_with_capital_addition")
+    return true;
   if (
     group.code === "economic_no_go:edge_below_variance_floor" &&
-    ["thin_evidence", "missing_input", "missing_yield_evidence", "ready_with_yield_shadow_evidence"].includes(classification)
-  ) return true;
+    ["thin_evidence", "missing_input", "missing_yield_evidence", "ready_with_yield_shadow_evidence"].includes(
+      classification,
+    )
+  )
+    return true;
   return ["proof_acquisition", "refill_or_inventory"].includes(category) && !isHardSafetyStop(group.code);
 }
 
 function previewRequiresStrategyOrCapitalChange(group = {}, plan = {}, capitalRoutingByStrategy = new Map()) {
   const classification = edgeFloorClassificationFor(group, plan, capitalRoutingByStrategy);
   if (group.code === "economic_no_go:edge_below_variance_floor" && classification) {
-    return ["needs_capital_acquisition", "floor_infeasible_at_committed_caps", "negative_or_zero_edge"].includes(classification);
+    return ["needs_capital_acquisition", "floor_infeasible_at_committed_caps", "negative_or_zero_edge"].includes(
+      classification,
+    );
   }
   const category = group.code.split(":")[0];
-  return ["economic_no_go", "executor_unbound", "code_required"].includes(category) || plan.requiresExternalDeposit === true;
+  return (
+    ["economic_no_go", "executor_unbound", "code_required"].includes(category) || plan.requiresExternalDeposit === true
+  );
 }
 
 function applyAttemptUpdate(current, update) {
@@ -209,18 +231,124 @@ function summaryFromPlans(funnel, plans) {
   };
 }
 
-export async function runBlockerResolverCli(
-  argv = process.argv.slice(2),
-  {
-    cwd = process.cwd(),
-    dataDir = config.dataDir,
-    dashboardDir = join(cwd, "dashboard", "public"),
-    readGlobalGuards = readLiveBroadcastGlobalGuards,
-    executeAction = async (action) => ({ ok: true, actionType: action.type, enqueued: action.type === "operational_intent" }),
-    now = new Date().toISOString(),
-  } = {},
-) {
-  const args = parseArgs(argv);
+function applyPlansToStateAndBuildPreview({
+  orderedGroups,
+  plansByKey,
+  resolverState,
+  reconciled,
+  cfg,
+  capitalRoutingByStrategy,
+}) {
+  let proofCount = 0;
+  let operationalCount = 0;
+  const nextState = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    byParamsKey: { ...(resolverState.byParamsKey || {}) },
+    confirmedDispatches: [...(resolverState.confirmedDispatches || []), ...reconciled.confirmed],
+  };
+  const nextPending = [...reconciled.pending];
+  const previewPlans = [];
+
+  for (const group of orderedGroups) {
+    const plan = plansByKey.get(group.paramsKey);
+    if (!plan) continue;
+    const firstAction = plan.actions?.[0] || null;
+    if (firstAction?.type === "refresh_command") proofCount += 1;
+    if (firstAction?.type === "operational_intent") operationalCount += 1;
+
+    const budgetSkipped =
+      proofCount > cfg.maxProofAcquisitionsPerRun || operationalCount > cfg.maxOperationalIntentsPerRun;
+
+    const effectivePlan = budgetSkipped
+      ? {
+          ...plan,
+          status: "skipped_budget",
+          attemptCountUpdate: "unchanged",
+          unresolvedReason: "resource_budget_exhausted",
+        }
+      : plan;
+
+    nextState.byParamsKey[group.paramsKey] = statePatchForPlan(
+      group,
+      effectivePlan,
+      nextState.byParamsKey[group.paramsKey],
+    );
+
+    if (effectivePlan.status === "pending_receipt") {
+      for (const action of effectivePlan.actions || []) {
+        if (action.dispatch) nextPending.push(action.dispatch);
+      }
+    }
+
+    previewPlans.push({
+      paramsKey: group.paramsKey,
+      code: group.code,
+      params: group.params,
+      affectedStrategies: group.affectedStrategies,
+      status: effectivePlan.status,
+      actions: effectivePlan.actions || [],
+      expectedDailyUsdOnResolve: effectivePlan.expectedDailyUsdOnResolve,
+      requiresExternalDeposit: effectivePlan.requiresExternalDeposit,
+      resolverActionable: previewResolverActionable(group, effectivePlan, capitalRoutingByStrategy),
+      requiresStrategyOrCapitalChange: previewRequiresStrategyOrCapitalChange(
+        group,
+        effectivePlan,
+        capitalRoutingByStrategy,
+      ),
+    });
+  }
+
+  return { nextState, nextPending, previewPlans };
+}
+
+async function buildBlockerPlans({
+  groups,
+  resolverState,
+  guards,
+  capitalRoutingByStrategy,
+  mode,
+  executeAction,
+  circuitState,
+  cfg,
+  now,
+}) {
+  const plansByKey = new Map();
+  const previewPlans = [];
+  for (const group of groups) {
+    const previous = resolverState.byParamsKey?.[group.paramsKey] || {};
+    const context = {
+      readyForLiveBroadcast: guards.readyForLiveBroadcast,
+      operatorHold: group.params?.operatorHold === true,
+      pausedByAutoKill: group.params?.pausedByAutoKill === true,
+      capitalRoutingByStrategy,
+    };
+    const plan = await planProofAcquisition({
+      strategyId: group.strategyId,
+      code: group.code,
+      params: group.params,
+      paramsKey: group.paramsKey,
+      observedAt: group.observedAt,
+      context,
+      attemptCount: previous.attemptCount || 0,
+      mode,
+      executeAction,
+      circuitState,
+      circuitAllows: (state, dep) =>
+        circuitAllowsDependency(state, dep, {
+          config: {
+            failureThreshold: cfg.circuitBreakerFailureThreshold,
+            halfOpenAfterMs: cfg.circuitBreakerHalfOpenAfterMs,
+          },
+          now,
+        }),
+    });
+    plansByKey.set(group.paramsKey, plan);
+  }
+  return { plansByKey, previewPlans };
+}
+
+function buildResolverPathsAndConfig(cwd, dataDir, dashboardDir, args) {
   const resolvedDataDir = resolve(cwd, dataDir);
   const resolvedDashboardDir = resolve(cwd, dashboardDir);
   const cfg = buildBlockerResolutionConfig({
@@ -240,9 +368,10 @@ export async function runBlockerResolverCli(
     audit: join(cwd, "logs", "blocker-resolver-audit.jsonl"),
     lock: join(resolvedDataDir, "blocker-resolver.lock"),
   };
-  const strategyTickStatus = await readJsonIfExists(paths.strategyTick) || { strategies: [] };
-  const mode = args.execute ? "execute" : args.dryRunIdle ? "dry-run-idle" : "preview";
-  const guards = await readGlobalGuards({ execute: args.execute, strategyTickStatus });
+  return { resolvedDataDir, resolvedDashboardDir, paths, cfg };
+}
+
+function handleExecuteGuardBlock(args, guards, now) {
   if (args.execute && guards.ok === false) {
     const payload = {
       schemaVersion: 1,
@@ -258,15 +387,21 @@ export async function runBlockerResolverCli(
       payload,
     };
   }
+  return null;
+}
 
-  const lock = await acquireLock(paths.lock, { now });
+async function handleLockAcquisition(lockPath, now) {
+  const lock = await acquireLock(lockPath, { now });
   if (!lock.ok) {
     const payload = { status: "lock_active", observedAt: now, lock: lock.existing || null };
     return { exitCode: 2, stdout: `${JSON.stringify(payload, null, 2)}\n`, stderr: "", payload };
   }
+  return null;
+}
 
-  try {
-    const [resolverStateRaw, circuitState, pendingDispatches, signerAuditRecords, receiptRecords, capitalRoutingPlan] = await Promise.all([
+async function loadBlockerResolverInputs(paths, cwd, resolvedDataDir, strategyTickStatus, now) {
+  const [resolverStateRaw, circuitState, pendingDispatches, signerAuditRecords, receiptRecords, capitalRoutingPlan] =
+    await Promise.all([
       readJsonIfExists(paths.state),
       readCircuitState(paths.circuit),
       readPendingDispatches(paths.pending),
@@ -274,87 +409,79 @@ export async function runBlockerResolverCli(
       readJsonl(resolvedDataDir, "receipt-reconciliations").catch(() => []),
       readJsonIfExists(paths.capitalRoutingPlan),
     ]);
-    const resolverState = resolverStateRaw || { schemaVersion: 1, byParamsKey: {} };
-    const reconciled = reconcilePendingDispatches(pendingDispatches, { signerAuditRecords, receiptRecords, observedAt: now });
-    const groups = buildGroupsFromStrategyTick(strategyTickStatus);
-    const filteredCandidates = buildFilteredCandidatesFromStrategyTick(strategyTickStatus);
-    const capitalRoutingByStrategy = new Map([
-      ...((capitalRoutingPlan?.routingPlan || []).map((row) => [row.strategyId, row])),
-      ...((capitalRoutingPlan?.unresolvable || []).map((row) => [row.strategyId, row])),
-      ...((capitalRoutingPlan?.classifications || []).map((row) => [row.strategyId, row])),
-    ]);
-    const plansByKey = new Map();
-    const previewPlans = [];
-    for (const group of groups) {
-      const previous = resolverState.byParamsKey?.[group.paramsKey] || {};
-      const context = {
-        readyForLiveBroadcast: guards.readyForLiveBroadcast,
-        operatorHold: group.params?.operatorHold === true,
-        pausedByAutoKill: group.params?.pausedByAutoKill === true,
-        capitalRoutingByStrategy,
-      };
-      const plan = await planProofAcquisition({
-        strategyId: group.strategyId,
-        code: group.code,
-        params: group.params,
-        paramsKey: group.paramsKey,
-        observedAt: group.observedAt,
-        context,
-        attemptCount: previous.attemptCount || 0,
-        mode,
-        executeAction,
-        circuitState,
-        circuitAllows: (state, dep) => circuitAllowsDependency(state, dep, {
-          config: {
-            failureThreshold: cfg.circuitBreakerFailureThreshold,
-            halfOpenAfterMs: cfg.circuitBreakerHalfOpenAfterMs,
-          },
-          now,
-        }),
-      });
-      plansByKey.set(group.paramsKey, plan);
-    }
+
+  const resolverState = resolverStateRaw || { schemaVersion: 1, byParamsKey: {} };
+  const reconciled = reconcilePendingDispatches(pendingDispatches, {
+    signerAuditRecords,
+    receiptRecords,
+    observedAt: now,
+  });
+  const groups = buildGroupsFromStrategyTick(strategyTickStatus);
+  const filteredCandidates = buildFilteredCandidatesFromStrategyTick(strategyTickStatus);
+  const capitalRoutingByStrategy = new Map([
+    ...(capitalRoutingPlan?.routingPlan || []).map((row) => [row.strategyId, row]),
+    ...(capitalRoutingPlan?.unresolvable || []).map((row) => [row.strategyId, row]),
+    ...(capitalRoutingPlan?.classifications || []).map((row) => [row.strategyId, row]),
+  ]);
+
+  return { resolverState, reconciled, groups, filteredCandidates, capitalRoutingByStrategy, circuitState };
+}
+
+export async function runBlockerResolverCli(
+  argv = process.argv.slice(2),
+  {
+    cwd = process.cwd(),
+    dataDir = config.dataDir,
+    dashboardDir = join(cwd, "dashboard", "public"),
+    readGlobalGuards = readLiveBroadcastGlobalGuards,
+    executeAction = async (action) => ({
+      ok: true,
+      actionType: action.type,
+      enqueued: action.type === "operational_intent",
+    }),
+    now = new Date().toISOString(),
+  } = {},
+) {
+  const args = parseArgs(argv);
+  const { resolvedDataDir, resolvedDashboardDir, paths, cfg } = buildResolverPathsAndConfig(
+    cwd,
+    dataDir,
+    dashboardDir,
+    args,
+  );
+  const strategyTickStatus = (await readJsonIfExists(paths.strategyTick)) || { strategies: [] };
+  const mode = args.execute ? "execute" : args.dryRunIdle ? "dry-run-idle" : "preview";
+  const guards = await readGlobalGuards({ execute: args.execute, strategyTickStatus });
+  const guardBlock = handleExecuteGuardBlock(args, guards, now);
+  if (guardBlock) return guardBlock;
+
+  const lockBlock = await handleLockAcquisition(paths.lock, now);
+  if (lockBlock) return lockBlock;
+
+  try {
+    const inputs = await loadBlockerResolverInputs(paths, cwd, resolvedDataDir, strategyTickStatus, now);
+    const { resolverState, reconciled, groups, filteredCandidates, capitalRoutingByStrategy, circuitState } = inputs;
+
+    const { plansByKey, previewPlans: initialPreviewPlans } = await buildBlockerPlans({
+      groups,
+      resolverState,
+      guards,
+      capitalRoutingByStrategy,
+      mode,
+      executeAction,
+      circuitState,
+      cfg,
+      now,
+    });
     const orderedGroups = sortGroupsByRoi(groups, plansByKey);
-    let proofCount = 0;
-    let operationalCount = 0;
-    const nextState = {
-      schemaVersion: 1,
-      generatedAt: now,
-      byParamsKey: { ...(resolverState.byParamsKey || {}) },
-      confirmedDispatches: [...(resolverState.confirmedDispatches || []), ...reconciled.confirmed],
-    };
-    const nextPending = [...reconciled.pending];
-    for (const group of orderedGroups) {
-      const plan = plansByKey.get(group.paramsKey);
-      if (!plan) continue;
-      const firstAction = plan.actions?.[0] || null;
-      if (firstAction?.type === "refresh_command") proofCount += 1;
-      if (firstAction?.type === "operational_intent") operationalCount += 1;
-      const budgetSkipped =
-        proofCount > cfg.maxProofAcquisitionsPerRun ||
-        operationalCount > cfg.maxOperationalIntentsPerRun;
-      const effectivePlan = budgetSkipped
-        ? { ...plan, status: "skipped_budget", attemptCountUpdate: "unchanged", unresolvedReason: "resource_budget_exhausted" }
-        : plan;
-      nextState.byParamsKey[group.paramsKey] = statePatchForPlan(group, effectivePlan, nextState.byParamsKey[group.paramsKey]);
-      if (effectivePlan.status === "pending_receipt") {
-        for (const action of effectivePlan.actions || []) {
-          if (action.dispatch) nextPending.push(action.dispatch);
-        }
-      }
-      previewPlans.push({
-        paramsKey: group.paramsKey,
-        code: group.code,
-        params: group.params,
-        affectedStrategies: group.affectedStrategies,
-        status: effectivePlan.status,
-        actions: effectivePlan.actions || [],
-        expectedDailyUsdOnResolve: effectivePlan.expectedDailyUsdOnResolve,
-        requiresExternalDeposit: effectivePlan.requiresExternalDeposit,
-        resolverActionable: previewResolverActionable(group, effectivePlan, capitalRoutingByStrategy),
-        requiresStrategyOrCapitalChange: previewRequiresStrategyOrCapitalChange(group, effectivePlan, capitalRoutingByStrategy),
-      });
-    }
+    const { nextState, nextPending, previewPlans } = applyPlansToStateAndBuildPreview({
+      orderedGroups,
+      plansByKey,
+      resolverState,
+      reconciled,
+      cfg,
+      capitalRoutingByStrategy,
+    });
 
     const funnel = buildBlockerFunnelSlice({
       strategyTickStatus,

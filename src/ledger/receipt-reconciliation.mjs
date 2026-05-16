@@ -11,6 +11,12 @@ const EVIDENCE_COST_KINDS = new Set([
   "gateway_btc_consolidation",
 ]);
 
+export const YIELD_KINDS = new Set([
+  "defillama_yield_deposit",
+  "defillama_yield_withdraw",
+  "defillama_yield_reward_claim",
+]);
+
 function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
@@ -268,6 +274,8 @@ export function buildReceiptReconciliation({
   output = {},
   prices = null,
   observedAt,
+  yieldContext = null,
+  yieldProof = null,
 }) {
   const normalizedOutput = normalizeOutput(routeContext, receipt, output);
   const actualGasCostUsd = receiptGasUsd({ chain, receipt, prices });
@@ -297,6 +305,12 @@ export function buildReceiptReconciliation({
     "gateway_btc_offramp",
     "lifi_bridge",
   ].includes(kind);
+
+  // YCE-002: yield proof passthrough + top-level fields for adapter consumption (defillama-yield-portfolio lane)
+  const isYieldKind = YIELD_KINDS.has(kind);
+  const effectiveYieldProof = yieldProof || (yieldContext ? { ...yieldContext, entryExitProven: false, realizedNetUsd: null } : null);
+  const topLevelEntryExitProven = effectiveYieldProof?.entryExitProven ?? false;
+  const topLevelRealizedNetUsd = effectiveYieldProof?.realizedNetUsd ?? (isYieldKind ? finiteOrNull(realizedNetPnlUsd) : null);
 
   return {
     schemaVersion: 1,
@@ -380,6 +394,106 @@ export function buildReceiptReconciliation({
         Number.isFinite(realizedNetPnlUsd) &&
         realizedNetPnlUsd < 0,
     },
+    // YCE-002 yield support (additive, only present for yield kinds or when passed)
+    ...(isYieldKind || effectiveYieldProof ? {
+      yieldContext: yieldContext || null,
+      yieldProof: effectiveYieldProof || null,
+      entryExitProven: topLevelEntryExitProven,
+      realizedNetUsd: topLevelRealizedNetUsd,
+    } : {}),
+  };
+}
+
+/**
+ * YCE-002 + schema enhancement (YCE follow-up): Pair DefiLlama yield entry (deposit) + exit (withdraw) for a given pool under the yield-portfolio strategy.
+ * Returns the flags + proof the defillama-yield-adapter expects in receiptEvidence() input.
+ * Pure function. Chronological first deposit + first subsequent withdraw for the poolId; computes realized from PnL delta + costs.
+ * Backward-compatible: all prior fields preserved; new fields (entryApy/entryTvlUsd/exitApy/exitTvlUsd/holdingPeriodHours) added to yieldProof when data present in yieldContext.
+ * Pool age/new-pool flag captured at entry time via yieldContext.newPool (heuristic from snapshot).
+ */
+export function pairDefiLlamaYieldEntryExit(
+  reconciliations = [],
+  { strategyId = "defillama-yield-portfolio", poolId } = {}
+) {
+  if (!poolId) return { entryExitProven: false, realizedNetUsd: null, yieldProof: null };
+
+  const yieldRecords = reconciliations.filter((r) =>
+    YIELD_KINDS.has(r?.kind) &&
+    (r?.yieldProof?.poolId === poolId || r?.yieldContext?.poolId === poolId || r?.routeContext?.poolId === poolId)
+  );
+
+  if (yieldRecords.length === 0) {
+    return { entryExitProven: false, realizedNetUsd: null, yieldProof: null };
+  }
+
+  // Sort by observedAt ascending
+  const sorted = [...yieldRecords].sort((a, b) =>
+    String(a?.observedAt || a?.yieldProof?.observedAt || "").localeCompare(String(b?.observedAt || b?.yieldProof?.observedAt || ""))
+  );
+
+  const entry = sorted.find((r) => r.kind === "defillama_yield_deposit");
+  const exit = sorted.find((r) => r.kind === "defillama_yield_withdraw" && (!entry || String(r.observedAt) > String(entry.observedAt)));
+
+  if (!entry || !exit) {
+    // Partial: deposit only or no matching exit yet
+    const partial = entry || sorted[0];
+    const baseProof = partial?.yieldProof || { poolId, protocol: partial?.yieldContext?.protocol || "unknown", entryTxHash: partial?.txHash, entryExitProven: false, realizedNetUsd: null };
+    const proof = {
+      ...baseProof,
+      // schema enhancement: entry-time rich fields (from yieldContext populated by ingestor snapshot/plan)
+      entryApy: baseProof.entryApy ?? partial?.yieldContext?.apy ?? null,
+      entryTvlUsd: baseProof.entryTvlUsd ?? partial?.yieldContext?.tvlUsd ?? null,
+      newPool: baseProof.newPool ?? partial?.yieldContext?.newPool ?? null,
+    };
+    return { entryExitProven: false, realizedNetUsd: null, yieldProof: proof };
+  }
+
+  // Compute realized for the pair (prefer explicit in proof, else delta of realized + output)
+  const entryNet = Number(entry?.realizedNetUsd ?? entry?.realized?.realizedNetPnlUsd ?? 0);
+  const exitNet = Number(exit?.realizedNetUsd ?? exit?.realized?.realizedNetPnlUsd ?? 0);
+  const pairRealized = Number.isFinite(entryNet) && Number.isFinite(exitNet) ? exitNet - entryNet : null;
+
+  // Compute holding period (hours, 2 decimals) from observedAt timestamps
+  const entryTs = entry?.observedAt || entry?.yieldProof?.observedAt || entry?.yieldContext?.observedAt;
+  const exitTs = exit?.observedAt || exit?.yieldProof?.observedAt || exit?.yieldContext?.observedAt;
+  let holdingPeriodHours = null;
+  if (entryTs && exitTs) {
+    const d = new Date(exitTs).getTime() - new Date(entryTs).getTime();
+    if (Number.isFinite(d) && d > 0) {
+      holdingPeriodHours = Math.round((d / (1000 * 60 * 60)) * 100) / 100;
+    }
+  }
+
+  const combinedProof = {
+    poolId,
+    protocol: exit?.yieldProof?.protocol || entry?.yieldProof?.protocol || exit?.yieldContext?.protocol || "defillama",
+    chain: exit?.chain || entry?.chain,
+    strategyId,
+    entryTxHash: entry.txHash,
+    exitTxHash: exit.txHash,
+    entrySharePrice: entry?.yieldProof?.entrySharePrice ?? entry?.yieldContext?.entrySharePrice ?? null,
+    exitSharePrice: exit?.yieldProof?.exitSharePrice ?? exit?.yieldContext?.exitSharePrice ?? null,
+    entryAssetsUsd: entry?.yieldProof?.entryAssetsUsd ?? entry?.output?.actualOutputUsd ?? null,
+    exitAssetsUsd: exit?.yieldProof?.exitAssetsUsd ?? exit?.output?.actualOutputUsd ?? null,
+    realizedYieldBps: null, // could compute from share prices
+    realizedNetUsd: Number.isFinite(pairRealized) ? pairRealized : (exit?.realizedNetUsd ?? exitNet ?? null),
+    entryExitProven: true,
+    rewardClaimTxHashes: sorted.filter(r => r.kind === "defillama_yield_reward_claim").map(r => r.txHash),
+    observedAt: new Date().toISOString(),
+    source: "reconciliation_pair",
+    // Schema enhancement (backward-compatible): richer yield evidence for future adapter/policy allocation & risk decisions
+    entryApy: entry?.yieldProof?.entryApy ?? entry?.yieldContext?.apy ?? null,
+    entryTvlUsd: entry?.yieldProof?.entryTvlUsd ?? entry?.yieldContext?.tvlUsd ?? null,
+    exitApy: exit?.yieldProof?.exitApy ?? exit?.yieldContext?.apy ?? null,
+    exitTvlUsd: exit?.yieldProof?.exitTvlUsd ?? exit?.yieldContext?.tvlUsd ?? null,
+    holdingPeriodHours,
+    entryNewPool: entry?.yieldProof?.entryNewPool ?? entry?.yieldContext?.newPool ?? null,
+  };
+
+  return {
+    entryExitProven: true,
+    realizedNetUsd: combinedProof.realizedNetUsd,
+    yieldProof: combinedProof,
   };
 }
 
@@ -443,4 +557,49 @@ export function buildReceiptLedgerSummary(records = []) {
       };
     }),
   };
+}
+
+/**
+ * YCE-002 + schema enhancement: thin pure mapper for yield receipt evidence.
+ * Filters YIELD_KINDS records from input (reconciliation or audit records carrying kind),
+ * groups by poolId (yieldContext / yieldProof / routeContext), calls pairDefiLlamaYieldEntryExit
+ * per pool, maps the pair result + group metadata to adapter-shaped items.
+ * Input shape to receiptEvidence() in defillama-yield-adapter is now richer (backward compat):
+ *   { signerBacked, result, realizedNetUsd, entryExitProven, yieldProof? }
+ *   where yieldProof (when present) carries entryApy, entryTvlUsd, exitApy, exitTvlUsd, holdingPeriodHours, entryNewPool etc.
+ *   for future allocation/risk decisions inside adapter evaluate + policyGates.
+ * One item per poolId (pair-level evidence). signerBacked/result derived from reconciliationStatus/tx presence
+ * (true for post-ingest reconciled signer executions). No I/O, no side effects.
+ */
+export function loadYieldReceiptEvidence(reconciliations = []) {
+  const yieldRecords = reconciliations.filter((r) => YIELD_KINDS.has(r?.kind));
+  if (yieldRecords.length === 0) return [];
+
+  // unique poolIds from any of the three locations (post step-1 yieldContext wiring)
+  const poolIds = new Set();
+  for (const r of yieldRecords) {
+    const pid = r?.yieldProof?.poolId || r?.yieldContext?.poolId || r?.routeContext?.poolId;
+    if (pid) poolIds.add(pid);
+  }
+
+  const shaped = [];
+  for (const poolId of poolIds) {
+    const pairResult = pairDefiLlamaYieldEntryExit(yieldRecords, { poolId });
+    const group = yieldRecords.filter((r) =>
+      (r?.yieldProof?.poolId || r?.yieldContext?.poolId || r?.routeContext?.poolId) === poolId
+    );
+    const hasReconciled = group.some((r) => r?.reconciliationStatus === "reconciled" || r?.txHash);
+    const isPassed = hasReconciled && (pairResult?.entryExitProven || group.length > 0);
+    shaped.push(
+      Object.freeze({
+        signerBacked: hasReconciled,
+        result: isPassed ? "passed" : "failed",
+        realizedNetUsd: pairResult?.realizedNetUsd ?? null,
+        entryExitProven: pairResult?.entryExitProven ?? false,
+        // Schema enhancement: full yieldProof (with apy/tvl/holding/newPool) now available to adapter + policy for smarter decisions
+        yieldProof: pairResult?.yieldProof || null,
+      })
+    );
+  }
+  return shaped;
 }

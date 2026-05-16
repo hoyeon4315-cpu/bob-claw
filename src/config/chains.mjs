@@ -80,7 +80,11 @@ export const EVM_CHAIN_CONFIGS = Object.freeze({
     nativeSymbol: "ETH",
     nativePriceKey: "ethereum",
     rpcUrl: "https://mainnet.optimism.io",
-    rpcUrls: getChainRpcUrls("optimism", ["https://mainnet.optimism.io"]),
+    rpcUrls: getChainRpcUrls("optimism", [
+      "https://mainnet.optimism.io",
+      "https://optimism-rpc.publicnode.com",
+      "https://optimism.drpc.org",
+    ]),
     fallbackGasUnits: 260_000,
   }),
   sei: Object.freeze({

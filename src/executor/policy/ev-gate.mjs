@@ -87,18 +87,36 @@ function buildAuditMetadataIndex(auditRecords = []) {
   return index;
 }
 
-function buildSampleFromReceipt(receiptRecord = {}, auditMetadata = null) {
-  const strategyId =
+function buildAllowResult(strategyId, chain, intentType, bypassReason) {
+  return {
+    allow: true,
+    blockers: [],
+    evidence: { strategyId, chain, intentType, bypassReason },
+  };
+}
+
+function pickStrategyId(receiptRecord, auditMetadata) {
+  return (
     auditMetadata?.strategyId ||
     normalizeString(receiptRecord.strategyId) ||
-    normalizeString(receiptRecord.metadata?.strategyId);
-  const chain =
+    normalizeString(receiptRecord.metadata?.strategyId)
+  );
+}
+
+function pickChain(receiptRecord, auditMetadata) {
+  return (
     auditMetadata?.chain ||
-    normalizeChain(receiptRecord.chain || receiptRecord.routeContext?.srcChain || receiptRecord.routeContext?.dstChain || null);
+    normalizeChain(
+      receiptRecord.chain || receiptRecord.routeContext?.srcChain || receiptRecord.routeContext?.dstChain || null,
+    )
+  );
+}
+
+function buildSampleFromReceipt(receiptRecord = {}, auditMetadata = null) {
+  const strategyId = pickStrategyId(receiptRecord, auditMetadata);
+  const chain = pickChain(receiptRecord, auditMetadata);
   const intentType =
-    auditMetadata?.intentType ||
-    normalizeString(receiptRecord.intentType) ||
-    normalizeString(receiptRecord.kind);
+    auditMetadata?.intentType || normalizeString(receiptRecord.intentType) || normalizeString(receiptRecord.kind);
   const costUsd = finiteNumber(receiptRecord?.realized?.actualKnownCostUsd);
   const observedAt = observedAtForRecord(receiptRecord) || auditMetadata?.observedAt || null;
   if (!strategyId || !chain || !intentType || costUsd === null) return null;
@@ -157,11 +175,12 @@ export function buildEvCostModel({
   const entries = [...buckets.entries()]
     .map(([key, samples]) => {
       const costsUsd = samples.map((item) => item.costUsd);
-      const latestObservedAt = samples
-        .map((item) => item.observedAt)
-        .filter(Boolean)
-        .sort()
-        .at(-1) || null;
+      const latestObservedAt =
+        samples
+          .map((item) => item.observedAt)
+          .filter(Boolean)
+          .sort()
+          .at(-1) || null;
       const [first] = [...samples].sort((left, right) => right.timestampMs - left.timestampMs);
       return {
         key,
@@ -261,9 +280,7 @@ function approvalAmount(value = null) {
 }
 
 function isUnlimitedApproval(approval = {}) {
-  return approval?.isUnlimited === true ||
-    approval?.amount === "max" ||
-    approval?.mode === "unlimited";
+  return approval?.isUnlimited === true || approval?.amount === "max" || approval?.mode === "unlimited";
 }
 
 function stableHash(value = {}) {
@@ -277,6 +294,47 @@ function hashMatches(claimed, value) {
   return normalized === hash || normalized === `sha256:${hash}`;
 }
 
+function hasValidParentEvEvidence(intent = {}) {
+  const metadata = intent.metadata || {};
+  const parentIntent = metadata.parentIntent || intent.parentIntent || null;
+  const parentEvEvidence = metadata.parentEvEvidence || intent.parentEvEvidence || null;
+  const parentIntentHash = metadata.parentIntentHash || intent.parentIntentHash || parentIntent?.intentHash || null;
+  const parentEvEvidenceHash = metadata.parentEvEvidenceHash || intent.parentEvEvidenceHash || null;
+  if (!parentIntent || !parentEvEvidence || !parentIntentHash || !parentEvEvidenceHash) return false;
+  if (!hashMatches(parentIntentHash, parentIntent)) return false;
+  if (!hashMatches(parentEvEvidenceHash, parentEvEvidence)) return false;
+  if (parentEvEvidence.allow !== true) return false;
+  if (parentIntent.intentType === "approve_exact" || parentIntent.intentType === "approve_max") return false;
+  return true;
+}
+
+function parentChildStrategyAndChainMatch(intent = {}, parentIntent = {}) {
+  const parentStrategyId = normalizeString(parentIntent.strategyId);
+  const parentChain = normalizeChain(parentIntent.chain);
+  const childStrategyId = normalizeString(intent.strategyId);
+  const childChain = normalizeChain(intent.chain);
+  if (!parentStrategyId || parentStrategyId !== childStrategyId) return false;
+  if (!parentChain || parentChain !== childChain) return false;
+  return true;
+}
+
+function approvalTokensAndAmountsMatch(approval = {}, parentApproval = {}, parentIntent = {}) {
+  const token = normalizeAddress(approval.token);
+  const spender = normalizeAddress(approval.spender);
+  const parentToken = normalizeAddress(parentApproval.token || parentIntent.token || parentIntent.metadata?.token);
+  const parentSpender = normalizeAddress(
+    parentApproval.spender || parentIntent.spender || parentIntent.metadata?.spender,
+  );
+  if (!token || !spender || token !== parentToken || spender !== parentSpender) return false;
+
+  const amount = approvalAmount(approval.amount);
+  const parentAmount = approvalAmount(
+    parentApproval.amount ?? parentIntent.amountRaw ?? parentIntent.metadata?.amountRaw,
+  );
+  if (parentAmount !== null && parentAmount !== amount) return false;
+  return true;
+}
+
 function exactApprovalParentEvBypass(intent = {}, receiptHistory = null, { now, policy } = {}) {
   if (intent.intentType !== "approve_exact") return null;
   const approval = intent.approval || null;
@@ -284,33 +342,18 @@ function exactApprovalParentEvBypass(intent = {}, receiptHistory = null, { now, 
   const amount = approvalAmount(approval.amount);
   if (amount === null || amount === "0") return null;
 
+  if (!hasValidParentEvEvidence(intent)) return null;
+
   const metadata = intent.metadata || {};
   const parentIntent = metadata.parentIntent || intent.parentIntent || null;
   const parentEvEvidence = metadata.parentEvEvidence || intent.parentEvEvidence || null;
   const parentIntentHash = metadata.parentIntentHash || intent.parentIntentHash || parentIntent?.intentHash || null;
   const parentEvEvidenceHash = metadata.parentEvEvidenceHash || intent.parentEvEvidenceHash || null;
-  if (!parentIntent || !parentEvEvidence || !parentIntentHash || !parentEvEvidenceHash) return null;
-  if (!hashMatches(parentIntentHash, parentIntent)) return null;
-  if (!hashMatches(parentEvEvidenceHash, parentEvEvidence)) return null;
-  if (parentEvEvidence.allow !== true) return null;
-  if (parentIntent.intentType === "approve_exact" || parentIntent.intentType === "approve_max") return null;
 
-  const parentStrategyId = normalizeString(parentIntent.strategyId);
-  const parentChain = normalizeChain(parentIntent.chain);
-  const childStrategyId = normalizeString(intent.strategyId);
-  const childChain = normalizeChain(intent.chain);
-  if (!parentStrategyId || parentStrategyId !== childStrategyId) return null;
-  if (!parentChain || parentChain !== childChain) return null;
+  if (!parentChildStrategyAndChainMatch(intent, parentIntent)) return null;
 
   const parentApproval = parentIntent.approval || parentIntent.metadata?.approval || {};
-  const token = normalizeAddress(approval.token);
-  const spender = normalizeAddress(approval.spender);
-  const parentToken = normalizeAddress(parentApproval.token || parentIntent.token || parentIntent.metadata?.token);
-  const parentSpender = normalizeAddress(parentApproval.spender || parentIntent.spender || parentIntent.metadata?.spender);
-  if (!token || !spender || token !== parentToken || spender !== parentSpender) return null;
-
-  const parentAmount = approvalAmount(parentApproval.amount ?? parentIntent.amountRaw ?? parentIntent.metadata?.amountRaw);
-  if (parentAmount !== null && parentAmount !== amount) return null;
+  if (!approvalTokensAndAmountsMatch(approval, parentApproval, parentIntent)) return null;
 
   const expectedNetUsd = finiteNumber(parentEvEvidence.expectedNetUsd);
   const requiredNetUsd = finiteNumber(parentEvEvidence.requiredNetUsd);
@@ -321,6 +364,9 @@ function exactApprovalParentEvBypass(intent = {}, receiptHistory = null, { now, 
   if (finiteNumber(parentVerdict.evidence?.expectedNetUsd) !== expectedNetUsd) return null;
   if (finiteNumber(parentVerdict.evidence?.requiredNetUsd) !== requiredNetUsd) return null;
 
+  const childStrategyId = normalizeString(intent.strategyId);
+  const childChain = normalizeChain(intent.chain);
+
   return {
     strategyId: childStrategyId,
     chain: childChain,
@@ -330,8 +376,8 @@ function exactApprovalParentEvBypass(intent = {}, receiptHistory = null, { now, 
     parentEvEvidenceHash,
     parentExpectedNetUsd: expectedNetUsd,
     parentRequiredNetUsd: requiredNetUsd,
-    approvalToken: token,
-    approvalSpender: spender,
+    approvalToken: normalizeAddress(approval.token),
+    approvalSpender: normalizeAddress(approval.spender),
   };
 }
 
@@ -392,56 +438,33 @@ function resolveEvHistoryInput(receiptHistory, { now, policy } = {}) {
   });
 }
 
-export function evGate(intent = {}, receiptHistory = null, { now = intent.observedAt || new Date().toISOString(), policy = EXECUTION_EV_COST_POLICY } = {}) {
+export function evGate(
+  intent = {},
+  receiptHistory = null,
+  { now = intent.observedAt || new Date().toISOString(), policy = EXECUTION_EV_COST_POLICY } = {},
+) {
   const strategyId = normalizeString(intent.strategyId);
   const chain = normalizeChain(intent.chain);
   const intentType = normalizeString(intent.intentType);
   const expectedNetUsd = expectedNetUsdFromIntent(intent);
 
   if (isSafetyCriticalIntent(intent)) {
-    return {
-      allow: true,
-      blockers: [],
-      evidence: {
-        strategyId,
-        chain,
-        intentType,
-        bypassReason: "safety_critical_intent",
-      },
-    };
+    return buildAllowResult(strategyId, chain, intentType, "safety_critical_intent");
   }
 
   const exactApprovalBypass = exactApprovalParentEvBypass(intent, receiptHistory, { now, policy });
   if (exactApprovalBypass) {
-    return {
-      allow: true,
-      blockers: [],
-      evidence: exactApprovalBypass,
-    };
+    return { allow: true, blockers: [], evidence: exactApprovalBypass };
   }
 
   if (expectedNetUsd === null) {
     if (isTransportPlumbingIntent(intent)) {
-      return {
-        allow: true,
-        blockers: [],
-        evidence: {
-          strategyId,
-          chain,
-          intentType,
-          bypassReason: "transport_plumbing_zero_pnl_surface",
-        },
-      };
+      return buildAllowResult(strategyId, chain, intentType, "transport_plumbing_zero_pnl_surface");
     }
     return {
       allow: false,
       blockers: ["expected_net_unmeasured"],
-      evidence: {
-        strategyId,
-        chain,
-        intentType,
-        blockReason: "expected_net_required_for_live_intent",
-      },
+      evidence: { strategyId, chain, intentType, blockReason: "expected_net_required_for_live_intent" },
     };
   }
 
@@ -456,13 +479,7 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
     return {
       allow: false,
       blockers: ["ev_below_gas_margin_floor"],
-      evidence: {
-        strategyId,
-        chain,
-        intentType,
-        expectedNetUsd,
-        evMarginFloor,
-      },
+      evidence: { strategyId, chain, intentType, expectedNetUsd, evMarginFloor },
     };
   }
 
@@ -483,10 +500,15 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
         estimatedGasCostUsd: intent.estimatedGasCostUsd,
       })
     : null;
-  const p90CostUsd = hasSufficientHistory ? entry.p90CostUsd : tinyCanaryFallbackUsd ?? fallbackP99CostUsd;
+  const p90CostUsd = hasSufficientHistory ? entry.p90CostUsd : (tinyCanaryFallbackUsd ?? fallbackP99CostUsd);
   const costMultiplier = finiteNumber(policy.costMultiplier) ?? EXECUTION_EV_COST_POLICY.costMultiplier;
   const minProfitFloorUsd = finiteNumber(policy.minProfitFloorUsd) ?? EXECUTION_EV_COST_POLICY.minProfitFloorUsd;
-  const requiredNetUsd = p90CostUsd * costMultiplier + minProfitFloorUsd;
+  const isCapitalRebalance =
+    intent.executionReason === "capital_rebalance" ||
+    intentType === "capital_rebalance" ||
+    (intent.metadata && intent.metadata.capitalRebalance === true);
+  const effectiveMinProfitFloor = isCapitalRebalance ? 0.1 : minProfitFloorUsd;
+  const requiredNetUsd = p90CostUsd * costMultiplier + effectiveMinProfitFloor;
   const allow = expectedNetUsd > requiredNetUsd;
 
   return {
@@ -504,7 +526,11 @@ export function evGate(intent = {}, receiptHistory = null, { now = intent.observ
       costMultiplier,
       minProfitFloorUsd,
       fallbackP99CostUsd,
-      costSource: hasSufficientHistory ? "history_p90" : tinyCanaryFallbackUsd !== null ? "tiny_canary_shared_p90" : "fallback_chain_p99",
+      costSource: hasSufficientHistory
+        ? "history_p90"
+        : tinyCanaryFallbackUsd !== null
+          ? "tiny_canary_shared_p90"
+          : "fallback_chain_p99",
       modelGeneratedAt: model.generatedAt || null,
       lookbackDays: model.lookbackDays ?? null,
     },

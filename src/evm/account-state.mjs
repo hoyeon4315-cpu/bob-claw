@@ -30,7 +30,9 @@ function resolveChainConfig(chain, options = {}) {
 }
 
 function padHex(value, bytes = 32) {
-  const normalized = String(value || "").replace(/^0x/i, "").toLowerCase();
+  const normalized = String(value || "")
+    .replace(/^0x/i, "")
+    .toLowerCase();
   return normalized.padStart(bytes * 2, "0");
 }
 
@@ -85,10 +87,14 @@ function decodeAddress(hex) {
 
 async function optionalCall(chain, token, selector, options = {}) {
   try {
-    return await firstSuccess(chain, async (rpcUrl) => ({
-      rpcUrl,
-      result: await rpc(rpcUrl, "eth_call", [{ to: token, data: selector }, "latest"], options),
-    }), options);
+    return await firstSuccess(
+      chain,
+      async (rpcUrl) => ({
+        rpcUrl,
+        result: await rpc(rpcUrl, "eth_call", [{ to: token, data: selector }, "latest"], options),
+      }),
+      options,
+    );
   } catch {
     return null;
   }
@@ -101,11 +107,17 @@ async function firstSuccess(chain, executor) {
     throw new Error(`No RPC config for chain: ${chain}`);
   }
   const attempts = [];
-  for (const rpcUrl of uniqueRpcUrls(chainConfig)) {
+  const urls = uniqueRpcUrls(chainConfig);
+  for (let i = 0; i < urls.length; i++) {
+    const rpcUrl = urls[i];
     try {
       return await executor(rpcUrl);
     } catch (error) {
       attempts.push({ rpcUrl, message: error.message, code: error.rpcError?.code ?? null });
+      // Small delay between public RPC attempts to reduce rate-limit thrashing on flaky chains (base, etc.)
+      if (i < urls.length - 1) {
+        await new Promise((r) => setTimeout(r, 80));
+      }
     }
   }
   const error = new Error(`All RPC endpoints failed for chain: ${chain}`);
@@ -115,18 +127,26 @@ async function firstSuccess(chain, executor) {
 }
 
 export async function readNativeBalance(chain, address, options = {}) {
-  return firstSuccess(chain, async (rpcUrl) => ({
-    rpcUrl,
-    balanceWei: decodeBigInt(await rpc(rpcUrl, "eth_getBalance", [address, "latest"], options)),
-  }), options);
+  return firstSuccess(
+    chain,
+    async (rpcUrl) => ({
+      rpcUrl,
+      balanceWei: decodeBigInt(await rpc(rpcUrl, "eth_getBalance", [address, "latest"], options)),
+    }),
+    options,
+  );
 }
 
 export async function readErc20Balance(chain, token, owner, options = {}) {
   const data = `${BALANCE_OF_SELECTOR}${encodeAddressArg(owner)}`;
-  return firstSuccess(chain, async (rpcUrl) => ({
-    rpcUrl,
-    balance: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: token, data }, "latest"], options)),
-  }), options);
+  return firstSuccess(
+    chain,
+    async (rpcUrl) => ({
+      rpcUrl,
+      balance: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: token, data }, "latest"], options)),
+    }),
+    options,
+  );
 }
 
 export async function readErc20Metadata(chain, token, options = {}) {
@@ -149,20 +169,28 @@ export async function readErc4626SharePreview(chain, vault, shares, options = {}
   const asset = decodeAddress(assetCall?.result);
   if (!asset) return null;
   const data = `${ERC4626_CONVERT_TO_ASSETS_SELECTOR}${encodeUintArg(shares)}`;
-  const preview = await firstSuccess(chain, async (rpcUrl) => ({
-    rpcUrl,
-    asset,
-    assets: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: vault, data }, "latest"], options)),
-  }), options);
+  const preview = await firstSuccess(
+    chain,
+    async (rpcUrl) => ({
+      rpcUrl,
+      asset,
+      assets: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: vault, data }, "latest"], options)),
+    }),
+    options,
+  );
   return preview;
 }
 
 export async function readErc20Allowance(chain, token, owner, spender, options = {}) {
   const data = `${ALLOWANCE_SELECTOR}${encodeAddressArg(owner)}${encodeAddressArg(spender)}`;
-  return firstSuccess(chain, async (rpcUrl) => ({
-    rpcUrl,
-    allowance: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: token, data }, "latest"], options)),
-  }), options);
+  return firstSuccess(
+    chain,
+    async (rpcUrl) => ({
+      rpcUrl,
+      allowance: decodeBigInt(await rpc(rpcUrl, "eth_call", [{ to: token, data }, "latest"], options)),
+    }),
+    options,
+  );
 }
 
 export function summarizeRequirement(actual, required) {

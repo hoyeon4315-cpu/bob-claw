@@ -12,7 +12,10 @@ import { ReceiptAutoIngestTimeoutError } from "../ingestor/receipt-auto-ingest.m
 import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
 import { readSignerHealth, sendSignerCommand } from "../signer/client.mjs";
 import { buildDefaultWrappedBtcLendingLoopConfig } from "../../strategy/wrapped-btc-lending-loop-slice.mjs";
-import { inspectWrappedBtcLoopBindingsDocument, resolveWrappedBtcLoopBindingSupport } from "../../strategy/wrapped-btc-loop-bindings.mjs";
+import {
+  inspectWrappedBtcLoopBindingsDocument,
+  resolveWrappedBtcLoopBindingSupport,
+} from "../../strategy/wrapped-btc-loop-bindings.mjs";
 import {
   buildWrappedBtcLoopLiveProof,
   choosePreferredWrappedBtcLoopLiveProof,
@@ -26,6 +29,7 @@ import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../helpers/gatew
 
 export const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
 export const DEFAULT_EXECUTOR_STRATEGY_BINDINGS_PATH = "./state/executor-strategy-bindings.json";
+const WRAPPED_BTC_LOOP_SLICE_FILE = "wrapped-btc-lending-loop-slice.json";
 
 function unique(values = []) {
   return [...new Set((values || []).filter(Boolean))];
@@ -66,6 +70,11 @@ function normalizeOptionalPositiveInteger(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.floor(parsed);
+}
+
+function finiteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function evaluateWrappedBtcLoopRunBudget(plan = {}, { maxIntentsPerRun = null } = {}) {
@@ -127,7 +136,9 @@ export function resolveWrappedBtcLoopScenarioBinding({
     scenarioId,
   });
   if (!inspection.ok) {
-    throw new Error(`Invalid wrapped BTC loop bindings for ${strategyId}:${scenarioId}: ${inspection.errors.join("; ")}`);
+    throw new Error(
+      `Invalid wrapped BTC loop bindings for ${strategyId}:${scenarioId}: ${inspection.errors.join("; ")}`,
+    );
   }
   const strategyBindings = bindingsDocument?.strategies?.[strategyId];
   if (!strategyBindings) {
@@ -181,6 +192,34 @@ function normalizeLoopStep(step = {}, { phase, index, now, strategyId, defaultAm
   };
 }
 
+function attachWrappedBtcLoopExpectedNet(intents = [], expectedNetUsd = null) {
+  const numericExpectedNetUsd = finiteNumber(expectedNetUsd);
+  if (numericExpectedNetUsd === null) return intents;
+  return (intents || []).map((intent) => ({
+    ...intent,
+    expectedNetUsd: numericExpectedNetUsd,
+    metadata: {
+      ...(intent.metadata || {}),
+      expectedNetUsd: numericExpectedNetUsd,
+    },
+  }));
+}
+
+async function readWrappedBtcLoopExpectedNetEvidence({ dataDir = config.dataDir, readFileImpl = readFile } = {}) {
+  try {
+    const document = JSON.parse(await readFileImpl(join(dataDir, WRAPPED_BTC_LOOP_SLICE_FILE), "utf8"));
+    return (
+      finiteNumber(document?.liveExecutionPolicy?.expectedNetUsd) ??
+      finiteNumber(document?.policyPreview?.expectedNetUsd) ??
+      finiteNumber(document?.executorIntentPreview?.expectedNetUsd) ??
+      finiteNumber(document?.pnl?.estimated?.valueUsd)
+    );
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    return null;
+  }
+}
+
 export async function buildWrappedBtcLoopScenarioPlan({
   bindingsDocument,
   strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID,
@@ -195,6 +234,7 @@ export async function buildWrappedBtcLoopScenarioPlan({
   marketAssumptionsOverride = null,
   perTradeCapUsdOverride = null,
   maxLoopIterationsOverride = null,
+  expectedNetUsd = null,
   useCurrentPosition = false,
   unwindOnly = false,
 } = {}) {
@@ -202,9 +242,10 @@ export async function buildWrappedBtcLoopScenarioPlan({
     throw new Error("Wrapped BTC loop unwind-only mode currently requires useCurrentPosition=true");
   }
   const strategyCaps = assertStrategyCaps(strategyId);
-  const resolvedPerTradeCapUsd = Number.isFinite(Number(perTradeCapUsdOverride)) && Number(perTradeCapUsdOverride) > 0
-    ? Number(perTradeCapUsdOverride)
-    : strategyCaps.caps.perTxUsd;
+  const resolvedPerTradeCapUsd =
+    Number.isFinite(Number(perTradeCapUsdOverride)) && Number(perTradeCapUsdOverride) > 0
+      ? Number(perTradeCapUsdOverride)
+      : strategyCaps.caps.perTxUsd;
   const resolvedMaxLoopIterations = normalizeOptionalPositiveInteger(maxLoopIterationsOverride);
   const strategyConfig = {
     ...buildDefaultWrappedBtcLendingLoopConfig(),
@@ -266,35 +307,47 @@ export async function buildWrappedBtcLoopScenarioPlan({
   if (unwindSteps.length === 0) {
     throw new Error(`Wrapped loop scenario ${scenarioId} requires at least one unwind step.${missingFactsMessage}`);
   }
+  const entryIntents = attachWrappedBtcLoopExpectedNet(
+    entrySteps.map((step, index) =>
+      normalizeLoopStep(
+        {
+          ...step,
+          scenarioId,
+        },
+        {
+          phase: "entry",
+          index,
+          now,
+          strategyId,
+          defaultAmountUsd,
+          strategyConfig,
+        },
+      ),
+    ),
+    expectedNetUsd,
+  );
   return {
     strategyId,
     scenarioId,
     strategyCaps,
     scenarioBinding,
-    entryIntents: entrySteps.map((step, index) =>
-      normalizeLoopStep({
-        ...step,
-        scenarioId,
-      }, {
-        phase: "entry",
-        index,
-        now,
-        strategyId,
-        defaultAmountUsd,
-        strategyConfig,
-      })),
+    entryIntents,
     unwindIntents: unwindSteps.map((step, index) =>
-      normalizeLoopStep({
-        ...step,
-        scenarioId,
-      }, {
-        phase: "unwind",
-        index,
-        now,
-        strategyId,
-        defaultAmountUsd,
-        strategyConfig,
-      })),
+      normalizeLoopStep(
+        {
+          ...step,
+          scenarioId,
+        },
+        {
+          phase: "unwind",
+          index,
+          now,
+          strategyId,
+          defaultAmountUsd,
+          strategyConfig,
+        },
+      ),
+    ),
     receiptContext: scenarioBinding.receiptContext || {},
     currentPosition,
     unwindOnly,
@@ -315,7 +368,12 @@ function feeUsdFromReceipt(receipt, chain, prices) {
 
 function sumFinite(values = []) {
   const finite = values.filter(Number.isFinite);
-  return finite.length > 0 ? round(finite.reduce((sum, value) => sum + value, 0), 6) : null;
+  return finite.length > 0
+    ? round(
+        finite.reduce((sum, value) => sum + value, 0),
+        6,
+      )
+    : null;
 }
 
 function numericPath(values = []) {
@@ -326,12 +384,7 @@ function positiveNumericPath(values = []) {
   return numericPath(values).filter((value) => value > 0);
 }
 
-export function buildWrappedBtcLoopReceiptContext({
-  plan,
-  entryResults = [],
-  unwindResults = [],
-  prices = null,
-} = {}) {
+export function buildWrappedBtcLoopReceiptContext({ plan, entryResults = [], unwindResults = [], prices = null } = {}) {
   const bindingContext = plan?.receiptContext || {};
   const entryTxHashes = unique(entryResults.map((item) => item.broadcast?.txHash).filter(Boolean));
   const unwindTxHashes = unique(unwindResults.map((item) => item.broadcast?.txHash).filter(Boolean));
@@ -375,9 +428,7 @@ export async function evaluateWrappedBtcLoopUnwindInventory({
     };
   }
   const repayTokenSource = (plan.unwindIntents || []).find(
-    (item) =>
-      item?.metadata?.kind === "repay_borrow_asset" &&
-      (item?.approval?.token || item?.metadata?.repayUnits),
+    (item) => item?.metadata?.kind === "repay_borrow_asset" && (item?.approval?.token || item?.metadata?.repayUnits),
   );
   const repayToken = repayTokenSource?.approval?.token || null;
   if (!repayToken) {
@@ -448,10 +499,7 @@ async function writeWrappedBtcLoopLiveProof({
     previousProof: existingProof,
     nextProof: liveProof,
   });
-  return writeTextIfChangedImpl(
-    proofPath,
-    `${JSON.stringify(preferredProof, null, 2)}\n`,
-  );
+  return writeTextIfChangedImpl(proofPath, `${JSON.stringify(preferredProof, null, 2)}\n`);
 }
 
 async function readWrappedBtcLoopLiveProof({
@@ -468,14 +516,13 @@ async function readWrappedBtcLoopLiveProof({
   return readExistingLiveProofImpl(join(dataDir, WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE));
 }
 
-function buildWrappedBtcLoopAutoIngestFallbackContext({
-  previousProof = null,
-  receiptContext = null,
-} = {}) {
+function buildWrappedBtcLoopAutoIngestFallbackContext({ previousProof = null, receiptContext = null } = {}) {
   const currentEntryTxHashes = unique(receiptContext?.entryTxHashes || []);
   const currentUnwindTxHashes = unique(receiptContext?.unwindTxHashes || []);
   const currentObservedHealthFactorPath = (receiptContext?.observedHealthFactorPath || []).filter(Number.isFinite);
-  const currentObservedLiquidationBufferPath = (receiptContext?.observedLiquidationBufferPath || []).filter(Number.isFinite);
+  const currentObservedLiquidationBufferPath = (receiptContext?.observedLiquidationBufferPath || []).filter(
+    Number.isFinite,
+  );
   return {
     ...(previousProof || {}),
     ...(receiptContext || {}),
@@ -488,7 +535,8 @@ function buildWrappedBtcLoopAutoIngestFallbackContext({
       (previousProof?.success === true ? "passed" : null) ||
       "passed",
     entryTxHashes: currentEntryTxHashes.length > 0 ? currentEntryTxHashes : unique(previousProof?.entryTxHashes || []),
-    unwindTxHashes: currentUnwindTxHashes.length > 0 ? currentUnwindTxHashes : unique(previousProof?.unwindTxHashes || []),
+    unwindTxHashes:
+      currentUnwindTxHashes.length > 0 ? currentUnwindTxHashes : unique(previousProof?.unwindTxHashes || []),
     observedHealthFactorPath:
       currentObservedHealthFactorPath.length > 0
         ? currentObservedHealthFactorPath
@@ -503,14 +551,12 @@ function buildWrappedBtcLoopAutoIngestFallbackContext({
         : Number.isFinite(previousProof?.actualLoopFeesUsd)
           ? previousProof.actualLoopFeesUsd
           : receiptContext?.actualLoopFeesUsd,
-    actualUnwindCostUsd:
-      Number.isFinite(receiptContext?.actualUnwindCostUsd)
-        ? receiptContext.actualUnwindCostUsd
-        : previousProof?.actualUnwindCostUsd,
-    realizedNetCarryUsd:
-      Number.isFinite(receiptContext?.realizedNetCarryUsd)
-        ? receiptContext.realizedNetCarryUsd
-        : previousProof?.realizedNetCarryUsd,
+    actualUnwindCostUsd: Number.isFinite(receiptContext?.actualUnwindCostUsd)
+      ? receiptContext.actualUnwindCostUsd
+      : previousProof?.actualUnwindCostUsd,
+    realizedNetCarryUsd: Number.isFinite(receiptContext?.realizedNetCarryUsd)
+      ? receiptContext.realizedNetCarryUsd
+      : previousProof?.realizedNetCarryUsd,
     notes: unique([...(previousProof?.notes || []), ...(receiptContext?.notes || [])]),
     observedAt: receiptContext?.observedAt || previousProof?.observedAt || null,
   };
@@ -632,11 +678,10 @@ export async function finalizeWrappedBtcLoopLiveReceipt({
   };
 }
 
-export async function prepareLiveLoopIntent(intent, {
-  signerAddress = null,
-  estimateGasImpl = estimateGas,
-  gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
-} = {}) {
+export async function prepareLiveLoopIntent(
+  intent,
+  { signerAddress = null, estimateGasImpl = estimateGas, gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS } = {},
+) {
   const refreshedObservedAt = new Date().toISOString();
   const refreshNonQuotedStep = intent?.intentType !== "odos_swap";
   const baseIntent = {
@@ -759,6 +804,7 @@ export async function runWrappedBtcLoopLiveScenario({
     getCoinGeckoPricesUsd().catch(() => null),
     readSignerHealth({ socketPath, timeoutMs }),
   ]);
+  const expectedNetUsd = await readWrappedBtcLoopExpectedNetEvidence();
   const plan = await buildWrappedBtcLoopScenarioPlan({
     bindingsDocument,
     strategyId,
@@ -769,6 +815,7 @@ export async function runWrappedBtcLoopLiveScenario({
     perTradeCapUsdOverride,
     marketAssumptionsOverride,
     maxLoopIterationsOverride,
+    expectedNetUsd,
     useCurrentPosition,
     unwindOnly,
     ...(readErc20BalanceImpl ? { readErc20BalanceImpl } : {}),

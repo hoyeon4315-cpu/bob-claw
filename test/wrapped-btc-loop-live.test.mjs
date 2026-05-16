@@ -91,9 +91,7 @@ const mTokenViewInterface = new Interface([
   "function getAccountSnapshot(address account) view returns (uint256,uint256,uint256,uint256)",
 ]);
 
-const priceOracleInterface = new Interface([
-  "function getUnderlyingPrice(address mToken) view returns (uint256)",
-]);
+const priceOracleInterface = new Interface(["function getUnderlyingPrice(address mToken) view returns (uint256)"]);
 
 test("wrapped loop live plan builds signer intents without skipAutoIngest", async () => {
   const plan = await buildWrappedBtcLoopScenarioPlan({
@@ -109,6 +107,19 @@ test("wrapped loop live plan builds signer intents without skipAutoIngest", asyn
   assert.equal(plan.entryIntents[0].quote.observedAt, "2026-04-17T00:00:00.000Z");
   assert.equal(plan.entryIntents[0].intentId, "wrapped-btc-loop-base-moonwell:entry:approve");
   assert.equal(plan.entryIntents[0].strategyConfig.collateralAsset, "cbBTC");
+});
+
+test("wrapped loop live plan carries expected net evidence onto entry intents", async () => {
+  const plan = await buildWrappedBtcLoopScenarioPlan({
+    bindingsDocument: bindingsFixture(),
+    scenarioId: "healthy_baseline",
+    now: "2026-04-17T00:00:00.000Z",
+    expectedNetUsd: 0.4913,
+  });
+
+  assert.equal(plan.entryIntents[0].expectedNetUsd, 0.4913);
+  assert.equal(plan.entryIntents[0].metadata.expectedNetUsd, 0.4913);
+  assert.equal(plan.unwindIntents[0].expectedNetUsd, undefined);
 });
 
 test("wrapped loop receipt context derives fee totals from EVM receipts when bindings omit them", async () => {
@@ -156,11 +167,7 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
     quote: async ({ outputToken }) => ({
       latencyMs: 10,
       body: {
-        outAmounts: [
-          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-            ? "200000000"
-            : "1332",
-        ],
+        outAmounts: [outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? "200000000" : "1332"],
         pathId: "path-1",
       },
     }),
@@ -197,16 +204,36 @@ test("wrapped loop live plan auto-builds Moonwell and Odos steps when bindings s
 
   assert.equal(plan.entryIntents.length > 3, true);
   assert.equal(plan.unwindIntents.length > 0, true);
-  assert.equal(plan.entryIntents.some((item) => item.metadata?.provider === "odos"), true);
-  assert.equal(plan.entryIntents.some((item) => item.approval?.mode === "per_tx"), true);
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:swap-borrow-to-collateral-1")).tx.gasLimit, "252000");
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-initial-collateral")).metadata.capCheckAmountUsd, 0);
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:enter-collateral-market")).metadata.capCheckAmountUsd, 0);
+  assert.equal(
+    plan.entryIntents.some((item) => item.metadata?.provider === "odos"),
+    true,
+  );
+  assert.equal(
+    plan.entryIntents.some((item) => item.approval?.mode === "per_tx"),
+    true,
+  );
+  assert.equal(
+    plan.entryIntents.find((item) => item.intentId.endsWith(":entry:swap-borrow-to-collateral-1")).tx.gasLimit,
+    "252000",
+  );
+  assert.equal(
+    plan.entryIntents.find((item) => item.intentId.endsWith(":entry:approve-initial-collateral")).metadata
+      .capCheckAmountUsd,
+    0,
+  );
+  assert.equal(
+    plan.entryIntents.find((item) => item.intentId.endsWith(":entry:enter-collateral-market")).metadata
+      .capCheckAmountUsd,
+    0,
+  );
   const initialMint = plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral"));
   assert.equal(initialMint.metadata.capCheckAmountUsd, initialMint.amountUsd);
   assert.equal(initialMint.metadata.capCheckAmountUsd > 0, true);
   assert.equal(initialMint.metadata.capCheckAmountUsd <= 750, true);
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:borrow-usdc-1")).metadata.capCheckAmountUsd, 0);
+  assert.equal(
+    plan.entryIntents.find((item) => item.intentId.endsWith(":entry:borrow-usdc-1")).metadata.capCheckAmountUsd,
+    0,
+  );
   for (const intent of [...plan.entryIntents, ...plan.unwindIntents]) {
     assert.equal(validateEvmTransactionSemantics(intent), true, intent.intentId);
   }
@@ -234,7 +261,10 @@ test("wrapped loop live plan supports tiny per-trade override with collateral-on
 
   assert.equal(plan.entryIntents.length, 3);
   assert.equal(plan.unwindIntents.length, 1);
-  assert.equal(plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).amountUsd, 6.99975);
+  assert.equal(
+    plan.entryIntents.find((item) => item.intentId.endsWith(":entry:mint-initial-collateral")).amountUsd,
+    6.99975,
+  );
   assert.equal(plan.unwindIntents[0].intentId.endsWith(":unwind:redeem-initial-collateral"), true);
   assert.equal(plan.unwindIntents[0].metadata.tinyValidationOnly, true);
 });
@@ -255,11 +285,7 @@ test("wrapped loop run budget blocks oversized roundtrip before execution", asyn
       quote: async ({ outputToken }) => ({
         latencyMs: 10,
         body: {
-          outAmounts: [
-            outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-              ? "5000000"
-              : "4200",
-          ],
+          outAmounts: [outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? "5000000" : "4200"],
           pathId: "path-budget-1",
         },
       }),
@@ -301,11 +327,7 @@ test("wrapped loop max-iteration override keeps automated live validation to one
     quote: async ({ outputToken }) => ({
       latencyMs: 10,
       body: {
-        outAmounts: [
-          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-            ? "20000000"
-            : "13000",
-        ],
+        outAmounts: [outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? "20000000" : "13000"],
         pathId: "path-one-cycle",
       },
     }),
@@ -344,10 +366,22 @@ test("wrapped loop max-iteration override keeps automated live validation to one
     },
   });
 
-  assert.equal(plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-1")), true);
-  assert.equal(plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-2")), false);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-1")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-2")), false);
+  assert.equal(
+    plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-1")),
+    true,
+  );
+  assert.equal(
+    plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-2")),
+    false,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-1")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-2")),
+    false,
+  );
 });
 
 test("wrapped loop live plan supports tiny borrow cycle override and full unwind path", async () => {
@@ -355,11 +389,7 @@ test("wrapped loop live plan supports tiny borrow cycle override and full unwind
     quote: async ({ outputToken }) => ({
       latencyMs: 10,
       body: {
-        outAmounts: [
-          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-            ? "5000000"
-            : "4200",
-        ],
+        outAmounts: [outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? "5000000" : "4200"],
         pathId: "path-borrow-1",
       },
     }),
@@ -397,11 +427,26 @@ test("wrapped loop live plan supports tiny borrow cycle override and full unwind
     },
   });
 
-  assert.equal(plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-1")), true);
-  assert.equal(plan.entryIntents.some((item) => item.intentId.endsWith(":entry:mint-recycled-collateral-1")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-1")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-1")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-initial-collateral")), true);
+  assert.equal(
+    plan.entryIntents.some((item) => item.intentId.endsWith(":entry:borrow-usdc-1")),
+    true,
+  );
+  assert.equal(
+    plan.entryIntents.some((item) => item.intentId.endsWith(":entry:mint-recycled-collateral-1")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-1")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-1")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-initial-collateral")),
+    true,
+  );
 });
 
 test("wrapped loop live plan caps recycled collateral mint to Odos output", async () => {
@@ -409,11 +454,7 @@ test("wrapped loop live plan caps recycled collateral mint to Odos output", asyn
     quote: async ({ outputToken }) => ({
       latencyMs: 10,
       body: {
-        outAmounts: [
-          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-            ? "5000000"
-            : "1999",
-        ],
+        outAmounts: [outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? "5000000" : "1999"],
         pathId: "path-borrow-low-output",
       },
     }),
@@ -457,7 +498,10 @@ test("wrapped loop live plan caps recycled collateral mint to Odos output", asyn
   assert.equal(approve.approval.amount, "1999");
   assert.equal(mint.metadata.appliedRecycledCollateralUnits, "1999");
   assert.equal(mint.metadata.quotedRecycledCollateralUnits, "1999");
-  assert.equal(BigInt(mint.metadata.plannedRecycledCollateralUnits) > BigInt(mint.metadata.appliedRecycledCollateralUnits), true);
+  assert.equal(
+    BigInt(mint.metadata.plannedRecycledCollateralUnits) > BigInt(mint.metadata.appliedRecycledCollateralUnits),
+    true,
+  );
   assert.equal(mint.metadata.recycledCollateralDownsized, true);
 });
 
@@ -467,8 +511,8 @@ test("wrapped loop live plan self-funds unwind repay with redeemed collateral wh
       latencyMs: 10,
       body: {
         outAmounts: [
-          inputToken.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase()
-            && outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913".toLowerCase()
+          inputToken.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() &&
+          outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913".toLowerCase()
             ? "5000000"
             : "4200",
         ],
@@ -501,7 +545,8 @@ test("wrapped loop live plan self-funds unwind repay with redeemed collateral wh
     odosClient,
     estimateGasImpl: estimateGasFixture,
     readErc20BalanceImpl: async (chain, token) => ({
-      balance: token.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() ? 1_000_000n : 500_000n,
+      balance:
+        token.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() ? 1_000_000n : 500_000n,
     }),
     perTradeCapUsdOverride: 7,
     marketAssumptionsOverride: {
@@ -509,9 +554,18 @@ test("wrapped loop live plan self-funds unwind repay with redeemed collateral wh
     },
   });
 
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-for-repay-2")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-2")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-2")), false);
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-for-repay-2")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-2")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-2")),
+    false,
+  );
 
   const repayTwo = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-2"));
   const swapTwo = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-2"));
@@ -598,7 +652,8 @@ test("wrapped loop live plan requotes repay funding until slippage-safe output c
   assert.equal(swapOne.metadata.repayFundingRoundedUp, true);
   assert.equal(BigInt(swapOne.metadata.extraInitialCollateralForRepayUnits) > 0n, true);
   assert.equal(
-    BigInt(redeemInitial.metadata.appliedCollateralUnits) + BigInt(swapOne.metadata.extraInitialCollateralForRepayUnits),
+    BigInt(redeemInitial.metadata.appliedCollateralUnits) +
+      BigInt(swapOne.metadata.extraInitialCollateralForRepayUnits),
     BigInt(mintInitial.metadata.appliedCollateralUnits),
   );
 
@@ -754,22 +809,39 @@ test("wrapped loop live plan supports current-position unwind-only rescue mode",
 
   const simulateTransactionCallImpl = async (chain, { to, data }) => {
     const selector = data.slice(0, 10).toLowerCase();
-    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("oracle").selector.toLowerCase()) {
+    if (
+      to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" &&
+      selector === comptrollerViewInterface.getFunction("oracle").selector.toLowerCase()
+    ) {
       return {
         returnData: comptrollerViewInterface.encodeFunctionResult("oracle", [oracleAddress]),
       };
     }
-    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("markets").selector.toLowerCase()) {
+    if (
+      to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" &&
+      selector === comptrollerViewInterface.getFunction("markets").selector.toLowerCase()
+    ) {
       return {
         returnData: comptrollerViewInterface.encodeFunctionResult("markets", [true, collateralFactorMantissa, true]),
       };
     }
-    if (to.toLowerCase() === collateralMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+    if (
+      to.toLowerCase() === collateralMarketAddress.toLowerCase() &&
+      selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()
+    ) {
       return {
-        returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, collateralTokenBalance, 0n, collateralExchangeRate]),
+        returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [
+          0n,
+          collateralTokenBalance,
+          0n,
+          collateralExchangeRate,
+        ]),
       };
     }
-    if (to.toLowerCase() === borrowMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+    if (
+      to.toLowerCase() === borrowMarketAddress.toLowerCase() &&
+      selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()
+    ) {
       return {
         returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, 0n, borrowBalanceUnits, 0n]),
       };
@@ -777,10 +849,11 @@ test("wrapped loop live plan supports current-position unwind-only rescue mode",
     if (to.toLowerCase() === oracleAddress.toLowerCase()) {
       const [market] = priceOracleInterface.decodeFunctionData("getUnderlyingPrice", data);
       return {
-        returnData: priceOracleInterface.encodeFunctionResult(
-          "getUnderlyingPrice",
-          [market.toLowerCase() === collateralMarketAddress.toLowerCase() ? collateralPriceMantissa : borrowPriceMantissa],
-        ),
+        returnData: priceOracleInterface.encodeFunctionResult("getUnderlyingPrice", [
+          market.toLowerCase() === collateralMarketAddress.toLowerCase()
+            ? collateralPriceMantissa
+            : borrowPriceMantissa,
+        ]),
       };
     }
     throw new Error(`Unexpected simulateTransactionCall for ${to}`);
@@ -804,11 +877,26 @@ test("wrapped loop live plan supports current-position unwind-only rescue mode",
   assert.equal(plan.unwindIntents.length > 0, true);
   assert.equal(plan.unwindOnly, true);
   assert.equal(plan.currentPosition.borrowBalanceUnits, borrowBalanceUnits.toString());
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-wallet")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-for-repay-current")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-current")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-current")), true);
-  assert.equal(plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-residual-collateral")), true);
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-wallet")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-collateral-for-repay-current")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:swap-collateral-to-repay-current")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:repay-usdc-current")),
+    true,
+  );
+  assert.equal(
+    plan.unwindIntents.some((item) => item.intentId.endsWith(":unwind:redeem-residual-collateral")),
+    true,
+  );
 
   const repayWallet = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-wallet"));
   const repayCurrent = plan.unwindIntents.find((item) => item.intentId.endsWith(":unwind:repay-usdc-current"));
@@ -825,25 +913,40 @@ test("wrapped loop current-position rescue ignores immaterial dust-only borrow",
   const collateralFactorMantissa = 85n * 10n ** 16n;
   const simulateTransactionCallImpl = async (chain, { to, data }) => {
     const selector = data.slice(0, 10).toLowerCase();
-    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("oracle").selector.toLowerCase()) {
+    if (
+      to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" &&
+      selector === comptrollerViewInterface.getFunction("oracle").selector.toLowerCase()
+    ) {
       return { returnData: comptrollerViewInterface.encodeFunctionResult("oracle", [oracleAddress]) };
     }
-    if (to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" && selector === comptrollerViewInterface.getFunction("markets").selector.toLowerCase()) {
-      return { returnData: comptrollerViewInterface.encodeFunctionResult("markets", [true, collateralFactorMantissa, true]) };
+    if (
+      to.toLowerCase() === "0xfbb21d0380bee3312b33c4353c8936a0f13ef26c" &&
+      selector === comptrollerViewInterface.getFunction("markets").selector.toLowerCase()
+    ) {
+      return {
+        returnData: comptrollerViewInterface.encodeFunctionResult("markets", [true, collateralFactorMantissa, true]),
+      };
     }
-    if (to.toLowerCase() === collateralMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+    if (
+      to.toLowerCase() === collateralMarketAddress.toLowerCase() &&
+      selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()
+    ) {
       return { returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, 0n, 0n, 10n ** 18n]) };
     }
-    if (to.toLowerCase() === borrowMarketAddress.toLowerCase() && selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()) {
+    if (
+      to.toLowerCase() === borrowMarketAddress.toLowerCase() &&
+      selector === mTokenViewInterface.getFunction("getAccountSnapshot").selector.toLowerCase()
+    ) {
       return { returnData: mTokenViewInterface.encodeFunctionResult("getAccountSnapshot", [0n, 0n, 7n, 0n]) };
     }
     if (to.toLowerCase() === oracleAddress.toLowerCase()) {
       const [market] = priceOracleInterface.decodeFunctionData("getUnderlyingPrice", data);
       return {
-        returnData: priceOracleInterface.encodeFunctionResult(
-          "getUnderlyingPrice",
-          [market.toLowerCase() === collateralMarketAddress.toLowerCase() ? collateralPriceMantissa : borrowPriceMantissa],
-        ),
+        returnData: priceOracleInterface.encodeFunctionResult("getUnderlyingPrice", [
+          market.toLowerCase() === collateralMarketAddress.toLowerCase()
+            ? collateralPriceMantissa
+            : borrowPriceMantissa,
+        ]),
       };
     }
     throw new Error(`Unexpected simulateTransactionCall for ${to}`);
@@ -880,11 +983,7 @@ test("wrapped loop unwind inventory check fails when wallet lacks repay asset ba
       quote: async ({ outputToken }) => ({
         latencyMs: 10,
         body: {
-          outAmounts: [
-            outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-              ? "5000000"
-              : "4200",
-          ],
+          outAmounts: [outputToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ? "5000000" : "4200"],
           pathId: "path-borrow-1",
         },
       }),
@@ -902,7 +1001,8 @@ test("wrapped loop unwind inventory check fails when wallet lacks repay asset ba
     },
     estimateGasImpl: estimateGasFixture,
     readErc20BalanceImpl: async (chain, token) => ({
-      balance: token.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() ? 1_000_000n : 500_000n,
+      balance:
+        token.toLowerCase() === "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf".toLowerCase() ? 1_000_000n : 500_000n,
     }),
     perTradeCapUsdOverride: 7,
     marketAssumptionsOverride: {
@@ -942,13 +1042,8 @@ test("wrapped loop live receipt writes proof before auto-ingest and rewrites fin
     strategyId: "wrapped-btc-loop-base-moonwell",
     scenarioId: "healthy_baseline",
     perTradeCapUsdOverride: 5,
-    entryResults: [
-      { broadcast: { txHash: "0xentry1" } },
-      { broadcast: { txHash: "0xentry2" } },
-    ],
-    unwindResults: [
-      { broadcast: { txHash: "0xunwind1" } },
-    ],
+    entryResults: [{ broadcast: { txHash: "0xentry1" } }, { broadcast: { txHash: "0xentry2" } }],
+    unwindResults: [{ broadcast: { txHash: "0xunwind1" } }],
     receiptContext: {
       actualLoopFeesUsd: 0.01,
       actualUnwindCostUsd: 0.02,
@@ -1002,13 +1097,8 @@ test("wrapped loop live receipt returns proof when auto-ingest times out", async
   const finalized = await finalizeWrappedBtcLoopLiveReceipt({
     strategyId: "wrapped-btc-loop-base-moonwell",
     scenarioId: "healthy_baseline",
-    entryResults: [
-      { broadcast: { txHash: "0xentry1" } },
-      { broadcast: { txHash: "0xentry2" } },
-    ],
-    unwindResults: [
-      { broadcast: { txHash: "0xunwind1" } },
-    ],
+    entryResults: [{ broadcast: { txHash: "0xentry1" } }, { broadcast: { txHash: "0xentry2" } }],
+    unwindResults: [{ broadcast: { txHash: "0xunwind1" } }],
     receiptContext: {
       actualLoopFeesUsd: 0.01,
       actualUnwindCostUsd: 0.02,
@@ -1044,10 +1134,7 @@ test("wrapped loop live receipt reuses the prior entry proof for unwind-only aut
     strategyId: "wrapped-btc-loop-base-moonwell",
     scenarioId: "healthy_baseline",
     entryResults: [],
-    unwindResults: [
-      { broadcast: { txHash: "0xunwind-new-1" } },
-      { broadcast: { txHash: "0xunwind-new-2" } },
-    ],
+    unwindResults: [{ broadcast: { txHash: "0xunwind-new-1" } }, { broadcast: { txHash: "0xunwind-new-2" } }],
     receiptContext: {
       strategyId: "wrapped-btc-loop-base-moonwell",
       scenario: "healthy_baseline",
@@ -1115,9 +1202,7 @@ test("wrapped loop live receipt preserves stronger existing proof when a new rou
       { broadcast: { txHash: "0xentry-new-2" } },
       { broadcast: { txHash: "0xentry-new-3" } },
     ],
-    unwindResults: [
-      { broadcast: { txHash: "0xunwind-new-1" } },
-    ],
+    unwindResults: [{ broadcast: { txHash: "0xunwind-new-1" } }],
     receiptContext: {
       actualLoopFeesUsd: 0.004573,
       actualUnwindCostUsd: 0.006021,
@@ -1196,63 +1281,72 @@ test("wrapped loop signer client timeout stays above confirmation wait for live 
 });
 
 test("wrapped loop live intent refreshes gas limit just before execution", async () => {
-  const prepared = await prepareLiveLoopIntent({
-    strategyId: "wrapped-btc-loop-base-moonwell",
-    chain: "base",
-    tx: {
-      to: "0x0000000000000000000000000000000000000001",
-      data: "0xabcdef",
-      value: "0",
-      gasLimit: "21000",
+  const prepared = await prepareLiveLoopIntent(
+    {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      tx: {
+        to: "0x0000000000000000000000000000000000000001",
+        data: "0xabcdef",
+        value: "0",
+        gasLimit: "21000",
+      },
     },
-  }, {
-    signerAddress: "0x0000000000000000000000000000000000000001",
-    estimateGasImpl: async () => ({
-      gasUnits: 100_000,
-    }),
-  });
+    {
+      signerAddress: "0x0000000000000000000000000000000000000001",
+      estimateGasImpl: async () => ({
+        gasUnits: 100_000,
+      }),
+    },
+  );
 
   assert.equal(prepared.tx.gasLimit, "120000");
 });
 
 test("wrapped loop live intent preserves existing gas limit when refresh estimate fails", async () => {
-  const prepared = await prepareLiveLoopIntent({
-    strategyId: "wrapped-btc-loop-base-moonwell",
-    chain: "base",
-    tx: {
-      to: "0x0000000000000000000000000000000000000001",
-      data: "0xabcdef",
-      value: "0",
-      gasLimit: "21000",
+  const prepared = await prepareLiveLoopIntent(
+    {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      tx: {
+        to: "0x0000000000000000000000000000000000000001",
+        data: "0xabcdef",
+        value: "0",
+        gasLimit: "21000",
+      },
     },
-  }, {
-    signerAddress: "0x0000000000000000000000000000000000000001",
-    estimateGasImpl: async () => {
-      throw new Error("estimate failed");
+    {
+      signerAddress: "0x0000000000000000000000000000000000000001",
+      estimateGasImpl: async () => {
+        throw new Error("estimate failed");
+      },
     },
-  });
+  );
 
   assert.equal(prepared.tx.gasLimit, "21000");
 });
 
 test("wrapped loop live intent refreshes observedAt for non-swap internal steps", async () => {
-  const prepared = await prepareLiveLoopIntent({
-    strategyId: "wrapped-btc-loop-base-moonwell",
-    chain: "base",
-    intentType: "wrapped_btc_loop_entry",
-    observedAt: "2026-04-16T00:00:00.000Z",
-    quote: {
+  const prepared = await prepareLiveLoopIntent(
+    {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      chain: "base",
+      intentType: "wrapped_btc_loop_entry",
       observedAt: "2026-04-16T00:00:00.000Z",
+      quote: {
+        observedAt: "2026-04-16T00:00:00.000Z",
+      },
+      tx: {
+        to: "0x0000000000000000000000000000000000000001",
+        data: "0xabcdef",
+        value: "0",
+        gasLimit: "21000",
+      },
     },
-    tx: {
-      to: "0x0000000000000000000000000000000000000001",
-      data: "0xabcdef",
-      value: "0",
-      gasLimit: "21000",
+    {
+      signerAddress: null,
     },
-  }, {
-    signerAddress: null,
-  });
+  );
 
   assert.notEqual(prepared.observedAt, "2026-04-16T00:00:00.000Z");
   assert.equal(prepared.quote.observedAt, prepared.observedAt);
