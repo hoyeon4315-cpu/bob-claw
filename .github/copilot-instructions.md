@@ -29,6 +29,28 @@
 
 "적절히", "일반적으로", "보통", "대략", "상황에 따라" → 숫자·조건식·임계치로 표현.
 
+## 실행 증거 규율
+
+- 코드/도구 작업에서 "진행 중", "자동으로 처리", "완료", "수정됨", "적용됨" 같은
+  표현을 증거 없이 말하지 않는다.
+- 증거는 같은 응답의 `실행 명령 + 핵심 출력`, `변경 파일/ diff`, `산출물 경로` 중
+  최소 1개다.
+- 체크리스트 항목은 해당 증거가 같은 응답에 있을 때만 `[x]`.
+- 미착수 항목은 `[ ]` 또는 `pending`으로만 적고, "거의 끝", "마무리만 남음",
+  "최종 통합 대기" 같은 암시 표현은 금지.
+
+## 메인 오케스트레이션 규율
+
+- 메인은 direct / single-role / parallel multi-role 중 하나를 **그때그때**
+  선택한다.
+- 매트릭스에 딱 맞는 행이 없어도, 불확실성 해소·증거 수집·통합 unblock에 도움이
+  되면 재량으로 child를 추가 소환할 수 있다.
+- 여러 에이전트는 독립 ownership일 때만 부른다. 같은 파일/쓰기 범위 중복 위임
+  금지.
+- delegated prompt에는 목적, 소유 범위, out-of-scope, 증거 형식, 종료 조건을
+  반드시 넣는다.
+- proof 없는 child 응답은 완료로 통합하지 말고 재소환 또는 메인 회수.
+
 ## BOB Gateway 공식 지원 체인 (정확히 11개)
 
 Ethereum(1), BOB L2(60808), Base(8453), BNB(56), Avalanche(43114), Unichain(130), Berachain(80094), Optimism(10), Soneium(1868), Sei(1329), Sonic(146).
@@ -54,12 +76,14 @@ Ethereum(1), BOB L2(60808), Base(8453), BNB(56), Avalanche(43114), Unichain(130)
 Knowledge graph at `src/graphify-out/` (app code) and `graphify-out/` (repo-wide). Git hooks auto-refresh on commit/checkout.
 
 Use graphify (3-10x token reduction) when:
+
 - Asked "what connects to X" / "callers of this function" / "neighbors of this module" → run `python3 -m graphify query "질문" --graph src/graphify-out/graph.json`, or `explain "X"`, or `path "A" "B"`.
 - Broad architecture sweep → read `src/graphify-out/GRAPH_REPORT.md` first.
 - Root scripts / vendored code → read `graphify-out/GRAPH_REPORT.md`.
 - About to open 3+ files to answer → query graph first to narrow down.
 
 Do NOT use graphify when:
+
 - Need exact numbers, quotes, or version strings (summary loses precision).
 - Question is about `docs/research/*` or any .md (graph indexes .mjs/.js AST only, not docs).
 - Bug root-cause or logic analysis.

@@ -37,13 +37,13 @@ npm run ai:claude:kimi:coordinator
 
 ## Role Agents
 
-- `bob-claw-coordinator` - planning and delegation only; routes work to specialized agents.
+- `bob-claw-coordinator` - planning and delegation only; routes work to specialized agents and may claim progress/completion only after verifying each child returned proof (diff/file list, command output, or artifact path). Proofless child output is treated as `child output lacks proof`, remains `[ ]` or blocked, and must be re-run or replaced.
 - `strategy-agent` - strategy modules, receipt-backed evidence, strategy reports.
 - `policy-agent` - deterministic policy and risk gates.
 - `payback-agent` - BTC-denominated payback scheduler, accumulator, KPI slice.
 - `treasury-agent` - capital movement planning, refills, Gateway consolidation intents.
 - `infra-agent` - CLI wiring, graphify, dashboard slices, package scripts, test harness.
-- `verifier-agent` - read-only diff inspection, targeted checks, graphify status, and residual-risk report.
+- `verifier-agent` - read-only diff inspection, targeted checks, graphify status, residual-risk report, and unsupported-progress-claim detection when completion text lacks matching proof.
 
 ## Memory Policy
 
@@ -55,10 +55,22 @@ npm run ai:claude:kimi:coordinator
 
 1. Start with `AGENTS.md` and this document.
 2. For code topology questions, run `npm run graph:focus -- query "<question>"` before reading many files.
-3. Delegate by ownership: one agent per write area.
-4. Ask `verifier-agent` to inspect the diff before committing meaningful changes.
-5. Run targeted checks before broad `npm test`.
-6. Keep generated operational artifacts out of code commits unless the task explicitly asks for refreshed outputs.
+3. Classify the task first: direct main-session work, single-role delegation, or parallel multi-role orchestration.
+4. Delegate by ownership: one write agent per independent area. Do not overlap file ownership across child agents unless the extra agent is read-only verification.
+5. Every child prompt must state objective, owned files/ownership area, out-of-scope boundaries, required proof (`command output`, `diff/file list`, or `artifact path`), and the exact handoff condition back to the coordinator.
+6. Ask `verifier-agent` to inspect the diff before committing meaningful changes and to flag any completion claim that lacks matching proof. When a child response lacks proof, keep that parent item `[ ]` or blocked and re-delegate with an explicit proof request before claiming completion.
+7. Run targeted checks before broad `npm test`.
+8. Keep generated operational artifacts out of code commits unless the task explicitly asks for refreshed outputs.
+
+## Coordinator Summon Discipline
+
+- `bob-claw-coordinator` should summon the **minimum** number of child agents needed to keep slices independent and fast to reintegrate.
+- Default pattern: `1 coordinator + 1-6 workers + verifier-agent`.
+- Escalate beyond that only for genuinely independent investigations, broad read-only audits, or end-stage verification fans. Do not use wide fan-out for overlapping write work.
+- The coordinator may issue discretionary summons mid-task when a new blocker, uncertainty pocket, or proof gap appears and an ownership-aligned child can resolve it faster than direct continuation.
+- Good summon triggers: separate ownership areas, clearly separable bug hunts, independent report gathering, or read-only comparison tasks.
+- Bad summon triggers: same-file edits, tightly coupled logic that needs one coherent patch, or work that is mostly sequencing rather than parallelism.
+- If a child returns proofless, cross-scope, or low-signal output, the coordinator must either tighten the prompt and re-summon, route the slice to a different role, or absorb the work back into the main session.
 
 ## Dev-Agent Lifecycle
 
@@ -78,10 +90,12 @@ The lifecycle never grants live execution authority. A task with `runtimeAuthori
 Alongside the main `bob-claw-coordinator`, verifier-agent, and single-ownership role agents (strategy-agent, policy-agent, payback-agent, treasury-agent, infra-agent), BOB Claw now supports the **16-Person Live Team (B Model)** as a first-class high-velocity collaborative mode.
 
 **When to activate**:
+
 - Multi-domain tasks (2+ ownership areas) such as YCE (Yield & Campaign Opportunity) feature development, receipt validation, dashboard surfaces, capital + risk + payback co-evolution, E2E verification campaigns, or large refactors.
 - User requests: "16-team으로 시작해", "16인 라이브 팀으로 ... 해줘", "/16-team <task>", or "16-Person Live Team (B Model)으로 parallel work 해줘".
 
 **Structure**:
+
 - 1 Engineering Manager & Coordinator (orchestrates via `.grok/teams/live-16/16-team-manager.md` integration point)
 - 6 Domain Leads (active hubs): Capital & Treasury, Risk/Safety & Resilience, Execution & Policy, Payback & Gateway Settlement, Opportunity & Research, Evidence/Data & Quality
 - 9 Specialists (T-shaped): Refill & Capital Automation, Allocation & Rebalancing, Resilience & Self-Healing, Policy & Intent Evaluation, Signer & Audit Integrity, Settlement & Proof, Yield & Campaign Opportunity (YCE), Protocol Reader & On-chain Data, Receipt & Reconciliation
@@ -89,20 +103,23 @@ Alongside the main `bob-claw-coordinator`, verifier-agent, and single-ownership 
 **All 15 role definitions** (including the 6 Domain Lead files completed by the Role Scaffolder) live in the canonical `.grok/teams/live-16/roles/*.md`. See `docs/team/live-16/roles/` for the docs-visible mirror.
 
 **Key operating principles** (detailed in `docs/16-team-operations.md`):
+
 - Direct Address by exact full role title ("Evidence, Data & Quality Domain Lead + Receipt & Reconciliation Engineer, ...")
 - Domain Leads proactively pull specialists and decide assignments (flexibility rule)
 - `fork_context: true` + `background: true` + parallel spawning as default
 - Standardized patterns: Direct Call, Joint Session (2–4 agents), Explicit Handoff, Live Sync Call, Proactive Pull-In
-- Reusable templates in `.grok/teams/live-16/templates/` (joint-session.md, handoff.md, call-another-agent.md) and docs mirror base-*.md
+- Reusable templates in `.grok/teams/live-16/templates/` (joint-session.md, handoff.md, call-another-agent.md) and docs mirror base-\*.md
 - **Relaxed Gateway Policy (team-internal only)**: literal "Gateway" refusal suspended inside the team for dev velocity on related surfaces (still execute 5-Step, quote raw diagnostics from AGENTS.md entry points, never weaken caps/invariants). Full strict Supreme Law (`docs/AGENT-SUPREME-LAW.md`) applies outside the team and for production changes.
 - Artifact transparency mandatory: all work in `.grok/teams/live-16/active-work/<slug>.md`, `decisions/`, `harness/` (canonical) and mirrored under `docs/team/live-16/`
 
 **Activation & Monitoring**:
+
 - Main coordinator detects multi-ownership via Master Decision Matrix (`docs/skill-usage-guidelines.md`) and spawns the 16-team manager or directly relevant Leads/Specialists.
 - Monitor parallel streams with repeated `get_command_or_subagent_output <task_id>`
 - All output returns to parent for integration + verifier-agent + harness Verification Matrix before commit.
 
 **User guides**:
+
 - `docs/16-team-operations.md` — complete activation, policy, team map, artifact locations, integration flow
 - `docs/16-team-quickstart.md` — copy-paste examples for YCE feature, multi-domain refactor, verification campaign, Direct Call, Joint Session, handoff, escalation
 - `.grok/teams/live-16/README.md` + `protocol.md` — the operational law loaded by every 16-team agent

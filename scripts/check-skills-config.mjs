@@ -8,6 +8,18 @@ const ROOT_DIR = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SKILL_ROOTS = Object.freeze([".claude/skills", ".skills", ".factory/skills"]);
 const AGENTS_DIR = resolve(ROOT_DIR, ".claude/agents");
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/u;
+const REQUIRED_TRACKED_FILES = Object.freeze([
+  ".claude/launch.json",
+  ".claude/settings.json",
+  ".claude/skills/bob-claw-readiness-safety-verification/SKILL.md",
+  ".claude/agents/bob-claw-coordinator.md",
+  ".claude/agents/infra-agent.md",
+  ".claude/agents/payback-agent.md",
+  ".claude/agents/policy-agent.md",
+  ".claude/agents/strategy-agent.md",
+  ".claude/agents/treasury-agent.md",
+  ".claude/agents/verifier-agent.md",
+]);
 
 function parseFrontmatter(sourceText) {
   const match = String(sourceText || "").match(FRONTMATTER_REGEX);
@@ -110,6 +122,24 @@ function assertNotIgnored(filePath) {
   }
 }
 
+function assertRequiredTrackedFilesPresent() {
+  const missingRelativePaths = REQUIRED_TRACKED_FILES.filter((relativePath) => {
+    return !existsSync(resolve(ROOT_DIR, relativePath));
+  });
+  if (missingRelativePaths.length > 0) {
+    throw new Error(
+      "Required Claude-compatible source files are missing.\n" +
+        missingRelativePaths.map((relativePath) => `- ${relativePath}`).join("\n") +
+        "\nThese tracked .claude sources are a coupled source surface in this repository. " +
+        "Do not delete or rename a subset without updating the checker, tests, docs, and source references in the same patch.",
+    );
+  }
+
+  for (const relativePath of REQUIRED_TRACKED_FILES) {
+    assertNotIgnored(resolve(ROOT_DIR, relativePath));
+  }
+}
+
 function validateSkillFile(filePath) {
   const relativePath = relative(ROOT_DIR, filePath).replaceAll("\\", "/");
   const expectedSegments = relativePath.split("/");
@@ -170,6 +200,8 @@ function validateAgentFile(filePath) {
 }
 
 function main() {
+  assertRequiredTrackedFilesPresent();
+
   const skillFiles = SKILL_ROOTS.flatMap((root) => listSkillFiles(resolve(ROOT_DIR, root)));
   const agentFiles = listAgentFiles();
 
