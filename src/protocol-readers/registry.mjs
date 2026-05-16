@@ -84,3 +84,63 @@ export function _resetForTesting() {
   READERS.clear();
   READERS_BY_BINDING.clear();
 }
+
+// --- DefiLlama yield evidence & on-chain verification support ---
+// Owned by Protocol Reader & On-chain Data Engineer (Evidence, Data & Quality Domain Lead).
+// Provides DefiLlama-aware resolvers (resolveReaderForDefiLlamaPool, resolveReaderForPool)
+// and the canonical list of receipt-bound projects that have ProtocolReader impls.
+// This is the single source of truth for evidenceClass reliability in DefiLlama snapshots
+// and for mapping pools to on-chain readers for receipt delta proofs (YCE-001/002/003 E2E).
+// Adding a new project here + reader impl + bootstrap registration automatically makes
+// its pools "protocol_receipt_bound" and usable for receipt generation.
+
+const DEFI_LLAMA_PROJECT_READER_MAP = Object.freeze({
+  "aave": "aave-v3",
+  "aave-v3": "aave-v3",
+  "beefy": "beefy",
+  "erc4626": "erc4626",
+  "pendle": "pendle",
+  "venus": "venus",
+  // compound-v3, moonwell, compound, euler and others: add here when dedicated reader
+  // is implemented in readers/ + registered via bootstrap.mjs. Until then they stay
+  // "protocol_not_receipt_bound" so classification matches actual on-chain verification capability.
+});
+
+export function getDefiLlamaSupportedReceiptProjects() {
+  return Object.keys(DEFI_LLAMA_PROJECT_READER_MAP);
+}
+
+export function resolveReaderForDefiLlamaPool(pool = {}) {
+  const p = String(pool.project || pool.protocol || pool.poolMeta?.project || "").toLowerCase().trim();
+  const readerId = DEFI_LLAMA_PROJECT_READER_MAP[p];
+  if (!readerId) return null;
+  const readerEntry = getReader(readerId); // may be null pre-bootstrapReaders()
+  return {
+    readerId,
+    bindingKind: (readerEntry?.bindingKinds && readerEntry.bindingKinds[0]) || `${readerId}_supply_withdraw`,
+    supported: !!readerEntry,
+    chain: pool.chain || null,
+    family: pool.family || null,
+    metadata: { project: p, symbol: pool.symbol || null },
+  };
+}
+
+export function resolveReaderForPool(positionOrPool = {}) {
+  if (!positionOrPool || typeof positionOrPool !== "object") return null;
+  if (positionOrPool.project || positionOrPool.protocol) {
+    return resolveReaderForDefiLlamaPool(positionOrPool);
+  }
+  if (positionOrPool.bindingKind) {
+    const r = resolveReaderForBinding(positionOrPool.bindingKind);
+    if (r) {
+      return {
+        readerId: r.id,
+        bindingKind: positionOrPool.bindingKind,
+        supported: true,
+        chain: positionOrPool.chain || null,
+        family: positionOrPool.family || null,
+      };
+    }
+  }
+  return null;
+}

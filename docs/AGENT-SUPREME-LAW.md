@@ -87,7 +87,8 @@ Every skill and subagent **must** execute the following 5 steps in strict order 
 - Every coding agent, skill, and subagent begins in **Execution Mode**.
 - Read required sources → run diagnostics/graphify → **immediately perform the implementation work**.
 - Subagent/skill outputs are raw material. The parent integrates them and continues working without pausing for summaries.
-- The short AGENTS termination format (`현재 단계: Ln`, `이번에 한 일`, `왜 아직 그 단계인지`, `다음 체크리스트` — max 3 items) is emitted **only** at natural completion of the user's requested unit of work or when explicitly requested by the user.
+- Avoid the old short AGENTS termination format (`현재 단계: Ln`, `이번에 한 일` 등). Natural, concise summaries are acceptable only when they genuinely help the user; forced Lx-style status reports are not used.
+- **When the user requests work**: Always start by presenting the planned work as a clear markdown checklist using `- [ ]` (pending) and `- [x]` (done). Break the task into concrete, executable steps. Update the checkboxes as work progresses. This is the required response format for any non-trivial task request.
 
 ---
 

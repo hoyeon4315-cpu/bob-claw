@@ -223,7 +223,7 @@ function helperTraceRecordContextMatches(record, candidate) {
   );
 }
 
-function buildAuditHelperTraceIndex(records = []) {
+function groupSignerAuditRecordsByKey(records = []) {
   const groups = new Map();
   for (const record of records) {
     const stage = record?.lifecycle?.stage || null;
@@ -235,37 +235,83 @@ function buildAuditHelperTraceIndex(records = []) {
     if (!groups.has(groupKey)) groups.set(groupKey, []);
     groups.get(groupKey).push(record);
   }
+  return groups;
+}
+
+function selectLatestBroadcastRecordFromGroup(group = []) {
+  return (
+    group
+      .filter((record) => record?.lifecycle?.stage === "broadcasted")
+      .sort((left, right) => timestampMs(right?.timestamp) - timestampMs(left?.timestamp))[0] || null
+  );
+}
+
+function buildTraceIdentifiers(broadcastRecord) {
+  const txHash = broadcastRecord?.broadcast?.txHash || broadcastRecord?.lifecycle?.txHash || null;
+  const intentType = broadcastRecord?.intent?.intentType || null;
+  return {
+    txHash,
+    intentHash: broadcastRecord.intentHash || null,
+    intentId: broadcastRecord.intentId || null,
+    strategyId: broadcastRecord.strategyId || null,
+    chain: broadcastRecord.chain || null,
+    intentType,
+  };
+}
+
+function buildTraceAddresses(broadcastRecord) {
+  return {
+    from: broadcastRecord?.broadcast?.from || null,
+    to: broadcastRecord?.broadcast?.to || null,
+  };
+}
+
+function buildTraceAmountsAndTime(broadcastRecord) {
+  return {
+    amountUsd: broadcastRecord.amountUsd ?? null,
+    observedAt: broadcastRecord.timestamp || null,
+  };
+}
+
+function buildAuditTraceFromBroadcastGroup(group, broadcastRecord) {
+  const ids = buildTraceIdentifiers(broadcastRecord);
+  if (!ids.txHash) return null;
+  const addrs = buildTraceAddresses(broadcastRecord);
+  const meta = buildTraceAmountsAndTime(broadcastRecord);
+  const intentType = ids.intentType;
+  const trace = {
+    helperKind: intentType || "signer_audit_trace",
+    matchSource: "signer_audit",
+    matchRule: "tx_hash",
+    txHash: ids.txHash,
+    intentHash: ids.intentHash,
+    intentId: ids.intentId,
+    strategyId: ids.strategyId,
+    chain: ids.chain,
+    from: addrs.from,
+    to: addrs.to,
+    amountUsd: meta.amountUsd,
+    observedAt: meta.observedAt,
+    stages: uniqueSorted(group.map((record) => record?.lifecycle?.stage || null)),
+    intentType,
+    evidenceType: LEGACY_AUDIT_TRACE_EVIDENCE_TYPE_BY_INTENT[intentType] || "signer_audit_trace",
+  };
+  return trace;
+}
+
+function buildAuditHelperTraceIndex(records = []) {
+  const groups = groupSignerAuditRecordsByKey(records);
 
   const byTxHash = new Map();
   const byIntentHash = new Map();
   const byFallbackBucket = new Map();
   for (const group of groups.values()) {
-    const broadcastRecord =
-      group
-        .filter((record) => record?.lifecycle?.stage === "broadcasted")
-        .sort((left, right) => timestampMs(right?.timestamp) - timestampMs(left?.timestamp))[0] || null;
+    const broadcastRecord = selectLatestBroadcastRecordFromGroup(group);
     const lifecycleTrace = group.some((record) => ["signed", "confirmed"].includes(record?.lifecycle?.stage));
     if (!broadcastRecord || !lifecycleTrace) continue;
-    const txHash = broadcastRecord?.broadcast?.txHash || broadcastRecord?.lifecycle?.txHash || null;
-    if (!txHash) continue;
-    const intentType = broadcastRecord?.intent?.intentType || null;
-    const trace = {
-      helperKind: intentType || "signer_audit_trace",
-      matchSource: "signer_audit",
-      matchRule: "tx_hash",
-      txHash,
-      intentHash: broadcastRecord.intentHash || null,
-      intentId: broadcastRecord.intentId || null,
-      strategyId: broadcastRecord.strategyId || null,
-      chain: broadcastRecord.chain || null,
-      from: broadcastRecord?.broadcast?.from || null,
-      to: broadcastRecord?.broadcast?.to || null,
-      amountUsd: broadcastRecord.amountUsd ?? null,
-      observedAt: broadcastRecord.timestamp || null,
-      stages: uniqueSorted(group.map((record) => record?.lifecycle?.stage || null)),
-      intentType,
-      evidenceType: LEGACY_AUDIT_TRACE_EVIDENCE_TYPE_BY_INTENT[intentType] || "signer_audit_trace",
-    };
+    const trace = buildAuditTraceFromBroadcastGroup(group, broadcastRecord);
+    if (!trace) continue;
+    const txHash = trace.txHash;
     appendIndexEntry(byTxHash, txHash, trace);
     appendIndexEntry(byIntentHash, trace.intentHash, trace);
     const bucketKey = helperTraceFallbackBucketKey(trace);
@@ -358,6 +404,85 @@ function normalizeBitcoinHistoryTx(address, tx = {}) {
   };
 }
 
+function buildExecutionsByAddress(gatewayBtcOfframpExecutions = []) {
+  const executionsByAddress = new Map();
+  for (const execution of gatewayBtcOfframpExecutions) {
+    const address = execution?.plan?.recipient;
+    const txHash = execution?.signerResult?.broadcast?.txHash;
+    if (!address || !txHash) continue;
+    if (!executionsByAddress.has(address)) executionsByAddress.set(address, []);
+    executionsByAddress.get(address).push(execution);
+  }
+  return executionsByAddress;
+}
+
+function normalizeAndSortBitcoinHistory(address, historyTxs = []) {
+  return (historyTxs || [])
+    .map((tx) => normalizeBitcoinHistoryTx(address, tx))
+    .filter((tx) => tx.txid)
+    .sort((left, right) => {
+      const timeDiff = Number(left.blockTime || 0) - Number(right.blockTime || 0);
+      return timeDiff || String(left.txid).localeCompare(String(right.txid));
+    });
+}
+
+function findBtcMatchForExecution(execution, unused) {
+  const observedDelta = Number(
+    execution?.destinationProof?.observedDelta || execution?.plan?.quote?.outputAmount?.amount || 0,
+  );
+  const candidates = unused.filter((entry) => entry.receivedSats === observedDelta);
+  const matched = candidates[0] || null;
+  return { matched, candidates, observedDelta };
+}
+
+function classifyRemainingBitcoinTxs(unused = [], operatorFundingAddressSet, address) {
+  const isOperatorFundingAddress = operatorFundingAddressSet.has(normalizeAddress(address));
+  const operatorFundingTxs = isOperatorFundingAddress
+    ? unused.filter((entry) => entry.receivedSats > 0 && Number(entry.sentSats || 0) === 0)
+    : [];
+  const operatorFundingTxIds = new Set(operatorFundingTxs.map((entry) => entry.txid));
+  const nonSettlementTxs = unused.filter(
+    (entry) => Number(entry.receivedSats || 0) <= 0 || Number(entry.sentSats || 0) > 0,
+  );
+  const nonSettlementTxIds = new Set(nonSettlementTxs.map((entry) => entry.txid));
+  const unmatchedTxs = unused
+    .filter((entry) => !operatorFundingTxIds.has(entry.txid) && !nonSettlementTxIds.has(entry.txid))
+    .map((entry) => ({
+      txid: entry.txid,
+      receivedSats: entry.receivedSats,
+      sentSats: entry.sentSats,
+      confirmed: entry.confirmed,
+      blockTime: entry.blockTime,
+    }));
+  return { operatorFundingTxs, operatorFundingTxIds, nonSettlementTxs, nonSettlementTxIds, unmatchedTxs };
+}
+
+function buildAddressBitcoinMatchEntry(address, normalizedHistory, unusedAfter, classification, bitcoinHistoriesByAddress = {}) {
+  const { operatorFundingTxs, nonSettlementTxs, unmatchedTxs } = classification;
+  return {
+    txCount: normalizedHistory.length,
+    matchedOfframpTxCount: normalizedHistory.length - unusedAfter.length,
+    operatorFundingTxs: operatorFundingTxs.map((entry) => ({
+      txid: entry.txid,
+      receivedSats: entry.receivedSats,
+      sentSats: entry.sentSats,
+      confirmed: entry.confirmed,
+      blockTime: entry.blockTime,
+    })),
+    nonSettlementTxs: nonSettlementTxs.map((entry) => ({
+      txid: entry.txid,
+      receivedSats: entry.receivedSats,
+      sentSats: entry.sentSats,
+      confirmed: entry.confirmed,
+      blockTime: entry.blockTime,
+    })),
+    unmatchedTxs,
+    normalizedHistory,
+    balance: bitcoinHistoriesByAddress[address]?.balance || null,
+    source: bitcoinHistoriesByAddress[address]?.source || null,
+  };
+}
+
 export function matchBitcoinSettlements({
   gatewayBtcOfframpExecutions = [],
   bitcoinHistoriesByAddress = {},
@@ -369,25 +494,15 @@ export function matchBitcoinSettlements({
     operatorFundingBtcAddresses.map((address) => normalizeAddress(address)).filter(Boolean),
   );
 
-  const executionsByAddress = new Map();
-  for (const execution of gatewayBtcOfframpExecutions) {
-    const address = execution?.plan?.recipient;
-    const txHash = execution?.signerResult?.broadcast?.txHash;
-    if (!address || !txHash) continue;
-    if (!executionsByAddress.has(address)) executionsByAddress.set(address, []);
-    executionsByAddress.get(address).push(execution);
-  }
+  const executionsByAddress = buildExecutionsByAddress(gatewayBtcOfframpExecutions);
 
   const auditAddresses = uniqueSorted([...executionsByAddress.keys(), ...operatorFundingBtcAddresses]);
   for (const address of auditAddresses) {
     const executions = executionsByAddress.get(address) || [];
-    const normalizedHistory = (bitcoinHistoriesByAddress[address]?.transactions || [])
-      .map((tx) => normalizeBitcoinHistoryTx(address, tx))
-      .filter((tx) => tx.txid)
-      .sort((left, right) => {
-        const timeDiff = Number(left.blockTime || 0) - Number(right.blockTime || 0);
-        return timeDiff || String(left.txid).localeCompare(String(right.txid));
-      });
+    const normalizedHistory = normalizeAndSortBitcoinHistory(
+      address,
+      bitcoinHistoriesByAddress[address]?.transactions || [],
+    );
     const unused = [...normalizedHistory];
     const sortedExecutions = [...executions].sort(
       (left, right) => new Date(left?.observedAt || 0) - new Date(right?.observedAt || 0),
@@ -395,11 +510,7 @@ export function matchBitcoinSettlements({
 
     for (const execution of sortedExecutions) {
       const txHash = execution?.signerResult?.broadcast?.txHash;
-      const observedDelta = Number(
-        execution?.destinationProof?.observedDelta || execution?.plan?.quote?.outputAmount?.amount || 0,
-      );
-      const candidates = unused.filter((entry) => entry.receivedSats === observedDelta);
-      const matched = candidates[0] || null;
+      const { matched, candidates } = findBtcMatchForExecution(execution, unused);
       if (matched) {
         const index = unused.findIndex((entry) => entry.txid === matched.txid);
         if (index >= 0) unused.splice(index, 1);
@@ -419,46 +530,14 @@ export function matchBitcoinSettlements({
       );
     }
 
-    const isOperatorFundingAddress = operatorFundingAddressSet.has(normalizeAddress(address));
-    const operatorFundingTxs = isOperatorFundingAddress
-      ? unused.filter((entry) => entry.receivedSats > 0 && Number(entry.sentSats || 0) === 0)
-      : [];
-    const operatorFundingTxIds = new Set(operatorFundingTxs.map((entry) => entry.txid));
-    const nonSettlementTxs = unused.filter(
-      (entry) => Number(entry.receivedSats || 0) <= 0 || Number(entry.sentSats || 0) > 0,
-    );
-    const nonSettlementTxIds = new Set(nonSettlementTxs.map((entry) => entry.txid));
-
-    addresses[address] = {
-      txCount: normalizedHistory.length,
-      matchedOfframpTxCount: normalizedHistory.length - unused.length,
-      operatorFundingTxs: operatorFundingTxs.map((entry) => ({
-        txid: entry.txid,
-        receivedSats: entry.receivedSats,
-        sentSats: entry.sentSats,
-        confirmed: entry.confirmed,
-        blockTime: entry.blockTime,
-      })),
-      nonSettlementTxs: nonSettlementTxs.map((entry) => ({
-        txid: entry.txid,
-        receivedSats: entry.receivedSats,
-        sentSats: entry.sentSats,
-        confirmed: entry.confirmed,
-        blockTime: entry.blockTime,
-      })),
-      unmatchedTxs: unused
-        .filter((entry) => !operatorFundingTxIds.has(entry.txid) && !nonSettlementTxIds.has(entry.txid))
-        .map((entry) => ({
-          txid: entry.txid,
-          receivedSats: entry.receivedSats,
-          sentSats: entry.sentSats,
-          confirmed: entry.confirmed,
-          blockTime: entry.blockTime,
-        })),
+    const classification = classifyRemainingBitcoinTxs(unused, operatorFundingAddressSet, address);
+    addresses[address] = buildAddressBitcoinMatchEntry(
+      address,
       normalizedHistory,
-      balance: bitcoinHistoriesByAddress[address]?.balance || null,
-      source: bitcoinHistoriesByAddress[address]?.source || null,
-    };
+      unused,
+      classification,
+      bitcoinHistoriesByAddress,
+    );
   }
 
   return {
@@ -762,6 +841,110 @@ function injectProtocolPositionsIntoLatestSnapshot(treasurySnapshots = [], proto
   return [...treasurySnapshots.slice(0, -1), { ...last, positions, summary: enrichedSummary }];
 }
 
+function determineBroadcastEvidenceType(offramp, onramp, consolidation, nativeDex, auditHelperTrace) {
+  if (offramp) return "gateway_btc_offramp";
+  if (onramp) return "gateway_btc_onramp";
+  if (consolidation) return "gateway_btc_transfer";
+  if (nativeDex) return `native_dex_${nativeDex.stepId}`;
+  if (auditHelperTrace) return auditHelperTrace.evidenceType;
+  return "broadcast_only";
+}
+
+function buildUnmatchedBitcoinTxs(bitcoinMatching) {
+  return Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
+    entry.unmatchedTxs.map((tx) => ({ address, ...tx })),
+  );
+}
+
+function buildOperatorFundingBitcoinTxs(bitcoinMatching) {
+  return Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
+    (entry.operatorFundingTxs || []).map((tx) => ({ address, ...tx })),
+  );
+}
+
+function buildNonSettlementBitcoinTxs(bitcoinMatching) {
+  return Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
+    (entry.nonSettlementTxs || []).map((tx) => ({ address, ...tx })),
+  );
+}
+
+function aggregateGasByCategoryAndChain(broadcastBreakdown) {
+  const byCategoryGas = new Map();
+  const byChainGas = new Map();
+  for (const cell of broadcastBreakdown) {
+    byCategoryGas.set(cell.category, (byCategoryGas.get(cell.category) || 0) + cell.gasUsd);
+    byChainGas.set(cell.chain, (byChainGas.get(cell.chain) || 0) + cell.gasUsd);
+  }
+  return { byCategoryGas, byChainGas };
+}
+
+function computeBroadcastHelperMatchDetails(offramp, onramp, consolidation, nativeDex, auditHelperTrace) {
+  const helperMatched = Boolean(offramp || onramp || consolidation || nativeDex || auditHelperTrace);
+  const fromExecutionJsonl = offramp || onramp || consolidation || nativeDex;
+  const helperMatchSource = fromExecutionJsonl ? "execution_jsonl" : auditHelperTrace?.matchSource || null;
+  const helperMatchRule = fromExecutionJsonl ? "tx_hash" : auditHelperTrace?.matchRule || null;
+  return { helperMatched, helperMatchSource, helperMatchRule };
+}
+
+function resolveBroadcastTxAndReceipt(txHash, transactionsByTxHash = {}, receiptsByTxHash = {}) {
+  return {
+    transaction: transactionsByTxHash[txHash] || null,
+    receipt: receiptsByTxHash[txHash] || null,
+  };
+}
+
+function resolveEvidenceMaps(txHash, offrampsByTxHash, onrampsByTxHash, consolidationsByTxHash, nativeDexByTxHash) {
+  return {
+    offramp: offrampsByTxHash.get(txHash) || null,
+    onramp: onrampsByTxHash.get(txHash) || null,
+    consolidation: consolidationsByTxHash.get(txHash) || null,
+    nativeDex: nativeDexByTxHash.get(txHash) || null,
+  };
+}
+
+function enrichBroadcastRecord(record, helpers = {}) {
+  const {
+    offrampsByTxHash = new Map(),
+    onrampsByTxHash = new Map(),
+    consolidationsByTxHash = new Map(),
+    nativeDexByTxHash = new Map(),
+    auditHelperTraceIndex = { byTxHash: new Map(), byIntentHash: new Map(), byFallbackBucket: new Map() },
+    transactionsByTxHash = {},
+    receiptsByTxHash = {},
+    prices = emptyPricesUsd(),
+  } = helpers;
+  const txHash = record.broadcast.txHash;
+  const { transaction, receipt } = resolveBroadcastTxAndReceipt(txHash, transactionsByTxHash, receiptsByTxHash);
+  const evidenceMaps = resolveEvidenceMaps(txHash, offrampsByTxHash, onrampsByTxHash, consolidationsByTxHash, nativeDexByTxHash);
+  const { offramp, onramp, consolidation, nativeDex } = evidenceMaps;
+  const auditHelperTrace = matchAuditHelperTrace(record, auditHelperTraceIndex);
+  const evidenceType = determineBroadcastEvidenceType(offramp, onramp, consolidation, nativeDex, auditHelperTrace);
+function buildEnrichedBroadcastRecordFields(record, transaction, receipt, evidenceType, matchDetails, prices) {
+  return {
+    txHash: record.broadcast.txHash,
+    observedAt: record.timestamp,
+    strategyId: record.strategyId,
+    chain: record.chain,
+    lifecycleStage: broadcastLifecycleStage(record),
+    category: broadcastCategory(record, evidenceType),
+    result: broadcastResultFromReceipt(receipt),
+    from: record.broadcast?.from || transaction?.from || null,
+    to: record.broadcast?.to || transaction?.to || null,
+    amountUsd: record.amountUsd ?? null,
+    evidenceType,
+    gasUsd: gasUsdForReceipt(record.chain, receipt, prices),
+    txValueUsd: txValueUsdForTransaction(record.chain, transaction, prices),
+    receiptStatus: receipt?.status ?? null,
+    helperMatched: matchDetails.helperMatched,
+    helperMatchSource: matchDetails.helperMatchSource,
+    helperMatchRule: matchDetails.helperMatchRule,
+  };
+}
+
+  const matchDetails = computeBroadcastHelperMatchDetails(offramp, onramp, consolidation, nativeDex, auditHelperTrace);
+  return buildEnrichedBroadcastRecordFields(record, transaction, receipt, evidenceType, matchDetails, prices);
+}
+
 export function buildCapitalAuditReport({
   generatedAt = new Date().toISOString(),
   signerAuditRecords = [],
@@ -801,48 +984,18 @@ export function buildCapitalAuditReport({
   const nativeDexByTxHash = buildNativeDexMap(nativeDexExperimentExecutions);
   const auditHelperTraceIndex = buildAuditHelperTraceIndex(signerAuditRecords);
 
-  const transactions = broadcasts.map((record) => {
-    const txHash = record.broadcast.txHash;
-    const transaction = transactionsByTxHash[txHash] || null;
-    const receipt = receiptsByTxHash[txHash] || null;
-    const offramp = offrampsByTxHash.get(txHash) || null;
-    const onramp = onrampsByTxHash.get(txHash) || null;
-    const consolidation = consolidationsByTxHash.get(txHash) || null;
-    const nativeDex = nativeDexByTxHash.get(txHash) || null;
-    const auditHelperTrace = matchAuditHelperTrace(record, auditHelperTraceIndex);
-    const evidenceType = offramp
-      ? "gateway_btc_offramp"
-      : onramp
-        ? "gateway_btc_onramp"
-        : consolidation
-          ? "gateway_btc_transfer"
-          : nativeDex
-            ? `native_dex_${nativeDex.stepId}`
-            : auditHelperTrace
-              ? auditHelperTrace.evidenceType
-              : "broadcast_only";
-    return {
-      txHash,
-      observedAt: record.timestamp,
-      strategyId: record.strategyId,
-      chain: record.chain,
-      lifecycleStage: broadcastLifecycleStage(record),
-      category: broadcastCategory(record, evidenceType),
-      result: broadcastResultFromReceipt(receipt),
-      from: record.broadcast?.from || transaction?.from || null,
-      to: record.broadcast?.to || transaction?.to || null,
-      amountUsd: record.amountUsd ?? null,
-      evidenceType,
-      gasUsd: gasUsdForReceipt(record.chain, receipt, prices),
-      txValueUsd: txValueUsdForTransaction(record.chain, transaction, prices),
-      receiptStatus: receipt?.status ?? null,
-      helperMatched: Boolean(offramp || onramp || consolidation || nativeDex || auditHelperTrace),
-      helperMatchSource:
-        offramp || onramp || consolidation || nativeDex ? "execution_jsonl" : auditHelperTrace?.matchSource || null,
-      helperMatchRule:
-        offramp || onramp || consolidation || nativeDex ? "tx_hash" : auditHelperTrace?.matchRule || null,
-    };
-  });
+  const transactions = broadcasts.map((record) =>
+    enrichBroadcastRecord(record, {
+      offrampsByTxHash,
+      onrampsByTxHash,
+      consolidationsByTxHash,
+      nativeDexByTxHash,
+      auditHelperTraceIndex,
+      transactionsByTxHash,
+      receiptsByTxHash,
+      prices,
+    })
+  );
 
   const enrichedTreasurySnapshots = injectProtocolPositionsIntoLatestSnapshot(treasurySnapshots, protocolPositionMarks);
   const inventory = buildInventorySummary(enrichedTreasurySnapshots);
@@ -872,27 +1025,28 @@ export function buildCapitalAuditReport({
   });
 
   const unmatchedBroadcasts = transactions.filter((entry) => !entry.helperMatched);
-  const unmatchedBitcoinTxs = Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
-    entry.unmatchedTxs.map((tx) => ({ address, ...tx })),
-  );
-  const operatorFundingBitcoinTxs = Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
-    (entry.operatorFundingTxs || []).map((tx) => ({ address, ...tx })),
-  );
-  const nonSettlementBitcoinTxs = Object.entries(bitcoinMatching.addresses).flatMap(([address, entry]) =>
-    (entry.nonSettlementTxs || []).map((tx) => ({ address, ...tx })),
-  );
+  const unmatchedBitcoinTxs = buildUnmatchedBitcoinTxs(bitcoinMatching);
+  const operatorFundingBitcoinTxs = buildOperatorFundingBitcoinTxs(bitcoinMatching);
+  const nonSettlementBitcoinTxs = buildNonSettlementBitcoinTxs(bitcoinMatching);
+  const broadcastBreakdown = buildBroadcastBreakdown(transactions);
+  const gasMetrics = buildGasMetrics(transactions, broadcastBreakdown);
+  const {
+    totalGasUsd,
+    breakdownGasUsd,
+    byCategoryGas,
+    byChainGas,
+    topGasCategory,
+    topGasChain,
+    gasFromRevertedTxsUsd,
+    gasFromNoReceiptTxsUsd,
+  } = gasMetrics;
+function buildGasMetrics(transactions = [], broadcastBreakdown = []) {
   const totalGasUsd = transactions
     .map((entry) => entry.gasUsd)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
-  const broadcastBreakdown = buildBroadcastBreakdown(transactions);
   const breakdownGasUsd = broadcastBreakdown.map((entry) => entry.gasUsd).reduce((sum, value) => sum + value, 0);
-  const byCategoryGas = new Map();
-  const byChainGas = new Map();
-  for (const cell of broadcastBreakdown) {
-    byCategoryGas.set(cell.category, (byCategoryGas.get(cell.category) || 0) + cell.gasUsd);
-    byChainGas.set(cell.chain, (byChainGas.get(cell.chain) || 0) + cell.gasUsd);
-  }
+  const { byCategoryGas, byChainGas } = aggregateGasByCategoryAndChain(broadcastBreakdown);
   const topGasCategory = [...byCategoryGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
   const topGasChain = [...byChainGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
   const gasFromRevertedTxsUsd = transactions
@@ -905,12 +1059,50 @@ export function buildCapitalAuditReport({
     .map((entry) => entry.gasUsd)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
-  const totalQuotedGatewayFeeSats = offrampSummaries
-    .map((entry) => Number(entry.quotedFeeSats))
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
+  return {
+    totalGasUsd,
+    breakdownGasUsd,
+    byCategoryGas,
+    byChainGas,
+    topGasCategory,
+    topGasChain,
+    gasFromRevertedTxsUsd,
+    gasFromNoReceiptTxsUsd,
+  };
+}
+  const {
+    totalQuotedGatewayFeeSats,
+    totalQuotedGatewayResidualSats,
+    totalObservedBtcSats,
+    totalNativeDexOutputDriftUsd,
+    operatorFundingBtcSats,
+    currentNativeBtcSats,
+    currentNativeBtcUsd,
+    currentCombinedUsd,
+    startCombinedUsd,
+  } = buildGatewayBtcAndInventoryTotals({
+    offrampSummaries,
+    nativeDexSummaries,
+    operatorFundingBitcoinTxs,
+    bitcoinMatching,
+    inventory,
+    prices,
+  });
+
+function buildGatewayBtcAndInventoryTotals({
+  offrampSummaries = [],
+  nativeDexSummaries = [],
+  operatorFundingBitcoinTxs = [],
+  bitcoinMatching = { addresses: {} },
+  inventory = {},
+  prices = {},
+} = {}) {
   const totalQuotedGatewayResidualSats = offrampSummaries
     .map((entry) => Number(entry.quotedResidualSats))
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
+  const totalQuotedGatewayFeeSats = offrampSummaries
+    .map((entry) => Number(entry.quotedFeeSats))
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
   const totalObservedBtcSats = offrampSummaries
@@ -938,8 +1130,21 @@ export function buildCapitalAuditReport({
     Number.isFinite(inventory.start?.estimatedWalletUsd) && Number.isFinite(currentNativeBtcUsd)
       ? inventory.start.estimatedWalletUsd + 0
       : null;
+  return {
+    totalQuotedGatewayFeeSats,
+    totalQuotedGatewayResidualSats,
+    totalObservedBtcSats,
+    totalNativeDexOutputDriftUsd,
+    operatorFundingBtcSats,
+    currentNativeBtcSats,
+    currentNativeBtcUsd,
+    currentCombinedUsd,
+    startCombinedUsd,
+  };
+}
 
-  const derivedIssues = [
+function buildDerivedIssues(issues = [], unmatchedBroadcasts = [], unmatchedBitcoinTxs = [], offrampSummaries = []) {
+  return [
     ...issues,
     ...unmatchedBroadcasts.map((entry) => ({
       code: "broadcast_missing_helper_trace",
@@ -972,6 +1177,26 @@ export function buildCapitalAuditReport({
         residualSats: Number(entry.quotedResidualSats),
       })),
   ];
+}
+
+  const derivedIssues = buildDerivedIssues(issues, unmatchedBroadcasts, unmatchedBitcoinTxs, offrampSummaries);
+
+  const summary = buildCapitalAuditSummary({
+    transactions,
+    unmatchedBroadcasts,
+    unmatchedBitcoinTxs,
+    scope,
+    offrampSummaries,
+    operatorFundingBitcoinTxs,
+    nonSettlementBitcoinTxs,
+    gasMetrics: { totalGasUsd, breakdownGasUsd, topGasCategory, topGasChain, gasFromRevertedTxsUsd, gasFromNoReceiptTxsUsd },
+    gatewayBtcTotals: { totalQuotedGatewayFeeSats, totalQuotedGatewayResidualSats, totalObservedBtcSats, totalNativeDexOutputDriftUsd, currentNativeBtcSats, currentNativeBtcUsd, currentCombinedUsd },
+    inventory,
+    startCombinedUsd,
+    currentCombinedUsd,
+    derivedIssues,
+    operatorFundingBtcSats,
+  });
 
   return {
     schemaVersion: 1,
@@ -981,43 +1206,7 @@ export function buildCapitalAuditReport({
         ? "complete_with_residual_checks"
         : "incomplete_traceability",
     walletScope: scope,
-    summary: {
-      broadcastCount: transactions.length,
-      broadcastWithReceiptCount: transactions.filter((entry) => entry.receiptStatus !== null).length,
-      helperMatchedCount: transactions.filter((entry) => entry.helperMatched).length,
-      unmatchedBroadcastCount: unmatchedBroadcasts.length,
-      bitcoinAddressCount: scope.bitcoinAddresses.length,
-      bitcoinMatchedSettlementCount: offrampSummaries.filter((entry) => entry.matchedBitcoinTx?.txid).length,
-      bitcoinUnmatchedTxCount: unmatchedBitcoinTxs.length,
-      bitcoinOperatorFundingTxCount: operatorFundingBitcoinTxs.length,
-      bitcoinOperatorFundingSats: operatorFundingBtcSats,
-      bitcoinNonSettlementTxCount: nonSettlementBitcoinTxs.length,
-      totalGasUsd,
-      topGasCategory,
-      topGasChain,
-      gasFromRevertedTxsUsd: Number(gasFromRevertedTxsUsd.toFixed(6)),
-      gasFromNoReceiptTxsUsd: Number(gasFromNoReceiptTxsUsd.toFixed(6)),
-      broadcastBreakdownGasDriftUsd: Number(Math.abs(totalGasUsd - breakdownGasUsd).toFixed(6)),
-      totalQuotedGatewayFeeSats,
-      totalQuotedGatewayResidualSats,
-      totalObservedBtcSats,
-      totalNativeDexOutputDriftUsd,
-      currentNativeBtcSats,
-      currentNativeBtcUsd,
-      currentCombinedUsd,
-      treasurySnapshotCount: inventory.snapshotCount,
-      treasuryStartUsd: inventory.start?.estimatedWalletUsd ?? null,
-      treasuryEndUsd: inventory.end?.estimatedWalletUsd ?? null,
-      treasuryDeltaUsd:
-        Number.isFinite(inventory.start?.estimatedWalletUsd) && Number.isFinite(inventory.end?.estimatedWalletUsd)
-          ? inventory.end.estimatedWalletUsd - inventory.start.estimatedWalletUsd
-          : null,
-      combinedDeltaUsd:
-        Number.isFinite(startCombinedUsd) && Number.isFinite(currentCombinedUsd)
-          ? currentCombinedUsd - startCombinedUsd
-          : null,
-      issueCount: derivedIssues.length,
-    },
+    summary,
     inventory,
     bitcoinAddresses: Object.entries(bitcoinMatching.addresses).map(([address, entry]) => ({
       address,
@@ -1040,6 +1229,97 @@ export function buildCapitalAuditReport({
     broadcastBreakdown,
     transactions,
     issues: derivedIssues,
+  };
+}
+
+function buildCapitalAuditSummary(params = {}) {
+  const broadcast = buildBroadcastCounts(params.transactions, params.unmatchedBroadcasts, params.unmatchedBitcoinTxs, params.scope);
+  const bitcoin = buildBitcoinCounts(params.offrampSummaries, params.unmatchedBitcoinTxs, params.operatorFundingBitcoinTxs, params.nonSettlementBitcoinTxs, params.operatorFundingBtcSats);
+  const gas = buildGasSummaryFields(params.gasMetrics);
+  const treasury = buildTreasuryAndCombinedFields(params.inventory, params.startCombinedUsd, params.currentCombinedUsd, params.gatewayBtcTotals, params.derivedIssues);
+  return {
+    ...broadcast,
+    ...bitcoin,
+    ...gas,
+    ...treasury,
+    issueCount: params.derivedIssues ? params.derivedIssues.length : 0,
+  };
+}
+
+function buildBroadcastCounts(transactions = [], unmatchedBroadcasts = [], unmatchedBitcoinTxs = [], scope = { bitcoinAddresses: [] }) {
+  return {
+    broadcastCount: transactions.length,
+    broadcastWithReceiptCount: transactions.filter((entry) => entry.receiptStatus !== null).length,
+    helperMatchedCount: transactions.filter((entry) => entry.helperMatched).length,
+    unmatchedBroadcastCount: unmatchedBroadcasts.length,
+    bitcoinAddressCount: scope.bitcoinAddresses.length,
+  };
+}
+
+function buildBitcoinCounts(offrampSummaries = [], unmatchedBitcoinTxs = [], operatorFundingBitcoinTxs = [], nonSettlementBitcoinTxs = [], operatorFundingBtcSats = 0) {
+  return {
+    bitcoinMatchedSettlementCount: offrampSummaries.filter((entry) => entry.matchedBitcoinTx?.txid).length,
+    bitcoinUnmatchedTxCount: unmatchedBitcoinTxs.length,
+    bitcoinOperatorFundingTxCount: operatorFundingBitcoinTxs.length,
+    bitcoinOperatorFundingSats: operatorFundingBtcSats,
+    bitcoinNonSettlementTxCount: nonSettlementBitcoinTxs.length,
+  };
+}
+
+function buildGasSummaryFields(gasMetrics = {}) {
+  const {
+    totalGasUsd = 0,
+    breakdownGasUsd = 0,
+    topGasCategory = null,
+    topGasChain = null,
+    gasFromRevertedTxsUsd = 0,
+    gasFromNoReceiptTxsUsd = 0,
+  } = gasMetrics;
+  return {
+    totalGasUsd,
+    topGasCategory,
+    topGasChain,
+    gasFromRevertedTxsUsd: Number(gasFromRevertedTxsUsd.toFixed(6)),
+    gasFromNoReceiptTxsUsd: Number(gasFromNoReceiptTxsUsd.toFixed(6)),
+    broadcastBreakdownGasDriftUsd: Number(Math.abs(totalGasUsd - breakdownGasUsd).toFixed(6)),
+  };
+}
+
+function buildTreasuryAndCombinedFields(inventory = {}, startCombinedUsd = null, currentCombinedUsd = null, gatewayBtcTotals = {}, derivedIssues = []) {
+  const {
+    totalQuotedGatewayFeeSats = 0,
+    totalQuotedGatewayResidualSats = 0,
+    totalObservedBtcSats = 0,
+    totalNativeDexOutputDriftUsd = 0,
+    currentNativeBtcSats = 0,
+    currentNativeBtcUsd = null,
+  } = gatewayBtcTotals;
+  const deltas = buildDeltaFields(inventory, startCombinedUsd, currentCombinedUsd);
+  return {
+    totalQuotedGatewayFeeSats,
+    totalQuotedGatewayResidualSats,
+    totalObservedBtcSats,
+    totalNativeDexOutputDriftUsd,
+    currentNativeBtcSats,
+    currentNativeBtcUsd,
+    currentCombinedUsd,
+    treasurySnapshotCount: inventory.snapshotCount,
+    treasuryStartUsd: inventory.start?.estimatedWalletUsd ?? null,
+    treasuryEndUsd: inventory.end?.estimatedWalletUsd ?? null,
+    ...deltas,
+  };
+}
+
+function buildDeltaFields(inventory = {}, startCombinedUsd = null, currentCombinedUsd = null) {
+  return {
+    treasuryDeltaUsd:
+      Number.isFinite(inventory.start?.estimatedWalletUsd) && Number.isFinite(inventory.end?.estimatedWalletUsd)
+        ? inventory.end.estimatedWalletUsd - inventory.start.estimatedWalletUsd
+        : null,
+    combinedDeltaUsd:
+      Number.isFinite(startCombinedUsd) && Number.isFinite(currentCombinedUsd)
+        ? currentCombinedUsd - startCombinedUsd
+        : null,
   };
 }
 

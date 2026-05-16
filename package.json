@@ -20,6 +20,7 @@
     "snapshot:gmx": "node src/cli/fetch-gmx-snapshot.mjs",
     "snapshot:aerodrome": "node src/cli/fetch-aerodrome-snapshot.mjs",
     "snapshot:berachain": "node src/cli/fetch-berachain-snapshot.mjs",
+    "snapshot:defillama": "node src/cli/fetch-defillama-snapshot.mjs",
     "estimate:gateway-gas": "node src/cli/estimate-gateway-gas.mjs",
     "check:estimator-wallet": "node src/cli/check-estimator-wallet.mjs",
     "plan:estimator-wallet": "node src/cli/plan-estimator-wallet.mjs",

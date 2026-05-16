@@ -12,6 +12,8 @@
 //   shadow_ready : config valid + pool measured + projectedNetUsd > 0
 //   live_candidate: shadowReady + ≥1 receipt-backed entry/exit proof
 
+import { getDefiLlamaSupportedReceiptProjects } from "../protocol-readers/registry.mjs";
+
 const STRATEGY_ID = "defillama-yield-portfolio";
 
 const SUPPORTED_CHAINS = new Set([
@@ -20,6 +22,26 @@ const SUPPORTED_CHAINS = new Set([
 ]);
 
 const SUPPORTED_FAMILIES = new Set(["stablecoin", "wrapped_btc"]);
+
+// DefiLlama receipt-bound classification is now driven by the canonical list in
+// protocol-readers/registry (owned by Protocol Reader & On-chain Data Engineer).
+// This ensures evidenceClass is reliable and exactly matches projects that have
+// registered ProtocolReader impls for on-chain NormalizedPosition reads + receipt
+// delta proofs. No more over-classification of pools (e.g. compound-v3) that lack
+// readers and thus cannot yet support receipt generation for YCE-002/003.
+// Phase 1 receipt-bound projects (sourced from protocol-readers for reader-backed evidence)
+// This is the narrow starting set for DefiLlama yield revival (YCE-001). Only projects
+// with actual on-chain readers count as "protocol_receipt_bound" so snapshot output
+// and policyGates produce usable candidates for receipt test / E2E validation.
+const RECEIPT_BOUND_PROJECTS = new Set(getDefiLlamaSupportedReceiptProjects());
+
+export function getDefiLlamaPoolEvidenceClass(project, chain, family) {
+  const p = String(project || "").toLowerCase();
+  if (RECEIPT_BOUND_PROJECTS.has(p)) {
+    return "protocol_receipt_bound";
+  }
+  return "protocol_not_receipt_bound";
+}
 
 const DEFAULT_CONFIG = Object.freeze({
   id: STRATEGY_ID,
@@ -147,6 +169,11 @@ export function normalizeDefiLlamaYieldPool(pool = {}, defaults = {}) {
     gatewayRoundTripCostBps: finite(defaults.gatewayRoundTripCostBps),
     offrampCostBps: finite(defaults.offrampCostBps),
     paused: defaults.paused === true || pool.paused === true,
+    evidenceClass: getDefiLlamaPoolEvidenceClass(
+      pool.project || pool.protocol || defaults.protocol,
+      chain,
+      defaults.family || pool.family
+    ),
   });
 }
 
@@ -187,6 +214,7 @@ function assessPool(pool = {}) {
     protocol: pool.protocol || null,
     poolId: pool.poolId || null,
     symbol: pool.symbol || null,
+    evidenceClass: pool.evidenceClass || null,
   };
 }
 
@@ -236,6 +264,12 @@ function policyGates(config, pool) {
   ) {
     gates.push("offramp_cost_above_threshold");
   }
+  // YCE-001: deepen evidenceClass application in policyGates for candidate selection
+  // Only protocol_receipt_bound pools (those with existing canary/receipt bindings) are allowed
+  // through to shadow_ready / live_candidate. Others remain analysis surfaces only.
+  if (pool.evidenceClass && pool.evidenceClass !== "protocol_receipt_bound") {
+    gates.push("protocol_not_receipt_bound");
+  }
   return gates;
 }
 
@@ -262,6 +296,13 @@ function projectedEconomics(config, pool) {
 }
 
 function receiptEvidence(receipts = []) {
+  // Input receipts shape (from loadYieldReceiptEvidence): each item is
+  // { signerBacked, result, realizedNetUsd, entryExitProven, yieldProof? }
+  // The optional yieldProof (post schema enhancement) carries the rich per-pool yield evidence:
+  //   entryApy, entryTvlUsd, exitApy, exitTvlUsd, holdingPeriodHours, entryNewPool, ...
+  // This enables future smarter allocation & risk logic in evaluate() / policyGates without breaking
+  // the current aggregate counts used for shadowReady / liveReady gating.
+  // All new fields are additive / backward-compatible; existing receiptEvidence consumers unaffected.
   const signerBacked = receipts.filter((r) => r?.signerBacked === true);
   const passed = signerBacked.filter((r) => r?.result === "passed");
   const realized = passed.reduce(
@@ -274,6 +315,8 @@ function receiptEvidence(receipts = []) {
     passedCount: passed.length,
     realizedNetUsd: passed.length > 0 && Number.isFinite(realized) ? round(realized) : null,
     entryExitProvenCount,
+    // shape note: richer per-receipt yieldProof data (if present in input) is intentionally left for direct
+    // inspection by callers (e.g. policy) or future extension of this aggregator.
   });
 }
 
@@ -325,8 +368,15 @@ export function evaluateDefiLlamaYieldAdapter({
 
   const shadowReady = best != null;
 
+  const bestEvidenceClass = best?.pool?.evidenceClass || null;
+
+  // YCE-001: deepen evidenceClass in evaluate + candidate selection:
+  // liveReady now explicitly requires the selected best pool to be receipt_bound
+  // (in addition to having real signer-backed entry/exit receipts). This ensures
+  // only pools with proven bindings + actual execution proof promote to live_candidate.
   const liveReady =
     shadowReady &&
+    bestEvidenceClass === "protocol_receipt_bound" &&
     evidence.passedCount >= 1 &&
     evidence.realizedNetUsd != null &&
     evidence.realizedNetUsd > 0 &&
@@ -360,6 +410,8 @@ export function evaluateDefiLlamaYieldAdapter({
             symbol: best.pool.symbol,
             tvlUsd: best.pool.tvlUsd,
             apyBps: best.pool.apyBps,
+            // YCE-001: evidenceClass now surfaced in bestPool for candidate selection / dashboard
+            evidenceClass: best.pool.evidenceClass || null,
           })
         : null,
     }),
@@ -371,6 +423,7 @@ export function evaluateDefiLlamaYieldAdapter({
     liveReady,
     promotion: liveReady ? "live_candidate" : shadowReady ? "shadow_ready" : "blocked",
     mode: liveReady ? "live_candidate" : shadowReady ? "shadow_ready" : "blocked",
+    evidenceClass: bestEvidenceClass,
     intent,
     microCanaryStatus: evidence.signerBackedCount >= 3
       ? "micro_canary_repeatable"
@@ -394,6 +447,8 @@ export function summarizeDefiLlamaYieldAdapter(report) {
     entryExitProvenCount: report.evidence.entryExitProvenCount,
     bestPoolChain: report.market?.bestPool?.chain || null,
     bestPoolProtocol: report.market?.bestPool?.protocol || null,
+    // YCE-001: evidenceClass in summary for quick candidate filtering
+    bestPoolEvidenceClass: report.evidenceClass || report.market?.bestPool?.evidenceClass || null,
   });
 }
 

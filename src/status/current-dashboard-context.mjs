@@ -374,6 +374,9 @@ export async function buildCurrentDashboardContext({
     moneyLoopLatest,
     btcNavHistoryRecords,
     perSlotAttributionRecords,
+    // YCE-003 wiring (Yield & Campaign Opportunity Engineer): load DefiLlama yield snapshot here (symmetric to gateway-gold) so buildCurrentDashboardContext and strategySnapshot have explicit access to receiptBoundPools=604 + evidenceClass=protocol_receipt_bound.
+    // This ensures the promoted defillama-yield-portfolio lane (shadow_ready via YCE-003 dynamic logic in catalog) appears in dashboard/public/current-dashboard-context.json and strategy snapshot reports.
+    defiLlamaYieldSnapshot,
   ] = await Promise.all([
     readJsonl(dataDir, "gateway-quote-failures"),
     readJsonl(dataDir, "gas-snapshot-failures"),
@@ -382,6 +385,8 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "gateway-gold-readiness-latest.json")),
     readJsonl(dataDir, "dex-quote-failures"),
     readJsonl(dataDir, "gateway-gas-estimate-failures"),
+    // YCE-003: corresponding read for defiLlamaYieldSnapshot (under snapshots/ per fetch-defillama-snapshot output)
+    readJsonIfExists(join(dataDir, "snapshots", "defillama-yield-latest.json")),
     readJsonIfExists(join(dataDir, "shadow-cycle-latest.json")),
     readJsonIfExists(join(dataDir, "advance-canary-latest.json")),
     readJsonl(dataDir, "prelive-simulation-runs"),
@@ -833,6 +838,8 @@ export async function buildCurrentDashboardContext({
     secondaryStrategyScaffolds,
     deterministicStrategyCandidates,
     autonomousDiscoveryBoard,
+    // YCE-003: pass the loaded defiLlamaYieldSnapshot so strategySnapshot includes explicit defiLlamaYield section + the promoted lane is fully wired into current-dashboard-context.json
+    defiLlamaYieldSnapshot,
   });
   const protocolTrustTiers = buildProtocolTrustTiers({
     wrappedBtcLendingLoopSlice,

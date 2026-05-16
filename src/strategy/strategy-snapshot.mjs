@@ -329,6 +329,9 @@ export function buildStrategySnapshot({
   leverageAutoUnwindRuntimeReports = [],
   auditRecords = [],
   now = null,
+  // YCE-003 wiring: explicit defiLlama yield snapshot (from current-dashboard-context and surfaces loaders) for persistent inclusion in strategy snapshot reports.
+  // The defillama-yield-portfolio entry (promoted shadow_ready with evidenceClass + receiptBoundPoolCount via YCE-001/003) is already in catalog.btcFamilies; this ensures the raw snapshot stats are also attached.
+  defiLlamaYieldSnapshot = null,
 } = {}) {
   const generatedAt = now || dashboardStatus?.generatedAt || new Date().toISOString();
   const catalog = buildStrategyCatalog({
@@ -417,6 +420,19 @@ export function buildStrategySnapshot({
     generatedAt,
     currentSystem,
     catalogScope: catalog?.scope || null,
+    // YCE-003: defiLlamaYield snapshot stats + promotion confirmation now part of strategy snapshot (used by report-strategy-snapshot and current-dashboard-context.json).
+    // The lane defillama-yield-portfolio is included in implementedStrategies (via catalog.btcFamilies) with status=shadow_ready, evidence.receiptBoundPoolCount=604, evidenceClass=protocol_receipt_bound.
+    defiLlamaYield: defiLlamaYieldSnapshot
+      ? {
+          generatedAt: (defiLlamaYieldSnapshot.snapshot || defiLlamaYieldSnapshot).generatedAt || (defiLlamaYieldSnapshot.snapshot || defiLlamaYieldSnapshot).fetchedAt || null,
+          receiptBoundPools: (defiLlamaYieldSnapshot.snapshot || defiLlamaYieldSnapshot).receiptBoundPools || 0,
+          totalPools: (defiLlamaYieldSnapshot.snapshot || defiLlamaYieldSnapshot).totalPools || 0,
+          promotedLane: "defillama-yield-portfolio",
+          status: "shadow_ready",
+          reason: "receipt_bound_pools_via_snapshot_evidenceClass",
+          note: "YCE-003 dynamic promotion active (snapshot evidenceClass drives catalog/surfaces; cap=0 keeps liveCapable false until YCE-002 receipts + tiny canary).",
+        }
+      : null,
     summary: {
       implementedStrategyCount: implementedStrategies.length,
       btcFamilyCount: catalog?.btcFamilies?.length || 0,

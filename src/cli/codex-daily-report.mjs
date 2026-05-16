@@ -64,7 +64,7 @@ export async function buildDailyReport({
 
   const llm = await callLlm({
     purpose: PURPOSE.REPORT,
-    prompt: "AGENTS.md Reporting Style 한국어 운영 요약. 1단계/이번에 한 일/왜 아직/다음 체크리스트 3개.",
+    prompt: "자연스럽고 간결한 한국어 요약. 강제된 '현재 단계: Ln / 이번에 한 일 / 왜 / 다음 체크리스트' 형식은 절대 사용하지 말 것.",
     context: ctx,
   });
 
