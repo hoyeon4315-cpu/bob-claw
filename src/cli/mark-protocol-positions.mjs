@@ -9,7 +9,12 @@ import { getEvmChainConfig } from "../config/chains.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
-import { getMultiSourcePricesUsd, latestPriceSnapshot, priceForAssetUsd, pricesFromSnapshot } from "../market/prices.mjs";
+import {
+  getMultiSourcePricesUsd,
+  latestPriceSnapshot,
+  priceForAssetUsd,
+  pricesFromSnapshot,
+} from "../market/prices.mjs";
 import { resolveProtocolPositionAdapter } from "../treasury/protocol-position-adapter-registry.mjs";
 import { normalizeProtocolPositionMark } from "../treasury/protocol-position-mark-schema.mjs";
 import {
@@ -55,10 +60,7 @@ function parseArgs(argv = process.argv.slice(2)) {
 }
 
 function configuredOperatorWalletAddress() {
-  return getEnv("BOB_CLAW_OPERATOR_ADDRESS")
-    || getEnv("BOB_CLAW_EVM_ADDRESS")
-    || config.estimateFrom
-    || null;
+  return getEnv("BOB_CLAW_OPERATOR_ADDRESS") || getEnv("BOB_CLAW_EVM_ADDRESS") || config.estimateFrom || null;
 }
 
 async function resolveOperatorWalletAddress({ dataDir = config.dataDir } = {}) {
@@ -85,9 +87,10 @@ export function createContractReader({
   return async ({ chain, address, functionName, args = [] }) => {
     const chainConfig = chainConfigResolver(chain);
     if (!chainConfig) throw new Error(`No EVM chain config for ${chain || "unknown"}`);
-    const rpcUrls = Array.isArray(chainConfig.rpcUrls) && chainConfig.rpcUrls.length > 0
-      ? chainConfig.rpcUrls
-      : [chainConfig.rpcUrl].filter(Boolean);
+    const rpcUrls =
+      Array.isArray(chainConfig.rpcUrls) && chainConfig.rpcUrls.length > 0
+        ? chainConfig.rpcUrls
+        : [chainConfig.rpcUrl].filter(Boolean);
     if (rpcUrls.length === 0) throw new Error(`No RPC URL configured for chain ${chain || "unknown"}`);
     if (!address) throw new Error(`Missing contract address for ${functionName}`);
     try {
@@ -116,7 +119,13 @@ export function createContractReader({
       }
     }
 
-    throw lastError;
+    if (lastError) {
+      const ctx = ` | chain=${chain} tried=[${rpcUrls.join(", ")}]`;
+      if (lastError.message) lastError.message = lastError.message + ctx;
+      else lastError = new Error(String(lastError) + ctx);
+      throw lastError;
+    }
+    throw new Error(`All RPC endpoints failed for chain: ${chain} (tried: ${rpcUrls.join(", ")})`);
   };
 }
 
@@ -151,22 +160,28 @@ const SYMBOL_PRICE_KEYS = new Map([
 const RETRYABLE_READER_FAILURES = new Set(["rpc_failed", "reader_throw"]);
 
 function normalizeSymbolKey(symbol) {
-  return String(symbol || "").replace(/[^a-z0-9]/giu, "").toLowerCase();
+  return String(symbol || "")
+    .replace(/[^a-z0-9]/giu, "")
+    .toLowerCase();
 }
 
 function inferPriceKey({ token, symbol, chain } = {}) {
   const asset = token ? tokenAsset(chain, token) : null;
   if (asset?.priceKey) return asset.priceKey;
   if (token === ZERO_TOKEN) return tokenAsset(chain, ZERO_TOKEN).priceKey;
-  return SYMBOL_PRICE_KEYS.get(normalizeSymbolKey(symbol)) || null;
+  const sym = normalizeSymbolKey(symbol);
+  if (sym === "yt" || sym === "pt") {
+    // Pendle PT/YT positions (e.g. pendle-yt-canary) - resolve to underlying price family
+    // until dedicated PT/YT price feeds are wired. Current canaries are BTC-correlated.
+    return "btc";
+  }
+  return SYMBOL_PRICE_KEYS.get(sym) || null;
 }
 
 function hasFinitePriceCoverage(prices = {}) {
-  return [
-    prices?.btc,
-    ...Object.values(prices?.tokenByKey || {}),
-    ...Object.values(prices?.nativeByChain || {}),
-  ].some(Number.isFinite);
+  return [prices?.btc, ...Object.values(prices?.tokenByKey || {}), ...Object.values(prices?.nativeByChain || {})].some(
+    Number.isFinite,
+  );
 }
 
 async function loadProtocolMarkPrices({
@@ -201,12 +216,16 @@ function createPriceReader(options = {}) {
     const priceKey = inferPriceKey({ token, symbol, chain });
     if (priceKey === "usd_stable") return 1;
     if (!priceKey) {
-      throw new Error(`No price reader configured for ${symbol || token || "unknown token"} on ${chain || "unknown chain"}`);
+      throw new Error(
+        `No price reader configured for ${symbol || token || "unknown token"} on ${chain || "unknown chain"}`,
+      );
     }
     const prices = await loadPrices();
     const priceUsd = priceForAssetUsd({ priceKey }, prices);
     if (Number.isFinite(priceUsd)) return priceUsd;
-    throw new Error(`No ${priceKey} price available for ${symbol || token || "unknown token"} on ${chain || "unknown chain"}`);
+    throw new Error(
+      `No ${priceKey} price available for ${symbol || token || "unknown token"} on ${chain || "unknown chain"}`,
+    );
   };
   readPrice.getBtcPriceUsd = async () => {
     const prices = await loadPrices();
@@ -220,33 +239,36 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function defaultReaderMarkFailure(position, {
-  observedAt,
-  adapterId = null,
-  failureKind,
-  message,
-}) {
-  return normalizeProtocolPositionMark({
-    event: "position_mark_failed",
-    status: position.status || "open",
-    observedAt,
-    positionId: position.positionId,
-    opportunityId: position.opportunityId || null,
-    strategyId: position.strategyId || null,
-    chain: position.chain,
-    protocolId: position.protocolId,
-    bindingKind: position.bindingKind,
-    adapterId,
-    failureKind,
-    message,
-  }, { now: observedAt });
+function defaultReaderMarkFailure(position, { observedAt, adapterId = null, failureKind, message }) {
+  return normalizeProtocolPositionMark(
+    {
+      event: "position_mark_failed",
+      status: position.status || "open",
+      observedAt,
+      positionId: position.positionId,
+      opportunityId: position.opportunityId || null,
+      strategyId: position.strategyId || null,
+      chain: position.chain,
+      protocolId: position.protocolId,
+      bindingKind: position.bindingKind,
+      adapterId,
+      failureKind,
+      message,
+    },
+    { now: observedAt },
+  );
 }
 
 function inferObservedAssetSymbol({ position = {}, observed = {} } = {}) {
   const direct = position.assetSymbol || position.symbol || observed.assetSymbol || observed.symbol || null;
   if (direct) return direct;
   const chain = position.chain || observed.chain;
-  const assetAddress = observed.assetAddress || observed.underlyingTokenAddress || position.assetAddress || position.underlyingTokenAddress || ZERO_TOKEN;
+  const assetAddress =
+    observed.assetAddress ||
+    observed.underlyingTokenAddress ||
+    position.assetAddress ||
+    position.underlyingTokenAddress ||
+    ZERO_TOKEN;
   return tokenAsset(chain, assetAddress).ticker || null;
 }
 
@@ -265,7 +287,12 @@ async function buildReaderBackedMark({
   total = 1,
 }) {
   const chain = position.chain || observed.chain;
-  const assetAddress = observed.assetAddress || observed.underlyingTokenAddress || position.assetAddress || position.underlyingTokenAddress || null;
+  const assetAddress =
+    observed.assetAddress ||
+    observed.underlyingTokenAddress ||
+    position.assetAddress ||
+    position.underlyingTokenAddress ||
+    null;
   const assetDecimals = finiteNumber(observed.assetDecimals ?? position.assetDecimals);
   const assetBalance = observed.assetBalance ?? null;
   const assetAmount =
@@ -291,36 +318,39 @@ async function buildReaderBackedMark({
     }
   }
 
-  return normalizeProtocolPositionMark({
-    event: "position_marked",
-    status: position.status || "open",
-    observedAt,
-    positionId: readerMarkPositionId(position, observed, { index, total }),
-    opportunityId: position.opportunityId || observed.opportunityId || null,
-    strategyId: position.strategyId || observed.strategyId || null,
-    chain,
-    protocolId: position.protocolId || observed.protocolId || null,
-    bindingKind: position.bindingKind || observed.bindingKind || null,
-    adapterId: observed.adapterId || null,
-    walletAddress: observed.walletAddress || null,
-    shareTokenAddress: observed.shareTokenAddress || position.shareTokenAddress || position.vaultAddress || null,
-    shareBalance: observed.shareBalance ?? null,
-    assetAddress,
-    assetSymbol: inferObservedAssetSymbol({ position, observed }),
-    assetDecimals,
-    assetBalance,
-    assetAmount,
-    assetPriceUsd,
-    debtBalance: observed.debtBalance ?? null,
-    debtAmount:
-      observed.debtBalance != null && Number.isInteger(assetDecimals) && assetDecimals >= 0
-        ? unitsToDecimal(observed.debtBalance, assetDecimals)
-        : null,
-    healthFactor: finiteNumber(observed.healthFactor),
-    markSource: "protocol_reader",
-    btcPriceUsd,
-    source: "protocol_reader",
-  }, { now: observedAt });
+  return normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      status: position.status || "open",
+      observedAt,
+      positionId: readerMarkPositionId(position, observed, { index, total }),
+      opportunityId: position.opportunityId || observed.opportunityId || null,
+      strategyId: position.strategyId || observed.strategyId || null,
+      chain,
+      protocolId: position.protocolId || observed.protocolId || null,
+      bindingKind: position.bindingKind || observed.bindingKind || null,
+      adapterId: observed.adapterId || null,
+      walletAddress: observed.walletAddress || null,
+      shareTokenAddress: observed.shareTokenAddress || position.shareTokenAddress || position.vaultAddress || null,
+      shareBalance: observed.shareBalance ?? null,
+      assetAddress,
+      assetSymbol: inferObservedAssetSymbol({ position, observed }),
+      assetDecimals,
+      assetBalance,
+      assetAmount,
+      assetPriceUsd,
+      debtBalance: observed.debtBalance ?? null,
+      debtAmount:
+        observed.debtBalance != null && Number.isInteger(assetDecimals) && assetDecimals >= 0
+          ? unitsToDecimal(observed.debtBalance, assetDecimals)
+          : null,
+      healthFactor: finiteNumber(observed.healthFactor),
+      markSource: "protocol_reader",
+      btcPriceUsd,
+      source: "protocol_reader",
+    },
+    { now: observedAt },
+  );
 }
 
 function assertWritableWalletState({ args, positions, walletAddress }) {
@@ -345,10 +375,12 @@ export async function runMarkProtocolPositionMarksCli(options = {}) {
     signerAuditRecords,
   } = options;
   const args = parseArgs(rawArgs);
-  const loadedPositionEvents = positionEvents ?? await readJsonlImpl(dataDir, "merkl-portfolio-positions");
+  const loadedPositionEvents = positionEvents ?? (await readJsonlImpl(dataDir, "merkl-portfolio-positions"));
   const loadedSignerAuditRecords = Object.hasOwn(options, "signerAuditRecords")
     ? signerAuditRecords
-    : (positionEvents ? [] : await readSignerAuditLog().catch(() => []));
+    : positionEvents
+      ? []
+      : await readSignerAuditLog().catch(() => []);
   const positions = activeProtocolPositions([
     ...loadedPositionEvents,
     ...protocolPositionEventsFromSignerAudit(loadedSignerAuditRecords || []),
@@ -357,12 +389,14 @@ export async function runMarkProtocolPositionMarksCli(options = {}) {
     ? options.walletAddress
     : await resolveOperatorWalletAddress({ dataDir });
   assertWritableWalletState({ args, positions, walletAddress: resolvedWalletAddress });
-  const priceReader = providedPriceReader || createPriceReader({
-    dataDir,
-    readJsonlImpl,
-    readFileImpl,
-    fetchPrices,
-  });
+  const priceReader =
+    providedPriceReader ||
+    createPriceReader({
+      dataDir,
+      readJsonlImpl,
+      readFileImpl,
+      fetchPrices,
+    });
   const effectiveBtcPriceUsd =
     finiteNumber(btcPriceUsd) ??
     (typeof priceReader.getBtcPriceUsd === "function" ? await priceReader.getBtcPriceUsd() : null);
@@ -383,24 +417,28 @@ export async function runMarkProtocolPositionMarksCli(options = {}) {
       const result = dispatch.result;
       if (result?.ok) {
         if (!Array.isArray(result.positions) || result.positions.length === 0) {
-          readerEvents.push(defaultReaderMarkFailure(position, {
-            observedAt,
-            adapterId: dispatch.id,
-            failureKind: "zero_position_observed",
-            message: `Reader ${dispatch.id || "unknown"} returned zero positions for active ledger entry`,
-          }));
+          readerEvents.push(
+            defaultReaderMarkFailure(position, {
+              observedAt,
+              adapterId: dispatch.id,
+              failureKind: "zero_position_observed",
+              message: `Reader ${dispatch.id || "unknown"} returned zero positions for active ledger entry`,
+            }),
+          );
           continue;
         }
         for (const [index, observed] of (result.positions || []).entries()) {
-          readerEvents.push(await buildReaderBackedMark({
-            position,
-            observed,
-            observedAt,
-            priceReader,
-            btcPriceUsd: effectiveBtcPriceUsd,
-            index,
-            total: result.positions.length,
-          }));
+          readerEvents.push(
+            await buildReaderBackedMark({
+              position,
+              observed,
+              observedAt,
+              priceReader,
+              btcPriceUsd: effectiveBtcPriceUsd,
+              index,
+              total: result.positions.length,
+            }),
+          );
         }
       } else {
         const legacyAdapter = resolveProtocolPositionAdapter(position);
@@ -408,38 +446,43 @@ export async function runMarkProtocolPositionMarksCli(options = {}) {
           legacyPositions.push(position);
           continue;
         }
-        readerEvents.push(defaultReaderMarkFailure(position, {
-          observedAt,
-          adapterId: dispatch.id,
-          failureKind: result?.code || "reader_failed",
-          message: result?.error || "reader returned error",
-        }));
+        readerEvents.push(
+          defaultReaderMarkFailure(position, {
+            observedAt,
+            adapterId: dispatch.id,
+            failureKind: result?.code || "reader_failed",
+            message: result?.error || "reader returned error",
+          }),
+        );
       }
     } else if (dispatch.kind === "legacy") {
       legacyPositions.push(position);
     } else {
-      readerEvents.push(defaultReaderMarkFailure(position, {
-        observedAt,
-        adapterId: null,
-        failureKind: "no_reader_no_adapter",
-        message: `No reader or legacy adapter for bindingKind ${position.bindingKind || "unknown"}`,
-      }));
+      readerEvents.push(
+        defaultReaderMarkFailure(position, {
+          observedAt,
+          adapterId: null,
+          failureKind: "no_reader_no_adapter",
+          message: `No reader or legacy adapter for bindingKind ${position.bindingKind || "unknown"}`,
+        }),
+      );
     }
   }
 
-  const legacyEvents = legacyPositions.length > 0
-    ? await markActiveProtocolPositions({
-        positions: legacyPositions,
-        walletAddress: resolvedWalletAddress,
-        contractReader,
-        priceReader,
-        btcPriceUsd: effectiveBtcPriceUsd,
-        observedAt,
-      })
-    : [];
+  const legacyEvents =
+    legacyPositions.length > 0
+      ? await markActiveProtocolPositions({
+          positions: legacyPositions,
+          walletAddress: resolvedWalletAddress,
+          contractReader,
+          priceReader,
+          btcPriceUsd: effectiveBtcPriceUsd,
+          observedAt,
+        })
+      : [];
 
-  const events = [...readerEvents, ...legacyEvents].sort(
-    (left, right) => String(left.positionId || "").localeCompare(String(right.positionId || "")),
+  const events = [...readerEvents, ...legacyEvents].sort((left, right) =>
+    String(left.positionId || "").localeCompare(String(right.positionId || "")),
   );
 
   const summary = buildProtocolPositionMarkSummary({ observedAt, events });

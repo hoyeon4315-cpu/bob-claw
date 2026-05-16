@@ -20,12 +20,26 @@ export async function readErc4626({
   _chainConfigResolver,
   _ethersLoader,
 } = {}) {
-  const { vaultAddress, protocolId = "erc4626", bindingKind = "erc4626_vault_supply_withdraw", family = "vault_share", opportunityId, strategyId } = params;
+  const {
+    vaultAddress,
+    protocolId = "erc4626",
+    bindingKind = "erc4626_vault_supply_withdraw",
+    family = "vault_share",
+    opportunityId,
+    strategyId,
+  } = params;
   if (!chain || !walletAddress || !vaultAddress) {
     return makeReaderError({ error: "missing chain/walletAddress/vaultAddress", code: "missing_params" });
   }
   try {
-    const vault = await loadContract({ chain, vaultAddress, abi: ABI, _providerFactory, _chainConfigResolver, _ethersLoader });
+    const vault = await loadContract({
+      chain,
+      vaultAddress,
+      abi: ABI,
+      _providerFactory,
+      _chainConfigResolver,
+      _ethersLoader,
+    });
     const shares = await vault.balanceOf(walletAddress);
     if (shares === 0n) {
       return makeReaderResult({ positions: [], notes: ["zero_shares"] });
@@ -41,7 +55,14 @@ export async function readErc4626({
     // share-decimals for the asset balance would mis-price downstream.
     let assetDecimalsResolved = Number(shareDecimals);
     try {
-      const assetToken = await loadContract({ chain, vaultAddress: asset, abi: ABI, _providerFactory, _chainConfigResolver, _ethersLoader });
+      const assetToken = await loadContract({
+        chain,
+        vaultAddress: asset,
+        abi: ABI,
+        _providerFactory,
+        _chainConfigResolver,
+        _ethersLoader,
+      });
       const ad = await assetToken.decimals();
       assetDecimalsResolved = Number(ad);
     } catch {
@@ -84,7 +105,9 @@ async function loadContract({ chain, vaultAddress, abi, _providerFactory, _chain
   const { getEvmChainConfig } = await import("../../config/chains.mjs");
   const cfg = _chainConfigResolver ? _chainConfigResolver(chain) : getEvmChainConfig(chain);
   if (!cfg) throw new Error(`unknown chain ${chain}`);
-  const rpcUrls = [...new Set((Array.isArray(cfg.rpcUrls) && cfg.rpcUrls.length > 0 ? cfg.rpcUrls : [cfg.rpcUrl]).filter(Boolean))];
+  const rpcUrls = [
+    ...new Set((Array.isArray(cfg.rpcUrls) && cfg.rpcUrls.length > 0 ? cfg.rpcUrls : [cfg.rpcUrl]).filter(Boolean)),
+  ];
   if (rpcUrls.length === 0) throw new Error(`missing rpcUrl for chain ${chain}`);
   const contracts = rpcUrls.map((rpcUrl) => {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -105,7 +128,10 @@ async function loadContract({ chain, vaultAddress, abi, _providerFactory, _chain
             lastError = error;
           }
         }
-        throw lastError || new Error(`all rpcUrls failed for ${String(prop)}`);
+        throw (
+          lastError ||
+          new Error(`all rpcUrls failed for ${String(prop)} on chain ${chain} (tried: ${rpcUrls.join(", ")})`)
+        );
       };
     },
   });

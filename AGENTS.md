@@ -112,6 +112,11 @@ Subagents and skills are useful tools that can be actively used to improve focus
 - Every delegated prompt must include the task objective, exact ownership/file
   scope, explicit out-of-scope boundaries, required proof format, and the stop
   condition for handing control back to the parent.
+- Default delegated execution target is the main repository worktree. If a
+  child agent uses any separate worktree (including `.grok/worktrees/`), it
+  must not claim completion until it also provides a main-worktree-applicable
+  raw patch or commit SHA, plus proof from the target worktree (`pwd`, current
+  branch, `git diff`, and the changed file content).
 - Prefer the smallest useful swarm. One coordinator plus 1-6 workers is the
   default; wider fan-out is reserved for genuinely independent research,
   read-heavy investigation, or final read-only verification.
@@ -139,6 +144,19 @@ Subagents and skills are useful tools that can be actively used to improve focus
 - When delegation is used, the parent stays responsible for dynamic summons:
   call the next role only when its slice is ready, independent, and has a clear
   reintegration path.
+- For blocker-driven debugging or remediation work, completion requires the full
+  loop: identify the direct blocker, implement the fix, re-run the relevant
+  command or refresh path, and confirm the governing status fields actually
+  changed. Code changes alone are not completion.
+- Prioritize direct blocker removal before adjacent cleanup. Do not expand into
+  UI, docs, dashboards, or secondary refactors until the primary blocker path
+  has been re-run and its status re-checked, unless that secondary work is
+  strictly required to complete the re-run or surface the new result.
+- Treat superpowers, skills, and process frameworks as amplifiers, not default
+  ceremony. Use them aggressively when complexity, uncertainty, or procedural
+  rigor is high; skip them for simple fact checks, obvious one-file edits, and
+  other direct tasks where they would add meta-overhead without improving the
+  result.
 - **Proactive Improvement**: During coding and refactoring work, identify and
   apply reasonable improvements (code quality, consistency, robustness, readability,
   error handling) without asking permission for each small change. Only seek
@@ -189,6 +207,15 @@ skill/subagent activation; no shortcuts; integrate then continue):**
   do not add qualifiers like "almost", "final", "remaining", or "integration"
   that imply prior work. If blocked, state the exact blocker and the failing
   command, tool result, or missing prerequisite.
+- For blocker-remediation tasks, the response must report the re-run command,
+  the before/after status fields or blocker list, and any remaining blocker.
+  Do not stop at the code diff when the task definition is about changing a live
+  status, readiness verdict, or dashboard state.
+- Treat freshness fields (`generatedAt`, `observedAt`, `ageMinutes`, similar
+  status timestamps) as semantic state, not cosmetic metadata. Do not refresh
+  or rewrite them unless the underlying artifact has been recomputed from its
+  real source-of-truth builder. If an artifact looks stale, fix the generation
+  path instead of stamping a new timestamp onto old content.
 - The old short termination format (`현재 단계: Ln`, `이번에 한 일`, `왜 아직
 그 단계인지`, `다음 체크리스트`) is deprecated and should not be emitted by
   skills or subagents. Visible checkbox progress lists are now the primary way

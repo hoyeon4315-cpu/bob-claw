@@ -506,6 +506,11 @@ export async function loadUnifiedOperatingCapital({
     return { pct, diffAbs, flag, highScanError, degradedDueToScanErrors: degraded };
   }
 
+  const discrepancy = computeEvmDiscrepancy(evmWallet, evmAutopilot, discrepancyThresholdPct);
+  const evmDiscrepancyFlag = discrepancy.flag;
+  const degradedDueToScanErrors = discrepancy.degradedDueToScanErrors;
+  const evmDiscrepancyPct = discrepancy.pct;
+
   const evmAggregate =
     evmWallet.valueUsd != null && evmAutopilot.valueUsd != null
       ? Math.max(evmWallet.valueUsd, evmAutopilot.valueUsd)

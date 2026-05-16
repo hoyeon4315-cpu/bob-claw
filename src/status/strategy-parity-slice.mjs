@@ -64,8 +64,7 @@ function resolveFromDeterministic(candidates, id) {
     strategyId: c.id,
     chainSet: candidateChainSet(c),
     adapterTickConnected:
-      c.deterministicStatus === "repo_auto_build_supported" ||
-      c.deterministicStatus === "planning_adapter_ready",
+      c.deterministicStatus === "repo_auto_build_supported" || c.deterministicStatus === "planning_adapter_ready",
     marketLoader: Boolean(c.protocolAdapterId),
     receiptSchema: Boolean(c.dryRunReceiptRecorded),
     microCanaryStatus: c.readyForLive
@@ -115,11 +114,12 @@ function resolveFromResearch(board, id) {
     adapterTickConnected: c.evidence?.executionSupportStatus === "repo_auto_build_supported",
     marketLoader: Boolean(c.protocolAdapterId),
     receiptSchema: Boolean(c.evidence?.dryRunReceiptRecorded),
-    microCanaryStatus: c.evidence?.signerBackedRunCount > 0
-      ? "minimal_live_proof_exists"
-      : c.evidence?.dryRunReceiptRecorded
-        ? "micro_canary_ready"
-        : "not_started",
+    microCanaryStatus:
+      c.evidence?.signerBackedRunCount > 0
+        ? "minimal_live_proof_exists"
+        : c.evidence?.dryRunReceiptRecorded
+          ? "micro_canary_ready"
+          : "not_started",
     readinessVerdict:
       c.status === "receipt_backed_validation_ready"
         ? "live_candidate"
@@ -165,14 +165,10 @@ function resolveFromTick(tickStatus, id) {
   const baseVerdict = stage?.readinessVerdict || s?.lastTickMode || "blocked";
   const baseBlockers = s?.lastTickBlockers || [];
   // Remove dry_run_receipt_missing when receipts exist.
-  const cleanedBlockers = hasReceipts
-    ? baseBlockers.filter((b) => b !== "dry_run_receipt_missing")
-    : baseBlockers;
+  const cleanedBlockers = hasReceipts ? baseBlockers.filter((b) => b !== "dry_run_receipt_missing") : baseBlockers;
   // If no tick record but receipts exist, promote to shadow_ready.
   const readinessVerdict =
-    baseVerdict === "blocked" && !s?.lastTickAt && hasSignerBacked
-      ? "shadow_ready"
-      : baseVerdict;
+    baseVerdict === "blocked" && !s?.lastTickAt && hasSignerBacked ? "shadow_ready" : baseVerdict;
   return {
     microCanaryStatus: micro?.microCanaryStatus || s?.microCanaryStatus || "not_started",
     readinessVerdict,
@@ -219,15 +215,20 @@ export function buildStrategyParitySlice({
   researchBoard = [],
   strategyTickStatus = null,
 } = {}) {
-  const det = deterministicCandidates?.candidates || deterministicCandidates || [];
-  const scaff = secondaryScaffolds?.scaffolds || secondaryScaffolds || [];
-  const research = researchBoard?.candidates || researchBoard || [];
+  // Defensive normalization for the same class of prelive/strategy input shape issues
+  // (readJsonIfExists returning a plain object instead of the expected {candidates:[]} or array).
+  let det = deterministicCandidates?.candidates || deterministicCandidates || [];
+  let scaff = secondaryScaffolds?.scaffolds || secondaryScaffolds || [];
+  let research = researchBoard?.candidates || researchBoard || [];
+  if (!Array.isArray(det)) det = det ? [det] : [];
+  if (!Array.isArray(scaff)) scaff = scaff ? [scaff] : [];
+  if (!Array.isArray(research)) research = research ? [research] : [];
 
   const allIds = [
     ...new Set([
-      ...det.map((c) => c.id),
-      ...scaff.map((s) => s.id),
-      ...research.map((r) => r.id),
+      ...(Array.isArray(det) ? det : []).map((c) => c && c.id).filter(Boolean),
+      ...(Array.isArray(scaff) ? scaff : []).map((s) => s && s.id).filter(Boolean),
+      ...(Array.isArray(research) ? research : []).map((r) => r && r.id).filter(Boolean),
       ...NEW_CANDIDATE_IDS,
     ]),
   ];
@@ -243,14 +244,11 @@ export function buildStrategyParitySlice({
     const tick = resolveFromTick(strategyTickStatus, id);
     if (tick) {
       // Merge tick-derived blockers with row blockers, removing stale entries.
-      const mergedBlockers = tick.blockers?.length > 0
-        ? tick.blockers
-        : row.blockers.filter((b) => b !== "dry_run_receipt_missing");
+      const mergedBlockers =
+        tick.blockers?.length > 0 ? tick.blockers : row.blockers.filter((b) => b !== "dry_run_receipt_missing");
       // Only override readinessVerdict if tick provides a real signal.
       const tickVerdictIsReal =
-        tick.readinessVerdict !== "blocked" ||
-        tick.blockers?.length > 0 ||
-        tick.microCanaryStatus !== "not_started";
+        tick.readinessVerdict !== "blocked" || tick.blockers?.length > 0 || tick.microCanaryStatus !== "not_started";
       row = {
         ...row,
         microCanaryStatus: tick.microCanaryStatus,

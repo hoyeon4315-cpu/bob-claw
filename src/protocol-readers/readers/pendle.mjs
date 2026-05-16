@@ -24,7 +24,9 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
       market.expiry(),
       market.readTokens(),
       // market itself is LP token
-      loadContract({ chain, address: marketAddress, abi: ERC20_ABI, _providerFactory }).then((c) => c.balanceOf(walletAddress)),
+      loadContract({ chain, address: marketAddress, abi: ERC20_ABI, _providerFactory }).then((c) =>
+        c.balanceOf(walletAddress),
+      ),
     ]);
     const ptAddress = tokens?.pt ?? tokens?.[1];
     const ytAddress = tokens?.yt ?? tokens?.[2];
@@ -65,7 +67,12 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
     if (ptBal > 0n) {
       positions.push({
         ...baseFields,
-        positionId: defaultPositionId({ chain, protocolId: "pendle", walletAddress, marketKey: `${marketAddress.toLowerCase()}:pt` }),
+        positionId: defaultPositionId({
+          chain,
+          protocolId: "pendle",
+          walletAddress,
+          marketKey: `${marketAddress.toLowerCase()}:pt`,
+        }),
         symbol: "PT",
         shareTokenAddress: ptAddress,
         assetAddress: ptAddress,
@@ -78,7 +85,12 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
     if (ytBal > 0n) {
       positions.push({
         ...baseFields,
-        positionId: defaultPositionId({ chain, protocolId: "pendle", walletAddress, marketKey: `${marketAddress.toLowerCase()}:yt` }),
+        positionId: defaultPositionId({
+          chain,
+          protocolId: "pendle",
+          walletAddress,
+          marketKey: `${marketAddress.toLowerCase()}:yt`,
+        }),
         symbol: "YT",
         shareTokenAddress: ytAddress,
         assetAddress: ytAddress,
@@ -91,7 +103,12 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
     if (lpBal > 0n) {
       positions.push({
         ...baseFields,
-        positionId: defaultPositionId({ chain, protocolId: "pendle", walletAddress, marketKey: `${marketAddress.toLowerCase()}:lp` }),
+        positionId: defaultPositionId({
+          chain,
+          protocolId: "pendle",
+          walletAddress,
+          marketKey: `${marketAddress.toLowerCase()}:lp`,
+        }),
         family: "cl_lp",
         bindingKind: "pendle_market_lp",
         symbol: "LP",
@@ -115,11 +132,39 @@ export async function readPendle({ chain, walletAddress, params = {}, now = new 
 async function loadContract({ chain, address, abi, _providerFactory }) {
   if (_providerFactory) return _providerFactory({ chain, address, abi });
   const { ethers } = await import("ethers");
-  const { EVM_CHAIN_CONFIGS } = await import("../../config/chains.mjs");
-  const cfg = EVM_CHAIN_CONFIGS[chain];
+  const { getEvmChainConfig } = await import("../../config/chains.mjs");
+  const cfg = getEvmChainConfig(chain);
   if (!cfg) throw new Error(`unknown chain ${chain}`);
-  const provider = new ethers.JsonRpcProvider(cfg.rpcUrl);
-  return new ethers.Contract(address, abi, provider);
+  const rpcUrls = [
+    ...new Set((Array.isArray(cfg.rpcUrls) && cfg.rpcUrls.length > 0 ? cfg.rpcUrls : [cfg.rpcUrl]).filter(Boolean)),
+  ];
+  if (rpcUrls.length === 0) throw new Error(`missing rpcUrl for chain ${chain}`);
+  const contracts = rpcUrls.map((rpcUrl) => {
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    return new ethers.Contract(address, abi, provider);
+  });
+  if (contracts.length === 1) return contracts[0];
+  return new Proxy(contracts[0], {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") return value;
+      return async (...args) => {
+        let lastError = null;
+        for (const contract of contracts) {
+          try {
+            const fn = Reflect.get(contract, prop, contract);
+            return await fn.apply(contract, args);
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw (
+          lastError ||
+          new Error(`all rpcUrls failed for ${String(prop)} on chain ${chain} (tried: ${rpcUrls.join(", ")})`)
+        );
+      };
+    },
+  });
 }
 
 export const pendleReaderRegistration = {

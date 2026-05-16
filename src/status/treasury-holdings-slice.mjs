@@ -1,8 +1,9 @@
 import { tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
 
 function latestByObservedAt(records = []) {
+  const safe = Array.isArray(records) ? records : records ? [records] : [];
   return (
-    [...records]
+    [...safe]
       .filter((record) => record?.observedAt)
       .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime())
       .at(-1) || null
@@ -339,6 +340,17 @@ export function buildTreasuryHoldingsSlice(
   records = [],
   { generatedAt = new Date().toISOString(), merklPositionEvents = [], wholeWalletRecords = [], protocolApr = {} } = {},
 ) {
+  records = Array.isArray(records) ? records : records ? [records] : [];
+  wholeWalletRecords = Array.isArray(wholeWalletRecords)
+    ? wholeWalletRecords
+    : wholeWalletRecords
+      ? [wholeWalletRecords]
+      : [];
+  merklPositionEvents = Array.isArray(merklPositionEvents)
+    ? merklPositionEvents
+    : merklPositionEvents
+      ? [merklPositionEvents]
+      : [];
   const latestTreasury = latestByObservedAt(records);
   const latestWholeWallet = latestByObservedAt(wholeWalletRecords);
   const selected = selectWalletSource(latestTreasury, latestWholeWallet);
