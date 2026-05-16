@@ -385,8 +385,6 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "gateway-gold-readiness-latest.json")),
     readJsonl(dataDir, "dex-quote-failures"),
     readJsonl(dataDir, "gateway-gas-estimate-failures"),
-    // YCE-003: corresponding read for defiLlamaYieldSnapshot (under snapshots/ per fetch-defillama-snapshot output)
-    readJsonIfExists(join(dataDir, "snapshots", "defillama-yield-latest.json")),
     readJsonIfExists(join(dataDir, "shadow-cycle-latest.json")),
     readJsonIfExists(join(dataDir, "advance-canary-latest.json")),
     readJsonl(dataDir, "prelive-simulation-runs"),
@@ -449,6 +447,12 @@ export async function buildCurrentDashboardContext({
     readJsonIfExists(join(dataDir, "money-loop-latest.json")),
     readJsonl(dataDir, "btc-nav-history"),
     readJsonl(dataDir, "per-slot-attribution"),
+    // YCE-003: defiLlamaYieldSnapshot read placed at the very end so it does not shift any
+    // subsequent variable positions in the long destructuring. All earlier reads keep their
+    // original index → variable mapping. This fixes the root cause of "simulationRuns / records
+    // / det is not array / not iterable / .filter / .map" shape errors that blocked the full
+    // buildCurrentDashboardContext path.
+    readJsonIfExists(join(dataDir, "snapshots", "defillama-yield-latest.json")),
   ]);
   const [
     merklOpportunityReport,

@@ -35,7 +35,9 @@ export async function readVenus({ chain, walletAddress, params = {}, now = new D
     const [shares, exchangeRate, underlying, shareDecimals, symbolMaybe] = await Promise.all([
       vToken.balanceOf(walletAddress),
       vToken.exchangeRateStored(),
-      assetAddress || underlyingTokenAddress ? Promise.resolve(assetAddress || underlyingTokenAddress) : vToken.underlying(),
+      assetAddress || underlyingTokenAddress
+        ? Promise.resolve(assetAddress || underlyingTokenAddress)
+        : vToken.underlying(),
       vToken.decimals(),
       vToken.symbol().catch(() => null),
     ]);
@@ -80,15 +82,40 @@ async function loadContract({ chain, address, abi, _providerFactory }) {
   const { EVM_CHAIN_CONFIGS } = await import("../../config/chains.mjs");
   const cfg = EVM_CHAIN_CONFIGS[chain];
   if (!cfg) throw new Error(`unknown chain ${chain}`);
-  const provider = new ethers.JsonRpcProvider(cfg.rpcUrl);
-  return new ethers.Contract(address, abi, provider);
+  const rpcUrls = [
+    ...new Set((Array.isArray(cfg.rpcUrls) && cfg.rpcUrls.length > 0 ? cfg.rpcUrls : [cfg.rpcUrl]).filter(Boolean)),
+  ];
+  if (rpcUrls.length === 0) throw new Error(`missing rpcUrl for chain ${chain}`);
+  const contracts = rpcUrls.map((rpcUrl) => {
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    return new ethers.Contract(address, abi, provider);
+  });
+  if (contracts.length === 1) return contracts[0];
+  return new Proxy(contracts[0], {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") return value;
+      return async (...args) => {
+        let lastError = null;
+        for (const contract of contracts) {
+          try {
+            const fn = Reflect.get(contract, prop, contract);
+            return await fn.apply(contract, args);
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw (
+          lastError ||
+          new Error(`all rpcUrls failed for ${String(prop)} on chain ${chain} (tried: ${rpcUrls.join(", ")})`)
+        );
+      };
+    },
+  });
 }
 
 export const venusReaderRegistration = {
   id: "venus",
-  bindingKinds: [
-    "venus_market_supply_withdraw",
-    "venus_pool_supply_withdraw",
-  ],
+  bindingKinds: ["venus_market_supply_withdraw", "venus_pool_supply_withdraw"],
   reader: readVenus,
 };

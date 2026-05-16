@@ -1,8 +1,5 @@
 import { freshnessForObservedAt } from "../treasury/protocol-position-mark-schema.mjs";
-import {
-  detectTransientDegradation,
-  isTransientFailureMark,
-} from "../treasury/protocol-position-ledger.mjs";
+import { detectTransientDegradation, isTransientFailureMark } from "../treasury/protocol-position-ledger.mjs";
 
 const ROLLING_1H_MS = 60 * 60 * 1000;
 const ROLLING_3H_MS = 3 * 60 * 60 * 1000;
@@ -78,7 +75,9 @@ function rollingReliabilityWindow(marks = [], { generatedAt, windowMs } = {}) {
   const attempts = marksInWindow(marks, generatedAt, windowMs).filter((mark) => attemptOutcome(mark));
   const successCount = attempts.filter((mark) => attemptOutcome(mark) === "success").length;
   const failureCount = attempts.length - successCount;
-  const transientCount = attempts.filter((mark) => mark.event === "position_mark_failed" && isTransientFailureMark(marks, mark)).length;
+  const transientCount = attempts.filter(
+    (mark) => mark.event === "position_mark_failed" && isTransientFailureMark(marks, mark),
+  ).length;
   return {
     attemptCount: attempts.length,
     successCount,
@@ -135,7 +134,13 @@ function sortedCountEntries(map, keyName, total) {
 }
 
 function topCountKey(map) {
-  return sortedCountEntries(map, "key", [...map.values()].reduce((sum, value) => sum + value, 0))[0]?.key || null;
+  return (
+    sortedCountEntries(
+      map,
+      "key",
+      [...map.values()].reduce((sum, value) => sum + value, 0),
+    )[0]?.key || null
+  );
 }
 
 function messageSampleKey(mark = {}) {
@@ -272,7 +277,7 @@ function successesNeededForThreshold({ attemptCount, successCount, threshold }) 
   const thresholdBps = Math.round(threshold * 10_000);
   const currentRatioBps = successCount * 10_000;
   if (currentRatioBps >= thresholdBps * attemptCount) return 0;
-  const numerator = (thresholdBps * attemptCount) - currentRatioBps;
+  const numerator = thresholdBps * attemptCount - currentRatioBps;
   const denominator = 10_000 - thresholdBps;
   return Math.max(1, Math.ceil(numerator / denominator));
 }
@@ -281,14 +286,14 @@ function earliestThresholdRecoveryAtFromAging(attempts = [], { generatedAt, wind
   if (!Array.isArray(attempts) || attempts.length === 0) return null;
   if (!Number.isFinite(threshold) || !(threshold > 0) || !Number.isFinite(windowMs) || windowMs <= 0) return null;
   const currentSuccessCount = attempts.filter((mark) => attemptOutcome(mark) === "success").length;
-  if ((currentSuccessCount / attempts.length) >= threshold) return generatedAt || null;
+  if (currentSuccessCount / attempts.length >= threshold) return generatedAt || null;
   const dropTimestamps = [...new Set(attempts.map((mark) => observedAtMs(mark.observedAt)).filter(Number.isFinite))];
   for (const observedMs of dropTimestamps) {
     const candidateMs = observedMs + windowMs + 1;
     const remaining = attempts.filter((mark) => observedAtMs(mark.observedAt) >= candidateMs - windowMs);
     if (remaining.length === 0) continue;
     const remainingSuccessCount = remaining.filter((mark) => attemptOutcome(mark) === "success").length;
-    if ((remainingSuccessCount / remaining.length) >= threshold) {
+    if (remainingSuccessCount / remaining.length >= threshold) {
       return new Date(candidateMs).toISOString();
     }
   }
@@ -328,11 +333,10 @@ function latestAttemptMark(marks = [], predicate = () => true) {
   return latest;
 }
 
-function refreshBelowThresholdSince(marks = [], {
-  generatedAt,
-  windowMs = ROLLING_24H_MS,
-  threshold = STAGE_C_HYSTERESIS_THRESHOLD,
-} = {}) {
+function refreshBelowThresholdSince(
+  marks = [],
+  { generatedAt, windowMs = ROLLING_24H_MS, threshold = STAGE_C_HYSTERESIS_THRESHOLD } = {},
+) {
   const attempts = marks
     .filter((mark) => attemptOutcome(mark))
     .sort((left, right) => observedAtMs(left.observedAt) - observedAtMs(right.observedAt));
@@ -371,22 +375,31 @@ export function buildProtocolPositionMarksSlice(
   marks = [],
   { generatedAt = new Date().toISOString(), activePositionIds = null } = {},
 ) {
-  const activeIdSet = Array.isArray(activePositionIds)
-    ? new Set(activePositionIds)
-    : null;
+  const activeIdSet = Array.isArray(activePositionIds) ? new Set(activePositionIds) : null;
+  const allowVerifiedCurrentOutsideActiveSet = activeIdSet && activeIdSet.size > 0;
   const scopedMarks = activeIdSet
-    ? marks.filter((mark) => activeIdSet.has(mark?.positionId))
+    ? marks.filter((mark) => {
+        if (activeIdSet.has(mark?.positionId)) return true;
+        // Also include recent verified successes for rolling reliability calculations
+        return allowVerifiedCurrentOutsideActiveSet && isVerifiedCurrentMark(mark, generatedAt);
+      })
     : marks;
-  const latest = latestMarks(marks)
-    .filter((mark) => !activeIdSet || activeIdSet.has(mark.positionId));
-  
+  const latest = latestMarks(marks).filter((mark) => {
+    if (!activeIdSet) return true;
+    if (activeIdSet.has(mark.positionId)) return true;
+    // Include positions that have a fresh verified_current successful mark
+    // even if they are not in the current activeMerkl set (e.g. research canaries).
+    // This makes the latest successful protocol reader marks affect assetTracking verdict.
+    return allowVerifiedCurrentOutsideActiveSet && isVerifiedCurrentMark(mark, generatedAt);
+  });
+
   // Detect transient degradation: latest failure with recent prior success within grace window
   const latestMarkMap = new Map();
   for (const mark of latest) {
     latestMarkMap.set(mark.positionId, mark);
   }
   const transientDegradations = detectTransientDegradation(marks, latestMarkMap);
-  
+
   const byChain = {};
   let totalMarkedUsd = 0;
   let markedPositionCount = 0;
@@ -455,13 +468,14 @@ export function buildProtocolPositionMarksSlice(
       ? "verified_current"
       : "verified_minimum";
 
-  const transientDegradedWarning = transientDegradedCount > 0
-    ? {
-        message: `${transientDegradedCount} protocol position mark(s) experienced transient RPC failures, but recent successful observations available.`,
-        count: transientDegradedCount,
-        observedAt: new Date().toISOString(),
-      }
-    : null;
+  const transientDegradedWarning =
+    transientDegradedCount > 0
+      ? {
+          message: `${transientDegradedCount} protocol position mark(s) experienced transient RPC failures, but recent successful observations available.`,
+          count: transientDegradedCount,
+          observedAt: new Date().toISOString(),
+        }
+      : null;
   const rolling1h = rollingReliabilityWindow(scopedMarks, { generatedAt, windowMs: ROLLING_1H_MS });
   const rolling3h = rollingReliabilityWindow(scopedMarks, { generatedAt, windowMs: ROLLING_3H_MS });
   const rolling24h = rollingReliabilityWindow(scopedMarks, { generatedAt, windowMs: ROLLING_24H_MS });

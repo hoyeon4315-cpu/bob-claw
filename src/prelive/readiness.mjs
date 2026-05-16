@@ -6,11 +6,11 @@ function queueActionLines(shadowCycle = null, limit = 4) {
     .filter((item) => item?.scope !== "eth_family_watch")
     .slice(0, limit)
     .map((item) => ({
-    rank: item.rank ?? null,
-    scope: item.scope || null,
-    label: item.routeLabel || item.routeKey || item.scope || "refresh",
-    reason: item.reason || item.code || null,
-    command: item.command || null,
+      rank: item.rank ?? null,
+      scope: item.scope || null,
+      label: item.routeLabel || item.routeKey || item.scope || "refresh",
+      reason: item.reason || item.code || null,
+      command: item.command || null,
     }));
 }
 
@@ -25,14 +25,15 @@ function phaseStatus({ ready, blockers, readyCode, inProgressCode, blockedCode }
   };
 }
 
-const TRANSPORT_ONLY_AUDIT_BLOCKERS = new Set([
-  "candidate amount diversity",
-]);
+const TRANSPORT_ONLY_AUDIT_BLOCKERS = new Set(["candidate amount diversity"]);
 
 function auditBlockerLabels(audit = null) {
   const explicitBlockers = Array.isArray(audit?.blockers) ? audit.blockers : [];
   const failedCheckLabels = Array.isArray(audit?.checks)
-    ? audit.checks.filter((check) => check && check.ok === false).map((check) => check.label).filter(Boolean)
+    ? audit.checks
+        .filter((check) => check && check.ok === false)
+        .map((check) => check.label)
+        .filter(Boolean)
     : [];
   return [...new Set([...explicitBlockers, ...failedCheckLabels].filter(Boolean))];
 }
@@ -60,8 +61,7 @@ function strategyExecutionProof(primaryCandidate = null) {
   const liveRoundtripUnwindCount = evidence.liveRoundtripUnwindCount ?? 0;
   const liveRoundtripRecorded = evidence.liveRoundtripProofStatus === "signer_backed_roundtrip_recorded";
   const signerBackedRecorded =
-    signerBackedRunCount > 0 ||
-    (liveRoundtripRecorded && liveRoundtripEntryCount > 0 && liveRoundtripUnwindCount > 0);
+    signerBackedRunCount > 0 || (liveRoundtripRecorded && liveRoundtripEntryCount > 0 && liveRoundtripUnwindCount > 0);
   return {
     ready: Boolean(primaryCandidate.reviewReady === true && signerBackedRecorded),
     status: signerBackedRecorded ? "signer_backed_strategy_roundtrip_recorded" : "strategy_execution_proof_missing",
@@ -97,7 +97,10 @@ function activeSimulationSelectionKeys(shadowCycle = null) {
   return new Set(
     [
       selectionKey(shadowCycle?.topRoute?.routeKey, shadowCycle?.topRoute?.amount),
-      selectionKey(shadowCycle?.objectivePlans?.executionReview?.routeKey, shadowCycle?.objectivePlans?.executionReview?.amount),
+      selectionKey(
+        shadowCycle?.objectivePlans?.executionReview?.routeKey,
+        shadowCycle?.objectivePlans?.executionReview?.amount,
+      ),
     ].filter(Boolean),
   );
 }
@@ -160,18 +163,34 @@ export function buildPreliveReadinessSummary({
   targetSimulationSuccessCount = 50,
   targetForkConfirmedCount = 3,
 } = {}) {
+  // Defensive normalization: prelive simulation input may arrive as a single object (from
+  // readJsonIfExists of a *-latest.json or a misaligned jsonl single-record file) instead of
+  // an array due to upstream data shape. Coerce to array so .filter and downstream consumers
+  // never throw. This is the minimal change that allows the full buildCurrentDashboardContext
+  // path (status-dashboard.mjs) to complete and write a fresh dashboard-status.json.
+  if (!Array.isArray(simulationRuns)) {
+    simulationRuns = simulationRuns ? [simulationRuns] : [];
+  }
+  if (!Array.isArray(walletReadinessRecords))
+    walletReadinessRecords = walletReadinessRecords ? [walletReadinessRecords] : [];
+  if (!Array.isArray(forkExecutionPlans)) forkExecutionPlans = forkExecutionPlans ? [forkExecutionPlans] : [];
+  if (!Array.isArray(forkExecutionSubmissions))
+    forkExecutionSubmissions = forkExecutionSubmissions ? [forkExecutionSubmissions] : [];
+  if (!Array.isArray(forkExecutionReceipts))
+    forkExecutionReceipts = forkExecutionReceipts ? [forkExecutionReceipts] : [];
+  if (!Array.isArray(executionEvents)) executionEvents = executionEvents ? [executionEvents] : [];
   const policyReviewReady = Boolean(
     strategy?.policyCanaryReviewReady ||
-      reviewPackage?.readyForPolicyReview ||
-      reviewPackage?.tinyCanaryAdmission?.status === "policy_waiting" ||
-      reviewPackage?.tinyCanaryAdmission?.status === "auto_execute_policy_ready",
+    reviewPackage?.readyForPolicyReview ||
+    reviewPackage?.tinyCanaryAdmission?.status === "policy_waiting" ||
+    reviewPackage?.tinyCanaryAdmission?.status === "auto_execute_policy_ready",
   );
   const primaryCandidate = reviewPackage?.primaryLiveCandidate || null;
   const strategyReviewCandidateReady = Boolean(
     primaryCandidate?.candidateType === "strategy" &&
-      (primaryCandidate.reviewReady === true ||
-        primaryCandidate.tradeReadiness === "strategy_candidate_review_only" ||
-        reviewPackage?.readyForPolicyReview === true),
+    (primaryCandidate.reviewReady === true ||
+      primaryCandidate.tradeReadiness === "strategy_candidate_review_only" ||
+      reviewPackage?.readyForPolicyReview === true),
   );
   const strategyProof = strategyExecutionProof(primaryCandidate);
   const measuredPolicyReady = Number(strategy?.edgeViability?.policyReadyCount || 0);
@@ -185,8 +204,9 @@ export function buildPreliveReadinessSummary({
     activeSelectionKeys: activeSimulationSelectionKeys(shadowCycle),
   });
   const latestUnresolvedActiveFailure =
-    [...failureClassification.unresolvedActiveFailures].sort((left, right) => new Date(right.observedAt) - new Date(left.observedAt))[0] ||
-    null;
+    [...failureClassification.unresolvedActiveFailures].sort(
+      (left, right) => new Date(right.observedAt) - new Date(left.observedAt),
+    )[0] || null;
   const auditBlockers = auditBlockerLabels(audit);
   const auditBlocksLane = auditBlocksSelectedLane({ audit, strategyReviewCandidateReady });
   const transportAuditWarningOnly = Boolean(
@@ -220,7 +240,9 @@ export function buildPreliveReadinessSummary({
     mechanicalSimulationBlockers.push("shadow_replay_not_ready");
   }
   if (successfulSimulations.length < targetSimulationSuccessCount) {
-    mechanicalSimulationBlockers.push(`needs_${targetSimulationSuccessCount - successfulSimulations.length}_more_successful_simulations`);
+    mechanicalSimulationBlockers.push(
+      `needs_${targetSimulationSuccessCount - successfulSimulations.length}_more_successful_simulations`,
+    );
   }
   if (failureClassification.unresolvedActiveFailures.length > 0) {
     mechanicalSimulationBlockers.push("simulation_failures_present");
@@ -267,7 +289,9 @@ export function buildPreliveReadinessSummary({
       forkExecutionBlockers.push("no_fork_execution_plan");
     }
     if (forkExecution.confirmedCount < targetForkConfirmedCount) {
-      forkExecutionBlockers.push(`needs_${targetForkConfirmedCount - forkExecution.confirmedCount}_more_confirmed_fork_cycles`);
+      forkExecutionBlockers.push(
+        `needs_${targetForkConfirmedCount - forkExecution.confirmedCount}_more_confirmed_fork_cycles`,
+      );
     }
     if (forkExecution.pendingOutputCount > 0) {
       forkExecutionBlockers.push("fork_output_resolution_required");
@@ -283,13 +307,14 @@ export function buildPreliveReadinessSummary({
     }
   }
   forkExecution.ready = forkExecutionBlockers.length === 0;
-  forkExecution.status = forkExecution.ready && strategyProof.ready
-    ? "strategy_execution_proven"
-    : forkExecution.ready
-      ? "fork_execution_proven"
-      : forkExecutionBlockers.length
-        ? "fork_execution_blocked"
-        : "building_fork_evidence";
+  forkExecution.status =
+    forkExecution.ready && strategyProof.ready
+      ? "strategy_execution_proven"
+      : forkExecution.ready
+        ? "fork_execution_proven"
+        : forkExecutionBlockers.length
+          ? "fork_execution_blocked"
+          : "building_fork_evidence";
   forkExecution.blockers = forkExecution.ready ? [] : forkExecutionBlockers;
   forkExecution.strategyExecutionProof = strategyProof;
 
