@@ -152,6 +152,7 @@
     "report:live-baseline": "node src/cli/report-live-baseline.mjs",
     "report:v1-infra-drills": "node src/cli/report-v1-infra-drills.mjs",
     "report:payback-status": "node src/cli/report-payback-status.mjs",
+    "report:aggressive-sleeve-status": "node src/cli/report-aggressive-sleeve-status.mjs",
     "report:wallet-holdings": "node src/cli/report-wallet-holdings-slice.mjs",
     "report:yield-shadow-book": "node src/cli/report-yield-shadow-book.mjs",
     "report:proxy-spread-coverage": "node src/cli/report-proxy-spread-coverage-plan.mjs",

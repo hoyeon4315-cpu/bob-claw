@@ -34,6 +34,7 @@ import { buildShadowRefreshExecutionSummary } from "../session/shadow-refresh-ru
 import { buildReceiptLedgerSummary } from "../ledger/receipt-reconciliation.mjs";
 import { filterRecordsByReportingPnlBaseline, summarizeReportingPnlBaseline } from "./reporting-pnl-baseline.mjs";
 import { buildYieldShadowBook, summarizeYieldShadowBook } from "../ledger/yield-shadow-book.mjs";
+import { buildAggressiveSleeveStatus } from "./aggressive-sleeve-slice.mjs";
 import { buildBtcProxySpreadSummary } from "../strategy/btc-proxy-spreads.mjs";
 import { buildCrossAssetArbitrageSummary } from "../strategy/cross-asset-arbitrage.mjs";
 import { buildDexEnvironmentSummary } from "../strategy/dex-environment.mjs";
@@ -2100,6 +2101,7 @@ export function buildDashboardStatus(input, options = {}) {
     ...strategyBase,
     pivotPlan: summarizeStrategyPivotPlan(pivotPlan),
     yieldShadowBook: summarizeYieldShadowBook(yieldShadowBook),
+    aggressiveVelocitySleeve: (await buildAggressiveSleeveStatus({ now }).catch(() => null)) || { sleeve: "aggressive-velocity-v1", available: false },
     proxySpreadCoveragePlan: summarizeProxySpreadCoveragePlan(proxySpreadCoveragePlan),
     // parity floor defaults — enriched by current-dashboard-context.mjs when data available
     chainParity: null,
