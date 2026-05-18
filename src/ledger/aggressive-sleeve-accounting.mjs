@@ -225,6 +225,39 @@ export function exportTaxLots({ from, to } = {}) {
   };
 }
 
+export function computeProRataRewardShare({
+  userLiquidityOrShare = 0n,
+  totalLiquidityOrSupply = 0n,
+  totalRewardAmount = 0n,
+  rewardDecimals = 18,
+} = {}) {
+  const userShare = typeof userLiquidityOrShare === "bigint" ? userLiquidityOrShare : BigInt(userLiquidityOrShare || 0);
+  const totalShare =
+    typeof totalLiquidityOrSupply === "bigint" ? totalLiquidityOrSupply : BigInt(totalLiquidityOrSupply || 0);
+  const rewardAmount = typeof totalRewardAmount === "bigint" ? totalRewardAmount : BigInt(totalRewardAmount || 0);
+
+  if (userShare <= 0n || totalShare <= 0n || rewardAmount <= 0n) {
+    return {
+      claimableReward: 0n,
+      shareBps: 0,
+      sharePct: 0,
+      rewardDecimals,
+      meta: makeMeta(null, { method: "pro-rata" }, "deterministic"),
+    };
+  }
+
+  const claimableReward = (rewardAmount * userShare) / totalShare;
+  const shareBps = Number((userShare * 10000n) / totalShare);
+
+  return {
+    claimableReward,
+    shareBps,
+    sharePct: shareBps / 100,
+    rewardDecimals,
+    meta: makeMeta(null, { method: "pro-rata" }, "deterministic"),
+  };
+}
+
 /**
  * High-yield net BTC profit projection helper.
  * Used by Aggressive Velocity Scanner + Strategist to rank opportunities by

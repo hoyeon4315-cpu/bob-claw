@@ -7,35 +7,35 @@
  * Pattern follows buildYieldShadowBook / receipt reconciliation slices (loose coupling).
  */
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const DATA_DIR = 'data/aggressive-yield';
+const DATA_DIR = "data/aggressive-yield";
 
 function safeReadJson(path) {
-  return readFile(path, 'utf8')
-    .then(t => JSON.parse(t))
-    .catch(() => null);
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
-export async function buildAggressiveSleeveStatus({ now = new Date().toISOString() } = {}) {
-  const ledgerPath = join(DATA_DIR, 'ledger.jsonl');
-  const trackerPath = join(DATA_DIR, 'asset-tracker-state.json');
-  const performancePath = join(DATA_DIR, 'performance.json');
+export function buildAggressiveSleeveStatus({ now = new Date().toISOString() } = {}) {
+  const ledgerPath = join(DATA_DIR, "ledger.jsonl");
+  const trackerPath = join(DATA_DIR, "asset-tracker-state.json");
+  const performancePath = join(DATA_DIR, "performance.json");
 
-  const [tracker, performance] = await Promise.all([
-    safeReadJson(trackerPath),
-    safeReadJson(performancePath),
-  ]);
+  const tracker = safeReadJson(trackerPath);
+  const performance = safeReadJson(performancePath);
 
   // Simple ledger tail count (lightweight, no full parse for dashboard)
   let ledgerEventCount = 0;
   try {
-    const raw = await readFile(ledgerPath, 'utf8');
-    ledgerEventCount = raw.trim().split('\n').filter(Boolean).length;
+    const raw = readFileSync(ledgerPath, "utf8");
+    ledgerEventCount = raw.trim().split("\n").filter(Boolean).length;
   } catch {}
 
-  const sleeve = tracker?.sleeve || 'aggressive-velocity-v1';
+  const sleeve = tracker?.sleeve || "aggressive-velocity-v1";
 
   return {
     sleeve,
@@ -44,13 +44,15 @@ export async function buildAggressiveSleeveStatus({ now = new Date().toISOString
     navUsd: tracker?.totals?.navUsd ?? 0,
     positionCount: (tracker?.positions || []).length,
     ledgerEventCount,
-    performance: performance ? {
-      realizedBtc: performance.realizedBtc ?? 0,
-      paybackContributionBtc: performance.paybackContributionBtc ?? 0,
-    } : null,
+    performance: performance
+      ? {
+          realizedBtc: performance.realizedBtc ?? 0,
+          paybackContributionBtc: performance.paybackContributionBtc ?? 0,
+        }
+      : null,
     meta: {
-      source: 'data/aggressive-yield/* (read-only)',
-      phase: '6',
+      source: "data/aggressive-yield/* (read-only)",
+      phase: "6",
     },
   };
 }

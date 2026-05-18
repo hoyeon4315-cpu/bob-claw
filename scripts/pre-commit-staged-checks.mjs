@@ -74,7 +74,8 @@ export function classifyStagedFiles(files) {
     if (PRETTIER_EXTENSIONS.has(extension) || basename(file) === "_headers") {
       prettierFiles.push(file);
     }
-    if (NODE_CHECK_EXTENSIONS.has(extension)) {
+    const isDashboardBrowserSource = file.startsWith("dashboard/public/") && extension === ".jsx";
+    if (NODE_CHECK_EXTENSIONS.has(extension) && !isDashboardBrowserSource) {
       nodeCheckFiles.push(file);
     }
     if (/^test\/.+\.test\.mjs$/u.test(file)) {

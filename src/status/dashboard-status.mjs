@@ -1924,7 +1924,7 @@ function decideOverall({ audit, gateway, gas, decisionInputs = null }) {
   };
 }
 
-export async function buildDashboardStatus(input, options = {}) {
+export function buildDashboardStatus(input, options = {}) {
   const now = options.now || new Date().toISOString();
   const audit = buildOverfitAudit(
     {
@@ -2101,7 +2101,10 @@ export async function buildDashboardStatus(input, options = {}) {
     ...strategyBase,
     pivotPlan: summarizeStrategyPivotPlan(pivotPlan),
     yieldShadowBook: summarizeYieldShadowBook(yieldShadowBook),
-    aggressiveVelocitySleeve: (await buildAggressiveSleeveStatus({ now }).catch(() => null)) || { sleeve: "aggressive-velocity-v1", available: false },
+    aggressiveVelocitySleeve: buildAggressiveSleeveStatus({ now }) || {
+      sleeve: "aggressive-velocity-v1",
+      available: false,
+    },
     proxySpreadCoveragePlan: summarizeProxySpreadCoveragePlan(proxySpreadCoveragePlan),
     // parity floor defaults — enriched by current-dashboard-context.mjs when data available
     chainParity: null,

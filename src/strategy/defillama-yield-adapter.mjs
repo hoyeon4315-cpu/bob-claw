@@ -17,8 +17,17 @@ import { getDefiLlamaSupportedReceiptProjects } from "../protocol-readers/regist
 const STRATEGY_ID = "defillama-yield-portfolio";
 
 const SUPPORTED_CHAINS = new Set([
-  "ethereum", "bob", "base", "bsc", "avalanche",
-  "unichain", "berachain", "optimism", "soneium", "sei", "sonic",
+  "ethereum",
+  "bob",
+  "base",
+  "bsc",
+  "avalanche",
+  "unichain",
+  "berachain",
+  "optimism",
+  "soneium",
+  "sei",
+  "sonic",
 ]);
 
 const SUPPORTED_FAMILIES = new Set(["stablecoin", "wrapped_btc"]);
@@ -114,16 +123,10 @@ export function validateDefiLlamaYieldConfig(config = {}) {
   if (Number.isFinite(config.maxDailyLossUsd) && config.maxDailyLossUsd <= 0) {
     errors.push("maxDailyLossUsd must be positive");
   }
-  if (
-    Number.isFinite(config.maxPoolSharePct) &&
-    (config.maxPoolSharePct <= 0 || config.maxPoolSharePct > 100)
-  ) {
+  if (Number.isFinite(config.maxPoolSharePct) && (config.maxPoolSharePct <= 0 || config.maxPoolSharePct > 100)) {
     errors.push("maxPoolSharePct must be in (0, 100]");
   }
-  if (
-    Number.isFinite(config.minNetApyBps) &&
-    (config.minNetApyBps < 0 || config.minNetApyBps > 50_000)
-  ) {
+  if (Number.isFinite(config.minNetApyBps) && (config.minNetApyBps < 0 || config.minNetApyBps > 50_000)) {
     errors.push("minNetApyBps must be in [0, 50000]");
   }
   return Object.freeze({
@@ -172,7 +175,7 @@ export function normalizeDefiLlamaYieldPool(pool = {}, defaults = {}) {
     evidenceClass: getDefiLlamaPoolEvidenceClass(
       pool.project || pool.protocol || defaults.protocol,
       chain,
-      defaults.family || pool.family
+      defaults.family || pool.family,
     ),
   });
 }
@@ -184,6 +187,8 @@ function assessPool(pool = {}) {
 
   const family = String(pool.family || "").toLowerCase();
   if (!SUPPORTED_FAMILIES.has(family)) blockers.push("asset_family_not_supported");
+  const protocol = pool.protocol || null;
+  const evidenceClass = pool.evidenceClass || getDefiLlamaPoolEvidenceClass(protocol, chain, family);
 
   const tvlUsd = finite(pool.tvlUsd);
   const apyBps = finite(pool.apyBps);
@@ -211,10 +216,10 @@ function assessPool(pool = {}) {
     gatewayRoundTripCostBps,
     offrampCostBps,
     poolPaused,
-    protocol: pool.protocol || null,
+    protocol,
     poolId: pool.poolId || null,
     symbol: pool.symbol || null,
-    evidenceClass: pool.evidenceClass || null,
+    evidenceClass,
   };
 }
 
@@ -353,9 +358,9 @@ export function evaluateDefiLlamaYieldAdapter({
     };
   });
 
-  const best = poolReports
-    .filter((r) => r.shadowReady)
-    .sort((a, b) => (b.netUsd ?? -Infinity) - (a.netUsd ?? -Infinity))[0] || null;
+  const best =
+    poolReports.filter((r) => r.shadowReady).sort((a, b) => (b.netUsd ?? -Infinity) - (a.netUsd ?? -Infinity))[0] ||
+    null;
 
   const evidence = receiptEvidence(receipts);
 
@@ -382,17 +387,18 @@ export function evaluateDefiLlamaYieldAdapter({
     evidence.realizedNetUsd > 0 &&
     evidence.entryExitProvenCount >= 1;
 
-  const intent = shadowReady || liveReady
-    ? Object.freeze({
-        strategyId: config?.id || STRATEGY_ID,
-        chain: best?.pool?.chain || null,
-        amountUsd: config?.perTradeCapUsd || 0,
-        intentType: "entry",
-        executionReason: "strategy_tick",
-        protocol: best?.pool?.protocol || null,
-        poolId: best?.pool?.poolId || null,
-      })
-    : null;
+  const intent =
+    shadowReady || liveReady
+      ? Object.freeze({
+          strategyId: config?.id || STRATEGY_ID,
+          chain: best?.pool?.chain || null,
+          amountUsd: config?.perTradeCapUsd || 0,
+          intentType: "entry",
+          executionReason: "strategy_tick",
+          protocol: best?.pool?.protocol || null,
+          poolId: best?.pool?.poolId || null,
+        })
+      : null;
 
   return Object.freeze({
     strategyId: config?.id || STRATEGY_ID,
@@ -425,13 +431,14 @@ export function evaluateDefiLlamaYieldAdapter({
     mode: liveReady ? "live_candidate" : shadowReady ? "shadow_ready" : "blocked",
     evidenceClass: bestEvidenceClass,
     intent,
-    microCanaryStatus: evidence.signerBackedCount >= 3
-      ? "micro_canary_repeatable"
-      : evidence.signerBackedCount >= 1
-        ? "minimal_live_proof_exists"
-        : shadowReady
-          ? "micro_canary_ready"
-          : "not_started",
+    microCanaryStatus:
+      evidence.signerBackedCount >= 3
+        ? "micro_canary_repeatable"
+        : evidence.signerBackedCount >= 1
+          ? "minimal_live_proof_exists"
+          : shadowReady
+            ? "micro_canary_ready"
+            : "not_started",
   });
 }
 
