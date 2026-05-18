@@ -5,12 +5,14 @@ import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { resolveOperationalAddress } from "../config/operational-address.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
-import { readLatestJsonlRecord } from "../lib/jsonl-read.mjs";
+import { readJsonl, readLatestJsonlRecord } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { readTriangleArtifacts } from "../flash/triangle-artifacts.mjs";
 import { readSignerAuditLog } from "../executor/signer/audit-log.mjs";
 import { buildStrategyExecutionSurfaces } from "../strategy/strategy-execution-surfaces.mjs";
 import { buildSliceDryRunSummary } from "../strategy/slice-dryrun-summary-builder.mjs";
+import { buildWrappedBtcLendingLoopScaffold } from "../strategy/wrapped-btc-lending-loop-slice.mjs";
+import { buildAggressiveVelocityStatus } from "./report-aggressive-velocity-status.mjs";
 import {
   resolveCapitalManagerPrices,
   resolveCapitalManagerTreasuryInventory,
@@ -24,6 +26,60 @@ export function parseArgs(argv) {
   return {
     json: argv.includes("--json"),
     write: argv.includes("--write"),
+  };
+}
+
+function compact(values = []) {
+  return [...new Set((values || []).filter(Boolean))];
+}
+
+export function overlayAggressiveVelocityExecutionSurface(report, aggressiveStatus) {
+  if (!report || !aggressiveStatus?.strategyId) return report;
+  const strategies = (report.strategies || []).map((strategy) => {
+    if (strategy.id !== aggressiveStatus.strategyId) return strategy;
+    const blocker = aggressiveStatus.liveAdmissionBlockers?.[0] || aggressiveStatus.reason || strategy.fallbackReason;
+    return {
+      ...strategy,
+      status: aggressiveStatus.status || strategy.status,
+      reason: aggressiveStatus.reason || strategy.reason,
+      currentLiveEligible: aggressiveStatus.currentLiveEligible === true,
+      fallbackReason: aggressiveStatus.currentLiveEligible === true ? null : blocker,
+      liveAdmissionBlockers:
+        aggressiveStatus.currentLiveEligible === true
+          ? []
+          : compact(aggressiveStatus.liveAdmissionBlockers || [blocker]),
+      adviceCode: aggressiveStatus.currentLiveEligible === true ? "live_candidate" : blocker,
+      evidence: {
+        ...(strategy.evidence || {}),
+        candidateLadder: aggressiveStatus.candidateLadder || null,
+        selectionDiagnostics: aggressiveStatus.selectionDiagnostics || null,
+        rejectionEvidence: aggressiveStatus.rejectionEvidence || null,
+      },
+    };
+  });
+
+  return {
+    ...report,
+    summary: {
+      ...(report.summary || {}),
+      liveEligibleCount: strategies.filter((strategy) => strategy.currentLiveEligible === true).length,
+    },
+    strategies,
+    strategyDiagnostics: {
+      ...(report.strategyDiagnostics || {}),
+      aggressiveVelocity: {
+        strategyId: aggressiveStatus.strategyId,
+        status: aggressiveStatus.status,
+        reason: aggressiveStatus.reason,
+        currentLiveEligible: aggressiveStatus.currentLiveEligible === true,
+        liveAdmissionBlockers: aggressiveStatus.liveAdmissionBlockers || [],
+        candidateLadder: aggressiveStatus.candidateLadder || null,
+        selectedCount: aggressiveStatus.selectedCount ?? 0,
+        totalQualified: aggressiveStatus.totalQualified ?? 0,
+        selectionDiagnostics: aggressiveStatus.selectionDiagnostics || null,
+        rejectionEvidence: aggressiveStatus.rejectionEvidence || null,
+      },
+    },
   };
 }
 
@@ -43,6 +99,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     triangleArtifacts,
     phase3StrategyValidation,
     wrappedBtcLendingLoopSlice,
+    wrappedBtcLoopDryRunReceipts,
     latestTreasuryInventory,
     wrappedBtcLoopLiveProof,
     signerAuditRecords,
@@ -60,6 +117,7 @@ export async function loadStrategyExecutionSurfaceInputs({
     readTriangleArtifactsImpl(dataDir),
     readJsonIfExists(join(dataDir, "phase3-strategy-validation.json")),
     readJsonIfExists(join(dataDir, "wrapped-btc-lending-loop-slice.json")),
+    readJsonl(dataDir, "wrapped-btc-loop-dry-runs"),
     readLatestJsonlRecord(dataDir, "treasury-inventory"),
     readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
     readSignerAuditLogImpl(),
@@ -108,9 +166,16 @@ export async function loadStrategyExecutionSurfaceInputs({
   const hydratedWrappedBtcLendingLoopSlice = wrappedBtcLendingLoopSlice?.strategy?.id
     ? {
         ...wrappedBtcLendingLoopSlice,
+        ...buildWrappedBtcLendingLoopScaffold({
+          strategyConfig: wrappedBtcLendingLoopSlice.strategy || undefined,
+          marketAssumptions: wrappedBtcLendingLoopSlice.marketAssumptions || undefined,
+          dryRunReceipts: wrappedBtcLoopDryRunReceipts || [],
+          signerAuditRecords,
+        }),
         dryRunSummary: buildSliceDryRunSummary({
           strategyId: wrappedBtcLendingLoopSlice.strategy.id,
           signerAuditRecords,
+          dryRunReceipts: wrappedBtcLoopDryRunReceipts || [],
           existingSummary: wrappedBtcLendingLoopSlice.dryRunSummary || {},
         }),
       }
@@ -164,13 +229,15 @@ export async function loadStrategyExecutionSurfaceInputs({
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { state, dashboardStatus, triangleArtifacts, artifacts } = await loadStrategyExecutionSurfaceInputs();
-  const report = buildStrategyExecutionSurfaces({
+  const baseReport = buildStrategyExecutionSurfaces({
     dashboardStatus,
     state,
     triangleArtifacts,
     artifacts,
     now: new Date().toISOString(),
   });
+  const aggressiveStatus = await buildAggressiveVelocityStatus();
+  const report = overlayAggressiveVelocityExecutionSurface(baseReport, aggressiveStatus);
 
   if (args.write) {
     await writeTextIfChanged(
