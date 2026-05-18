@@ -9,13 +9,34 @@ async function fixtureRoot(name) {
   const root = await mkdtemp(join(tmpdir(), name));
   await mkdir(join(root, "data"), { recursive: true });
   await mkdir(join(root, "dashboard", "public"), { recursive: true });
-  await writeFile(join(root, "dashboard", "public", "strategy-tick-status.json"), JSON.stringify({
-    schemaVersion: 5,
-    strategies: [
-      { strategyId: "s1", lastTickBlockers: ["stale_gateway_quote"], lastTickAt: "2026-05-09T00:00:00.000Z" },
-      { strategyId: "s2", topDenyReason: "same_chain_unprofitable:need_$5_on_base", lastTickAt: "2026-05-09T00:00:00.000Z" },
-    ],
-  }));
+  await writeFile(
+    join(root, "dashboard", "public", "strategy-tick-status.json"),
+    JSON.stringify({
+      schemaVersion: 5,
+      strategies: [
+        { strategyId: "s1", lastTickBlockers: ["stale_gateway_quote"], lastTickAt: "2026-05-09T00:00:00.000Z" },
+        {
+          strategyId: "s2",
+          topDenyReason: "same_chain_unprofitable:need_$5_on_base",
+          lastTickAt: "2026-05-09T00:00:00.000Z",
+        },
+      ],
+    }),
+  );
+  await writeFile(
+    join(root, "dashboard", "public", "capital-routing-plan.json"),
+    JSON.stringify({
+      routingPlan: [
+        {
+          strategyId: "s1",
+          classification: "ready_with_capital_addition",
+          expectedDailyUsdOnResolve: 1.25,
+        },
+      ],
+      unresolvable: [],
+      classifications: [],
+    }),
+  );
   return root;
 }
 
@@ -38,6 +59,8 @@ test("blocker resolver preview writes a plan and never enqueues", async () => {
   assert.equal(preview.summary.requiresStrategyOrCapitalChangeCount, 0);
   assert.equal(preview.filteredCandidates.count, 1);
   assert.equal(preview.groups[0].expectedDailyUsdOnResolve ?? null, null);
+  const funnel = JSON.parse(await readFile(join(root, "dashboard", "public", "blocker-funnel.json"), "utf8"));
+  assert.equal(funnel.capitalRouting.planCount, 1);
 });
 
 test("blocker resolver execute respects readiness hard guard", async () => {

@@ -545,6 +545,7 @@ export function evGate(
       sampleThreshold,
       costMultiplier,
       minProfitFloorUsd,
+      effectiveMinProfitFloor,
       fallbackP99CostUsd,
       costSource: hasSufficientHistory
         ? "history_p90"

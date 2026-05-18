@@ -4,7 +4,11 @@ import { test } from "node:test";
 import { buildEvCostModel, evGate } from "../src/executor/policy/ev-gate.mjs";
 import { evaluateEvMarginFloor } from "../src/risk/ev-margin-floor.mjs";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
-import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../src/config/sizing.mjs";
+import {
+  EXECUTION_EV_COST_POLICY,
+  executionEvFallbackCostUsd,
+  tinyCanarySameChainRoundTripCostUsd,
+} from "../src/config/sizing.mjs";
 import { stableSerialize } from "../src/execution/journal.mjs";
 
 function sha256(value) {
@@ -262,11 +266,19 @@ test("evGate still blocks marked capital rebalance when explicit expected net is
       },
     }),
     makeHistory([0.1, 0.2, 0.3], { strategyId: "token-dex-experiment", intentType: "dex_swap" }),
-    { now: "2026-05-15T00:00:00.000Z" },
+    {
+      now: "2026-05-15T00:00:00.000Z",
+      policy: {
+        ...EXECUTION_EV_COST_POLICY,
+        minProfitFloorUsd: 0.25,
+      },
+    },
   );
 
   assert.equal(verdict.allow, false);
   assert.deepEqual(verdict.blockers, ["expected_net_below_receipt_cost_p90_floor"]);
+  assert.equal(verdict.evidence.minProfitFloorUsd, 0.25);
+  assert.equal(verdict.evidence.effectiveMinProfitFloor, 0.1);
 });
 
 test("evGate accepts expectedNetProfitUsd aliases from campaign proposers", () => {

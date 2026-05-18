@@ -424,7 +424,15 @@ async function loadBlockerResolverInputs(paths, cwd, resolvedDataDir, strategyTi
     ...(capitalRoutingPlan?.classifications || []).map((row) => [row.strategyId, row]),
   ]);
 
-  return { resolverState, reconciled, groups, filteredCandidates, capitalRoutingByStrategy, circuitState };
+  return {
+    resolverState,
+    reconciled,
+    groups,
+    filteredCandidates,
+    capitalRoutingPlan,
+    capitalRoutingByStrategy,
+    circuitState,
+  };
 }
 
 export async function runBlockerResolverCli(
@@ -460,7 +468,15 @@ export async function runBlockerResolverCli(
 
   try {
     const inputs = await loadBlockerResolverInputs(paths, cwd, resolvedDataDir, strategyTickStatus, now);
-    const { resolverState, reconciled, groups, filteredCandidates, capitalRoutingByStrategy, circuitState } = inputs;
+    const {
+      resolverState,
+      reconciled,
+      groups,
+      filteredCandidates,
+      capitalRoutingPlan,
+      capitalRoutingByStrategy,
+      circuitState,
+    } = inputs;
 
     const { plansByKey, previewPlans: initialPreviewPlans } = await buildBlockerPlans({
       groups,

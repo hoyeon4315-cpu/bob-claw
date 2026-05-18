@@ -598,7 +598,7 @@ test("treasury refill executor blocks bridge execution when quote cost exceeds d
     job: nativeRefillJob({
       executionMethod: "cross_chain_bridge_lifi",
       fundingSource: {
-        expectedExecutionRefillCostUsd: 1.6,
+        expectedExecutionRefillCostUsd: 2.6,
         source: {
           chain: "base",
           token: WBTC_OFT_TOKEN,
