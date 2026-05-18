@@ -1,78 +1,71 @@
 /**
  * Aggressive Velocity Opportunity Scanner
- * 
+ *
  * Core of the Diversified Aggressive Velocity Chaser.
- * 
+ *
  * Goal: Reliably produce a healthy volume of *executable* candidates for the
  * Aggressive Velocity Sleeve (25-35% capital allocation).
- * 
+ *
  * Key difference from core/tiny-canary pipeline:
  * - Designed for short-term incentive chasing (not 96h+ conservative windows).
  * - Velocity Score explicitly rewards good automated exit feasibility.
  * - More permissive on campaign duration and temporary negative EV, but very strict on exit automation + cost efficiency.
  * - This is how we solve the "executableCount: 0" problem observed in radar-board.
- * 
+ *
  * Primary data: Merkl (via existing ingestion)
  * Secondary (strictly filtered): DefiLlama
- * 
+ *
  * The output of this scanner is consumed by the Aggressive Yield Strategist.
- * 
+ *
  * TDD note: Tests should be added in test/strategy/aggressive-velocity/ as this module grows.
  */
 
-import { readJsonl } from '../../lib/jsonl-read.mjs';
-import { getLatestMerklOpportunities } from '../merkl/merkl-opportunity-ingest.mjs';
+import { readJsonl } from "../../lib/jsonl-read.mjs";
+import { getLatestMerklOpportunities } from "../merkl/merkl-opportunity-ingest.mjs";
 import {
-  estimateAllInExitCost,
-  calculateExpectedNetBtcProfit
-} from '../../ledger/aggressive-sleeve-accounting.mjs'; // Canonical high net yield calculator (library is source of truth)
-import { rankByNetBtcProfitPerRisk, simulateHighYieldExitOutcomes, calculateRealizationFeasibilityScore } from './risk-exit-manager.mjs'; // Use risk-adjusted ranking + library-driven realized profit simulation + feasibility scoring for high net yield candidates
-import { isOfficialGatewayDestinationChain } from '../../config/gateway-destinations.mjs'; // AGENTS.md single source of truth: exactly 11 official Gateway destinations only. Arbitrum/Polygon forbidden for sleeve.
-
-const SLEEVE_ID = 'aggressive-velocity-v1';
-
-// Aggressive Sleeve Candidate Criteria — deliberately volume-oriented while safe via exit automation
-export const AGGRESSIVE_VELOCITY_CRITERIA = {
-  minRemainingHours: 6,
-  maxILBpsForCL: 850,
-  maxSinglePositionPctOfSleeve: 28,
-  minVelocityScore: 52,
-  requireCredibleExitPath: true,
-  maxCostDragPct: 38,
-  // allowedChains is deprecated in favor of isOfficialGatewayDestinationChain (single source of truth).
-  // Must never include Arbitrum or Polygon. Only the 11 official per AGENTS.md + src/config/gateway-destinations.mjs.
-  allowedChains: ['ethereum', 'bob', 'base', 'bsc', 'avalanche', 'unichain', 'bera', 'optimism', 'soneium', 'sei', 'sonic'],
-  targetExecutableCountMin: 20,
-  // Strict high net yield bar (enforced via library projection in calculateHighYieldVelocityScore)
-  minExpectedNetBtcProfit: 0.00005,
-  onlyHighQualityNetYield: true,
-};
+  AGGRESSIVE_REALIZATION_CONFIG,
+  AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+  AGGRESSIVE_VELOCITY_SCANNER_CONFIG as AGGRESSIVE_VELOCITY_CRITERIA,
+  AGGRESSIVE_VELOCITY_SLEEVE_ID as SLEEVE_ID,
+  isAggressiveVelocitySupportedChain,
+  normalizeAggressiveVelocityChain,
+  resolveAggressiveVelocityFeasibilityConfig,
+  resolveAggressiveVelocityRoundtripEstimateConfig,
+} from "../../config/aggressive-velocity/config.mjs";
+import { estimateAllInExitCost, calculateExpectedNetBtcProfit } from "../../ledger/aggressive-sleeve-accounting.mjs"; // Canonical high net yield calculator (library is source of truth)
+import {
+  rankByNetBtcProfitPerRisk,
+  simulateHighYieldExitOutcomes,
+  calculateRealizationFeasibilityScore,
+  passesAggressiveRealizationGate,
+} from "./risk-exit-manager.mjs"; // Use risk-adjusted ranking + library-driven realized profit simulation + feasibility scoring for high net yield candidates
 
 /**
  * High-Yield Velocity Score (Aggressive Velocity Chaser — BTC-denominated 고수익 중심)
- * 
+ *
  * 최우선 목표: **high expected net BTC profit**을 낼 수 있는 기회만 선별.
- * 
+ *
  * 개선점:
  * - Net profit을 USD뿐만 아니라 BTC 환산 값도 함께 계산
  * - Net BTC yield를 기반으로 quality를 더 엄격하게 판단
  * - 회계 라이브러리와의 연동을 위해 net profit 계산식을 명확히 분리
  */
-export function calculateHighYieldVelocityScore(opportunity, exitFeasibility, costEstimate, btcPriceUsd = 105000) {
-  const {
-    incentiveUsdPerDay = 0,
-    remainingHours = 0,
-    tvlUsd = 0,
-    chain = 'base',
-    protocol = 'unknown'
-  } = opportunity;
+export function calculateHighYieldVelocityScore(
+  opportunity,
+  exitFeasibility,
+  costEstimate,
+  btcPriceUsd = AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+) {
+  const { incentiveUsdPerDay = 0, remainingHours = 0, tvlUsd = 0, chain = "base", protocol = "unknown" } = opportunity;
 
   // === PRIMARY: Delegate net BTC profit calculation to the accounting library (source of truth) ===
   const projection = calculateExpectedNetBtcProfit({
     incentiveUsdPerDay,
     remainingHours: Math.max(remainingHours, 0.1),
     positionKey: `${chain}:${protocol}`,
-    currentBtcPriceUsd: btcPriceUsd
+    currentBtcPriceUsd: btcPriceUsd,
+    aprPct:
+      opportunity.aprPct ?? opportunity.apr ?? opportunity.apy ?? opportunity.totalApy ?? opportunity.rewardApy ?? null,
   });
 
   const netDailyProfitBtc = projection.netDailyProfitBtc;
@@ -91,7 +84,7 @@ export function calculateHighYieldVelocityScore(opportunity, exitFeasibility, co
   let highProfitBonus = 0;
   if (expectedNetBtcProfit >= 0.00012) {
     highProfitBonus = 22; // extreme boost for the absolute top-tier high-net-profit opportunities
-  } else if (expectedNetBtcProfit >= 0.00010) {
+  } else if (expectedNetBtcProfit >= 0.0001) {
     highProfitBonus = 16; // strong extra boost for truly exceptional high-net-profit opportunities
   } else if (expectedNetBtcProfit >= 0.00007) {
     highProfitBonus = 8;
@@ -103,7 +96,8 @@ export function calculateHighYieldVelocityScore(opportunity, exitFeasibility, co
   const finalScore = Math.max(0, Math.min(100, netProfitScore + exitBonus + highProfitBonus));
 
   // Strict high net yield gate: only opportunities with strong library-backed net BTC profit get meaningful scores
-  const isTrueHighYield = quality === 'high' && expectedNetBtcProfit >= 0.00005;
+  const isTrueHighYield =
+    quality === "high" && expectedNetBtcProfit >= AGGRESSIVE_VELOCITY_CRITERIA.minExpectedNetBtcProfit;
 
   // If it doesn't meet the high net profit bar, collapse the score so it gets filtered early
   const adjustedFinalScore = isTrueHighYield ? finalScore : Math.min(40, finalScore * 0.4);
@@ -111,6 +105,8 @@ export function calculateHighYieldVelocityScore(opportunity, exitFeasibility, co
   return {
     score: Math.round(adjustedFinalScore),
     netDailyProfitBtc: parseFloat(netDailyProfitBtc.toFixed(8)),
+    netDailyProfitUsd: projection.netDailyProfitUsd,
+    netYieldPctPerDay: projection.netYieldPctPerDay,
     expectedNetBtcProfit: parseFloat(expectedNetBtcProfit.toFixed(8)),
     expectedNetProfitQuality: quality,
     totalCostBtc: projection.totalRoundtripCostBtc || 0,
@@ -119,14 +115,12 @@ export function calculateHighYieldVelocityScore(opportunity, exitFeasibility, co
     // New explicit high-net-yield velocity signal: pure, high-resolution scaling of the
     // accounting library's expectedNetBtcProfit. This is the canonical "how strong is this
     // high-profit opportunity on a 0-100 scale" for the Aggressive Velocity Chaser.
-    highNetYieldVelocity: isTrueHighYield
-      ? Math.round(Math.min(100, expectedNetBtcProfit * 750000))
-      : 0,
+    highNetYieldVelocity: isTrueHighYield ? Math.round(Math.min(100, expectedNetBtcProfit * 750000)) : 0,
     // Risk-adjusted high-net-yield velocity: highNetYieldVelocity scaled by exit feasibility
     // at scoring time. This brings the risk dimension into the Velocity Score early.
     riskAdjustedHighNetYieldVelocity: isTrueHighYield
-      ? Math.round(Math.min(100, (expectedNetBtcProfit * 750000) * ((exitFeasibility?.score || 60) / 100)))
-      : 0
+      ? Math.round(Math.min(100, expectedNetBtcProfit * 750000 * ((exitFeasibility?.score || 60) / 100)))
+      : 0,
   };
 }
 
@@ -140,47 +134,74 @@ export function calculateIncentiveVelocityScore(opportunity, exitFeasibilityScor
  * Main scanner function for the Aggressive Velocity Sleeve.
  * Returns a list of opportunities that are considered "executable candidates" for the sleeve.
  */
-export async function scanAggressiveVelocityOpportunities({ 
-  merklDataPath,
-  currentSleeveNavBtc,
-  protocolMarks 
-} = {}) {
+export async function scanAggressiveVelocityOpportunities({ merklDataPath, currentSleeveNavBtc, protocolMarks } = {}) {
   // 1. Ingest raw Merkl opportunities (reuse existing pipeline)
   const rawMerkl = await getLatestMerklOpportunities({ limit: 500 });
+  const rejectedCounts = {};
+  const stageCounts = {
+    passedBaseFilters: 0,
+    passedCredibleExit: 0,
+    passedVelocityScore: 0,
+    passedHighNetYield: 0,
+    executableCandidates: 0,
+    finalSelected: 0,
+  };
 
   let candidates = [];
 
   for (const opp of rawMerkl) {
     // Sleeve-specific aggressive filters (not the conservative core filters)
-    if (!passesAggressiveFilters(opp)) continue;
-
-    // Estimate all-in costs + exit cost using the accounting library when ready
-    const costEstimate = await estimateAggressiveRoundtripCost(opp);
-
-    // Critical: strong, library-backed exit feasibility turns volume into executable candidates
-    const exitFeasibility = await evaluateExitFeasibility(opp, protocolMarks);
-
-    if (AGGRESSIVE_VELOCITY_CRITERIA.requireCredibleExitPath && !exitFeasibility.credible) {
+    const baseFilterReason = aggressiveBaseFilterReason(opp);
+    if (baseFilterReason) {
+      incrementRejectedCount(rejectedCounts, baseFilterReason);
       continue;
     }
+    stageCounts.passedBaseFilters += 1;
+    const canonicalChain = normalizeAggressiveVelocityChain(opp.chain) || opp.chain;
+    const normalizedOpportunity = canonicalChain === opp.chain ? opp : { ...opp, chain: canonicalChain };
 
-    const yieldResult = calculateHighYieldVelocityScore(opp, exitFeasibility, costEstimate);
+    // Estimate all-in costs + exit cost using the accounting library when ready
+    const costEstimate = await estimateAggressiveRoundtripCost(normalizedOpportunity);
+
+    // Critical: strong, library-backed exit feasibility turns volume into executable candidates
+    const exitFeasibility = await evaluateExitFeasibility(normalizedOpportunity, protocolMarks);
+
+    if (AGGRESSIVE_VELOCITY_CRITERIA.requireCredibleExitPath && !exitFeasibility.credible) {
+      incrementRejectedCount(rejectedCounts, "exit_path_not_credible");
+      continue;
+    }
+    stageCounts.passedCredibleExit += 1;
+
+    const yieldResult = calculateHighYieldVelocityScore(normalizedOpportunity, exitFeasibility, costEstimate);
 
     // Strict high net yield filter (library-driven): only strong expected net BTC profit after all costs
-    if (yieldResult.score < AGGRESSIVE_VELOCITY_CRITERIA.minVelocityScore) continue;
-    if (!yieldResult.isHighNetYield) continue; // Only true high net yield (quality=high + meaningful expectedNetBtcProfit)
+    if (yieldResult.score < AGGRESSIVE_VELOCITY_CRITERIA.minVelocityScore) {
+      incrementRejectedCount(rejectedCounts, "velocity_score_below_minimum");
+      continue;
+    }
+    stageCounts.passedVelocityScore += 1;
+    if (!yieldResult.isHighNetYield) {
+      incrementRejectedCount(rejectedCounts, "expected_net_btc_below_minimum");
+      continue;
+    } // Only true high net yield (quality=high + meaningful expectedNetBtcProfit)
+    stageCounts.passedHighNetYield += 1;
 
     // High net yield override: exceptionally strong library-backed expected net BTC profit
     // gets a lower feasibility bar to enter the executable pool. The later strict triple gate
     // (realized profit + capture rate + feasibility) and Strategist selection still protect quality.
     // This evolution ensures the very best high-profit opportunities are not dropped early.
-    const isHighNetProfitOverride = yieldResult.isHighNetYield &&
-      (yieldResult.expectedNetBtcProfit || 0) >= 0.00008 &&
-      exitFeasibility.score >= 50;
-    const isExecutable = (exitFeasibility.score >= 65 && yieldResult.score >= 58) || isHighNetProfitOverride;
+    const isHighNetProfitOverride =
+      yieldResult.isHighNetYield &&
+      (yieldResult.expectedNetBtcProfit || 0) >=
+        AGGRESSIVE_VELOCITY_CRITERIA.execution.highNetProfitOverrideExpectedNetBtc &&
+      exitFeasibility.score >= AGGRESSIVE_VELOCITY_CRITERIA.execution.highNetProfitOverrideMinFeasibilityScore;
+    const isExecutable =
+      (exitFeasibility.score >= AGGRESSIVE_VELOCITY_CRITERIA.execution.minExitFeasibilityScore &&
+        yieldResult.score >= AGGRESSIVE_VELOCITY_CRITERIA.execution.minVelocityScore) ||
+      isHighNetProfitOverride;
 
     candidates.push({
-      ...opp,
+      ...normalizedOpportunity,
       sleeve: SLEEVE_ID,
       velocityScore: yieldResult.score,
       netDailyProfitUsd: yieldResult.netDailyProfitUsd,
@@ -197,8 +218,8 @@ export async function scanAggressiveVelocityOpportunities({
       riskAdjustedHighNetYieldVelocity: yieldResult.riskAdjustedHighNetYieldVelocity,
       executable: isExecutable,
       recommendedAllocationPct: Math.min(
-        AGGRESSIVE_VELOCITY_CRITERIA.maxSinglePositionPctOfSleeve, 
-        Math.floor(yieldResult.score / 2.8)
+        AGGRESSIVE_VELOCITY_CRITERIA.maxSinglePositionPctOfSleeve,
+        Math.floor(yieldResult.score / 2.8),
       ),
     });
   }
@@ -207,8 +228,8 @@ export async function scanAggressiveVelocityOpportunities({
   // For non-high yield, fall back to risk-adjusted profit-per-risk ratio.
   // This evolves the Scanner's core ranking to strongly favor opportunities with high expected net profit.
   candidates.sort((a, b) => {
-    const aHigh = a.expectedNetProfitQuality === 'high';
-    const bHigh = b.expectedNetProfitQuality === 'high';
+    const aHigh = a.expectedNetProfitQuality === "high";
+    const bHigh = b.expectedNetProfitQuality === "high";
     if (aHigh && !bHigh) return -1;
     if (!aHigh && bHigh) return 1;
     if (aHigh && bHigh) {
@@ -228,8 +249,8 @@ export async function scanAggressiveVelocityOpportunities({
   // This makes the main Scanner output (the broader executable list) already surface high expected net profit opportunities
   // with the same risk-adjusted realized priority metric that the final strict high-yield list uses.
   // Downstream (Strategist, any velocity consumer) now sees high net yield priority even before the triple gate.
-  candidates.forEach(c => {
-    if (c.expectedNetProfitQuality === 'high' && c.executable) {
+  candidates.forEach((c) => {
+    if (c.expectedNetProfitQuality === "high" && c.executable) {
       const feasibility = calculateRealizationFeasibilityScore(c);
       c.realizationFeasibilityScore = feasibility;
       const baseVelocity = c.highNetYieldVelocity ?? Math.min(70, (c.expectedNetBtcProfit || 0) * 600000);
@@ -251,19 +272,20 @@ export async function scanAggressiveVelocityOpportunities({
   // This ensures the main Scanner output surfaces and ranks high net yield opportunities at the top using
   // the same "high expected net profit × realizability" logic as the final strict high-yield list.
   candidates.sort((a, b) => {
-    const aHigh = a.expectedNetProfitQuality === 'high';
-    const bHigh = b.expectedNetProfitQuality === 'high';
+    const aHigh = a.expectedNetProfitQuality === "high";
+    const bHigh = b.expectedNetProfitQuality === "high";
     if (aHigh && !bHigh) return -1;
     if (!aHigh && bHigh) return 1;
     if (aHigh && bHigh) {
-      const va = a.highNetYieldRankScore ?? (a.highNetYieldVelocity ?? 0);
-      const vb = b.highNetYieldRankScore ?? (b.highNetYieldVelocity ?? 0);
+      const va = a.highNetYieldRankScore ?? a.highNetYieldVelocity ?? 0;
+      const vb = b.highNetYieldRankScore ?? b.highNetYieldVelocity ?? 0;
       return vb - va;
     }
     return 0; // preserve relative order for non-high
   });
 
-  const highYieldExecutable = candidates.filter(c => c.executable && c.expectedNetProfitQuality === 'high');
+  const highYieldExecutable = candidates.filter((c) => c.executable && c.expectedNetProfitQuality === "high");
+  stageCounts.executableCandidates = highYieldExecutable.length;
 
   // Library-driven realization preview: attach expected realized net BTC to every high net yield candidate
   // using the same automated exit simulation as the Strategist.
@@ -273,6 +295,9 @@ export async function scanAggressiveVelocityOpportunities({
     if (sim) {
       c.simulatedRealizedNetBtc = sim.simulatedRealizedNetBtc;
       c.simulatedCaptureRate = sim.captureRate;
+      c.simulatedExitReason = sim.exitReason;
+      c.feasibilityAtExit = sim.feasibilityAtExit;
+      c.highProfitProtected = sim.highProfitProtected === true;
     }
   });
 
@@ -285,7 +310,7 @@ export async function scanAggressiveVelocityOpportunities({
   });
 
   // Make the velocityScore on high-yield candidates reflect the actual realizable high net profit, risk-adjusted by feasibility
-  highYieldExecutable.forEach(c => {
+  highYieldExecutable.forEach((c) => {
     // Compute feasibility first so we can use it for risk-adjustment of the velocity
     const feasibility = calculateRealizationFeasibilityScore(c);
     c.realizationFeasibilityScore = feasibility;
@@ -307,15 +332,28 @@ export async function scanAggressiveVelocityOpportunities({
   // AND a good feasibility score (high likelihood that the high profit will be captured via exit rules).
   // This ensures the Scanner only surfaces high net yield opportunities that can actually deliver
   // high realized returns safely and efficiently.
-  const MIN_REALIZED_NET_BTC = 0.00003;
-  const MIN_CAPTURE_RATE = 0.65;   // Aligned with Strategist minSimulatedCaptureRate
-  const MIN_FEASIBILITY_SCORE = 60; // Reasonable bar for "good exit feasibility" (0-100 scale)
-  const finalHighYieldExecutable = highYieldExecutable.filter(c => {
-    const realized = c.simulatedRealizedNetBtc || 0;
-    const capture = c.simulatedCaptureRate || 0;
-    const feasibility = c.realizationFeasibilityScore || 0;
-    return realized >= MIN_REALIZED_NET_BTC && capture >= MIN_CAPTURE_RATE && feasibility >= MIN_FEASIBILITY_SCORE;
+  const finalHighYieldExecutable = highYieldExecutable.filter((c) => {
+    const gate = passesAggressiveRealizationGate(
+      {
+        simulatedRealizedNetBtc: c.simulatedRealizedNetBtc || 0,
+        captureRate: c.simulatedCaptureRate || 0,
+        feasibilityScore: c.feasibilityAtExit || c.realizationFeasibilityScore || 0,
+        highProfitProtected: c.highProfitProtected === true,
+      },
+      {
+        minRealizedNetBtc: AGGRESSIVE_VELOCITY_CRITERIA.finalSelection.minRealizedNetBtc,
+        minCaptureRate: AGGRESSIVE_VELOCITY_CRITERIA.finalSelection.minCaptureRate,
+        minFeasibilityScore: AGGRESSIVE_VELOCITY_CRITERIA.finalSelection.minFeasibilityScore,
+      },
+    );
+    if (!gate.pass) {
+      incrementRejectedCount(rejectedCounts, gate.reason);
+      return false;
+    }
+    if (gate.override) c.realizationGateOverride = gate.override;
+    return true;
   });
+  stageCounts.finalSelected = finalHighYieldExecutable.length;
 
   // Final ranking for high net yield: primary by riskAdjustedHighNetYieldVelocity (high expected net profit × feasibility at scoring time).
   // Secondary: risk-adjusted realized profit (to prefer those with strong automated exit feasibility within similar profit levels).
@@ -333,7 +371,7 @@ export async function scanAggressiveVelocityOpportunities({
   // Attach an explicit highNetYieldRankScore (the composite used for final ranking) for downstream clarity.
   // Now computed as highNetYieldVelocity × feasibility (high expected net profit × risk-adjusted).
   // This keeps the rank score consistent with the risk-adjusted velocityScore.
-  finalHighYieldExecutable.forEach(c => {
+  finalHighYieldExecutable.forEach((c) => {
     const feasibility = c.realizationFeasibilityScore || 0;
     const baseVelocity = c.highNetYieldVelocity ?? Math.min(70, (c.expectedNetBtcProfit || 0) * 600000);
     c.highNetYieldRankScore = baseVelocity * (feasibility / 100);
@@ -369,25 +407,25 @@ export async function scanAggressiveVelocityOpportunities({
     sleeve: SLEEVE_ID,
     scannedAt: new Date().toISOString(),
     rawCount: rawMerkl.length,
-    executableCandidateCount: candidates.filter(c => c.executable).length,
+    executableCandidateCount: candidates.filter((c) => c.executable).length,
     highYieldExecutableCount: finalHighYieldExecutable.length,
     totalCandidates: candidates.length,
     candidates,
-    highYieldExecutableCandidates: finalHighYieldExecutable,     // Final strict high net yield list with meaningful size + strong capture
+    highYieldExecutableCandidates: finalHighYieldExecutable, // Final strict high net yield list with meaningful size + strong capture
     realizationPreview: {
       totalSimulatedRealizedNetBtc: finalRealizationPreview.totalSimulatedRealizedNetBtc,
       aggregateCaptureRate: finalRealizationPreview.aggregateCaptureRate,
       // High-profit realization metrics (from library-driven exit simulation)
       highProfitCandidates: finalRealizationPreview.highProfitCandidates || 0,
       highProfitProtectedCount: finalRealizationPreview.highProfitProtectedCount || 0,
-      highProfitAggregateCaptureRate: finalRealizationPreview.highProfitAggregateCaptureRate || 0
+      highProfitAggregateCaptureRate: finalRealizationPreview.highProfitAggregateCaptureRate || 0,
     },
     // Dedicated high-net-yield summary (library-backed expected net BTC profit + realization metrics)
     // Helps downstream monitoring surface the quality, scale, and realized performance of high-profit opportunities found this scan.
     highYieldSummary: {
       count: finalHighYieldExecutable.length,
       totalExpectedNetBtc: parseFloat(
-        finalHighYieldExecutable.reduce((s, c) => s + (c.expectedNetBtcProfit || 0), 0).toFixed(8)
+        finalHighYieldExecutable.reduce((s, c) => s + (c.expectedNetBtcProfit || 0), 0).toFixed(8),
       ),
       topHighNetYieldVelocity: finalHighYieldExecutable[0]?.highNetYieldVelocity || 0,
       topExpectedNetBtcProfit: finalHighYieldExecutable[0]?.expectedNetBtcProfit || 0,
@@ -396,13 +434,18 @@ export async function scanAggressiveVelocityOpportunities({
       highProfitProtectedCount: finalRealizationPreview.highProfitProtectedCount || 0,
       highProfitAggregateCaptureRate: finalRealizationPreview.highProfitAggregateCaptureRate || 0,
       // Top 3 high-net-yield opportunities for quick visibility (by highNetYieldVelocity)
-      top3: finalHighYieldExecutable.slice(0, 3).map(c => ({
+      top3: finalHighYieldExecutable.slice(0, 3).map((c) => ({
         chain: c.chain,
         protocol: c.protocol,
         expectedNetBtcProfit: c.expectedNetBtcProfit,
         highNetYieldVelocity: c.highNetYieldVelocity,
-        realizationFeasibilityScore: c.realizationFeasibilityScore
-      }))
+        realizationFeasibilityScore: c.realizationFeasibilityScore,
+      })),
+    },
+    diagnostics: {
+      rawCount: rawMerkl.length,
+      stageCounts,
+      rejectedByReason: summarizeRejectedCounts(rejectedCounts),
     },
   };
 }
@@ -419,78 +462,97 @@ export async function getHighYieldExecutableCandidates(options = {}) {
   };
 }
 
-function passesAggressiveFilters(opp) {
+function aggressiveBaseFilterReason(opp) {
   // Much more permissive than core for short-term plays
-  if (opp.remainingHours < AGGRESSIVE_VELOCITY_CRITERIA.minRemainingHours) return false;
-
-  // AGENTS.md hard rule: ONLY the 11 official Gateway destinations. Use canonical checker (handles aliases like berachain→bera, bnb→bsc).
-  // Arbitrum and Polygon are explicitly forbidden for the Aggressive Velocity Sleeve.
-  if (!isOfficialGatewayDestinationChain(opp.chain)) return false;
+  if (opp.remainingHours < AGGRESSIVE_VELOCITY_CRITERIA.minRemainingHours) return "remaining_hours_below_minimum";
+  if (!isAggressiveVelocitySupportedChain(opp.chain)) return "unsupported_chain";
 
   // Still protect against obvious garbage
-  if (opp.tvlUsd < 500_000) return false; // minimum TVL filter (can be tuned)
+  if (opp.tvlUsd < 500_000) return "tvl_below_minimum"; // minimum TVL filter (can be tuned)
 
-  return true;
+  return null;
+}
+
+function incrementRejectedCount(rejectedCounts, reason) {
+  rejectedCounts[reason] = (rejectedCounts[reason] || 0) + 1;
+}
+
+function summarizeRejectedCounts(rejectedCounts = {}) {
+  return Object.entries(rejectedCounts)
+    .sort((left, right) => {
+      if (right[1] !== left[1]) return right[1] - left[1];
+      return left[0].localeCompare(right[0]);
+    })
+    .map(([reason, count]) => ({ reason, count }));
 }
 
 async function evaluateExitFeasibility(opportunity, protocolMarks = []) {
   // This is the key function to turn "candidate" into "executable".
   // It uses the accounting library's estimateAllInExitCost and will later integrate backtestExitRules.
 
-  const positionKey = `${opportunity.chain}:${opportunity.protocolId || opportunity.protocol}:${opportunity.identifier || ''}`;
+  const feasibilityConfig = resolveAggressiveVelocityFeasibilityConfig(opportunity.chain);
+  const positionKey = `${feasibilityConfig.chain}:${opportunity.protocolId || opportunity.protocol}:${opportunity.identifier || ""}`;
 
-  let baseScore = 45;
+  let baseScore = AGGRESSIVE_VELOCITY_CRITERIA.feasibility.baseScore;
 
   // Use the real accounting library for exit cost estimation (even on stub, the interface is wired)
-  const exitCost = await estimateAllInExitCost(
-    positionKey,
-    5 + (opportunity.chain === 'ethereum' ? 15 : 4), // rough gas
-    40 // assumed slippage bps for aggressive sleeve
-  );
+  const exitCost = await estimateAllInExitCost(positionKey, feasibilityConfig.gasUsd, feasibilityConfig.slippageBps);
 
-  const costDrag = exitCost?.totalUsd ? Math.min(50, exitCost.totalUsd / 15) : 20;
+  const costDrag = exitCost?.totalUsd
+    ? Math.min(50, exitCost.totalUsd / AGGRESSIVE_VELOCITY_CRITERIA.feasibility.costDragDivisorUsd)
+    : 20;
   baseScore -= costDrag;
 
   // Liquidity venue bonus (better exit = higher executable rate = more candidates)
-  const protocol = (opportunity.protocolName || opportunity.protocol || '').toLowerCase();
-  if (protocol.includes('aerodrome') || protocol.includes('uniswap') || protocol.includes('velodrome')) {
-    baseScore += 22;
-  } else if (protocol.includes('morpho') || protocol.includes('aave')) {
-    baseScore += 15;
+  const protocol = (opportunity.protocolName || opportunity.protocol || "").toLowerCase();
+  if (protocol.includes("aerodrome") || protocol.includes("uniswap") || protocol.includes("velodrome")) {
+    baseScore += AGGRESSIVE_VELOCITY_CRITERIA.feasibility.protocolLiquidityBonuses.aerodrome;
+  } else if (protocol.includes("morpho") || protocol.includes("aave")) {
+    baseScore += AGGRESSIVE_VELOCITY_CRITERIA.feasibility.protocolLiquidityBonuses.morpho;
   }
 
   // Campaign maturity bonus for short-term plays
-  if (opportunity.remainingHours >= 8 && opportunity.remainingHours <= 48) {
-    baseScore += 12; // sweet spot for aggressive chaser
+  if (
+    opportunity.remainingHours >= AGGRESSIVE_VELOCITY_CRITERIA.feasibility.sweetSpotRemainingHours.min &&
+    opportunity.remainingHours <= AGGRESSIVE_VELOCITY_CRITERIA.feasibility.sweetSpotRemainingHours.max
+  ) {
+    baseScore += AGGRESSIVE_VELOCITY_CRITERIA.feasibility.sweetSpotRemainingHours.bonus;
   }
 
   // Penalize if no clear exit path on-chain
-  if (opportunity.status !== 'LIVE' && !opportunity.depositUrl) baseScore -= 25;
+  if (opportunity.status !== "LIVE" && !opportunity.depositUrl) {
+    baseScore -= AGGRESSIVE_VELOCITY_CRITERIA.feasibility.missingLivePenalty;
+  }
 
-  const finalScore = Math.max(30, Math.min(98, Math.round(baseScore)));
+  const finalScore = Math.max(
+    AGGRESSIVE_VELOCITY_CRITERIA.feasibility.minScore,
+    Math.min(AGGRESSIVE_VELOCITY_CRITERIA.feasibility.maxScore, Math.round(baseScore)),
+  );
 
   return {
     score: finalScore,
     estimatedExitCostUsd: exitCost?.totalUsd || 12,
-    reasons: ['library_estimateAllInExitCost', protocol.includes('aerodrome') ? 'good_cl_liquidity' : 'standard'],
-    credible: finalScore >= 65,
+    reasons: ["library_estimateAllInExitCost", protocol.includes("aerodrome") ? "good_cl_liquidity" : "standard"],
+    credible: finalScore >= AGGRESSIVE_VELOCITY_CRITERIA.feasibility.credibleScore,
   };
 }
 
 async function estimateAggressiveRoundtripCost(opportunity) {
+  const roundtripEstimate = resolveAggressiveVelocityRoundtripEstimateConfig(opportunity.chain);
   const exitCost = await estimateAllInExitCost(
     `${opportunity.chain}:${opportunity.protocol}`,
-    opportunity.chain === 'ethereum' ? 18 : 6,
-    45
+    roundtripEstimate.gasUsd,
+    roundtripEstimate.slippageBps,
   );
 
   return {
-    totalRoundtripUsd: (exitCost?.totalUsd || 12) + (opportunity.chain === 'ethereum' ? 9 : 3),
+    totalRoundtripUsd:
+      (exitCost?.totalUsd || 12) + roundtripEstimate.executionBufferUsd + roundtripEstimate.additionalBridgeUsd,
     gasUsd: exitCost?.breakdown?.gas || 6,
-    slippageBps: 42,
-    bridgeUsd: opportunity.chain === 'ethereum' ? 4 : 0,
+    slippageBps: roundtripEstimate.slippageBps,
+    bridgeUsd: roundtripEstimate.additionalBridgeUsd,
     // Return the raw exitCost object so the score function can use more accurate data
-    exitCostDetail: exitCost
+    exitCostDetail: exitCost,
   };
 }
 
@@ -507,18 +569,42 @@ export default {
  */
 export function simulateExecutableCandidateVolume(sampleOpportunities = []) {
   // In real use, this would be fed from live Merkl + DefiLlama
-  const mockData = sampleOpportunities.length > 0 ? sampleOpportunities : [
-    { chain: 'base', protocol: 'aerodrome', remainingHours: 18, incentiveUsdPerDay: 120, tvlUsd: 4_200_000, status: 'LIVE' },
-    { chain: 'ethereum', protocol: 'uniswap', remainingHours: 9, incentiveUsdPerDay: 85, tvlUsd: 12_000_000, status: 'LIVE' },
-    { chain: 'base', protocol: 'aerodrome', remainingHours: 27, incentiveUsdPerDay: 65, tvlUsd: 1_800_000, status: 'LIVE' },
-    // ... more realistic short-term plays
-  ];
+  const mockData =
+    sampleOpportunities.length > 0
+      ? sampleOpportunities
+      : [
+          {
+            chain: "base",
+            protocol: "aerodrome",
+            remainingHours: 18,
+            incentiveUsdPerDay: 120,
+            tvlUsd: 4_200_000,
+            status: "LIVE",
+          },
+          {
+            chain: "ethereum",
+            protocol: "uniswap",
+            remainingHours: 9,
+            incentiveUsdPerDay: 85,
+            tvlUsd: 12_000_000,
+            status: "LIVE",
+          },
+          {
+            chain: "base",
+            protocol: "aerodrome",
+            remainingHours: 27,
+            incentiveUsdPerDay: 65,
+            tvlUsd: 1_800_000,
+            status: "LIVE",
+          },
+          // ... more realistic short-term plays
+        ];
 
   let executable = 0;
   for (const opp of mockData) {
     // Simplified simulation using the same logic
-    const feasibility = opp.protocol.includes('aerodrome') || opp.protocol.includes('uniswap') ? 72 : 58;
-    const vScore = Math.min(100, (opp.incentiveUsdPerDay / 2) + (opp.remainingHours > 8 ? 15 : 5));
+    const feasibility = opp.protocol.includes("aerodrome") || opp.protocol.includes("uniswap") ? 72 : 58;
+    const vScore = Math.min(100, opp.incentiveUsdPerDay / 2 + (opp.remainingHours > 8 ? 15 : 5));
 
     if (feasibility >= 65 && vScore >= 55 && opp.remainingHours >= 6) {
       executable++;

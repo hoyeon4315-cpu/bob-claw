@@ -1,43 +1,37 @@
 /**
  * Aggressive Yield Strategist
- * 
+ *
  * Core decision maker for the High-Yield Diversified Aggressive Velocity Chaser.
- * 
+ *
  * Responsibility:
  * - Receives high-yield candidates from the Aggressive Velocity Scanner.
  * - Ranks and selects only opportunities with **strong expected net BTC profit**.
  * - Outputs final allocation decisions for the sleeve.
- * 
+ *
  * Key Principle (from user):
  * - We do NOT chase volume of mediocre opportunities.
  * - We only act on candidates that can deliver **high net profits / high yield** in BTC after all costs.
- * 
+ *
  * This module works tightly with:
  * - `src/ledger/aggressive-sleeve-accounting.mjs` for accurate net profit and cost calculations.
  * - Risk & Exit Management for automated exit feasibility.
  */
 
-import { getHighYieldExecutableCandidates } from './aggressive-velocity-scanner.mjs';
+import { getHighYieldExecutableCandidates } from "./aggressive-velocity-scanner.mjs";
 import {
-  estimateAllInExitCost,
-  calculateExpectedNetBtcProfit
-} from '../../ledger/aggressive-sleeve-accounting.mjs'; // Canonical high net yield calculator (library is source of truth)
+  AGGRESSIVE_VELOCITY_SCANNER_CONFIG,
+  AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+  AGGRESSIVE_VELOCITY_SLEEVE_ID as SLEEVE_ID,
+  AGGRESSIVE_YIELD_STRATEGIST_CONFIG,
+} from "../../config/aggressive-velocity/config.mjs";
+import { estimateAllInExitCost, calculateExpectedNetBtcProfit } from "../../ledger/aggressive-sleeve-accounting.mjs"; // Canonical high net yield calculator (library is source of truth)
 import {
   filterCandidatesWithSafeExitPath,
   rankByNetBtcProfitPerRisk,
   calculateRealizationFeasibilityScore,
-  simulateHighYieldExitOutcomes
-} from './risk-exit-manager.mjs'; // Realization feasibility + library-driven exit simulation for proven high net yield delivery
-
-const SLEEVE_ID = 'aggressive-velocity-v1';
-
-export const AGGRESSIVE_YIELD_STRATEGIST_CONFIG = {
-  minExpectedNetBtcProfit: 0.00005,   // Minimum projected net BTC profit for the campaign to consider
-  minNetYieldPctPerDay: 0.8,          // Minimum daily net yield % to be attractive
-  maxPositions: 4,                    // Hard diversification limit for the sleeve
-  preferHighQualityOnly: true,        // Only 'high' quality candidates unless no choice
-  minSimulatedCaptureRate: 0.65,      // Only keep candidates where the automated exit simulation shows >=65% of expected net profit is actually realized
-};
+  simulateHighYieldExitOutcomes,
+  passesAggressiveRealizationGate,
+} from "./risk-exit-manager.mjs"; // Realization feasibility + library-driven exit simulation for proven high net yield delivery
 
 /**
  * Main entry point for the Strategist.
@@ -51,6 +45,7 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
   }
 
   const candidates = result.highYieldExecutableCandidates || result.candidates || [];
+  const scanDiagnostics = result.diagnostics || null;
 
   // Delegate ALL net BTC profit refinement to the canonical library function (source of truth)
   for (const c of candidates) {
@@ -59,7 +54,8 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
         incentiveUsdPerDay: c.incentiveUsdPerDay || 0,
         remainingHours: c.remainingHours || 12,
         positionKey: `${c.chain}:${c.protocol}`,
-        currentBtcPriceUsd: 105000
+        currentBtcPriceUsd: AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+        aprPct: c.aprPct ?? c.apr ?? c.apy ?? c.totalApy ?? c.rewardApy ?? null,
       });
 
       c.refinedNetBtcProfit = projection.expectedNetBtcProfit;
@@ -69,16 +65,16 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
       c.roundtripCostBreakdown = projection.breakdown;
     } catch (e) {
       c.refinedNetBtcProfit = c.expectedNetBtcProfit || 0;
-      c.expectedNetProfitQuality = 'low';
+      c.expectedNetProfitQuality = "low";
     }
   }
 
   // Filter strictly for high net profit potential (using refined value)
-  const qualified = candidates.filter(c => {
+  const qualified = candidates.filter((c) => {
     const profit = c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0;
     const hasGoodProfit = profit >= AGGRESSIVE_YIELD_STRATEGIST_CONFIG.minExpectedNetBtcProfit;
     const hasGoodYield = (c.netYieldPctPerDay || 0) >= AGGRESSIVE_YIELD_STRATEGIST_CONFIG.minNetYieldPctPerDay;
-    const isHighQuality = c.expectedNetProfitQuality === 'high';
+    const isHighQuality = c.expectedNetProfitQuality === "high";
 
     if (AGGRESSIVE_YIELD_STRATEGIST_CONFIG.preferHighQualityOnly) {
       return isHighQuality && hasGoodProfit;
@@ -87,7 +83,10 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
   });
 
   // Final ranking by refined net BTC profit (more accurate high-yield selection)
-  qualified.sort((a, b) => ((b.refinedNetBtcProfit || b.expectedNetBtcProfit) || 0) - ((a.refinedNetBtcProfit || a.expectedNetBtcProfit) || 0));
+  qualified.sort(
+    (a, b) =>
+      (b.refinedNetBtcProfit || b.expectedNetBtcProfit || 0) - (a.refinedNetBtcProfit || a.expectedNetBtcProfit || 0),
+  );
 
   // Apply diversification cap
   const selected = qualified.slice(0, AGGRESSIVE_YIELD_STRATEGIST_CONFIG.maxPositions);
@@ -100,8 +99,14 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
   // Falls back to the composite if not present. This keeps the "projected net BTC return / risk"
   // ranking consistent from Scanner through Strategist for high net yield candidates.
   const safeToRealizeRanked = [...safeToRealize].sort((a, b) => {
-    const scoreA = a.highNetYieldRankScore ?? ((a.simulatedRealizedNetBtc || a.refinedNetBtcProfit || a.expectedNetBtcProfit || 0) * ((a.realizationFeasibilityScore || 0) / 100));
-    const scoreB = b.highNetYieldRankScore ?? ((b.simulatedRealizedNetBtc || b.refinedNetBtcProfit || b.expectedNetBtcProfit || 0) * ((b.realizationFeasibilityScore || 0) / 100));
+    const scoreA =
+      a.highNetYieldRankScore ??
+      (a.simulatedRealizedNetBtc || a.refinedNetBtcProfit || a.expectedNetBtcProfit || 0) *
+        ((a.realizationFeasibilityScore || 0) / 100);
+    const scoreB =
+      b.highNetYieldRankScore ??
+      (b.simulatedRealizedNetBtc || b.refinedNetBtcProfit || b.expectedNetBtcProfit || 0) *
+        ((b.realizationFeasibilityScore || 0) / 100);
     return scoreB - scoreA;
   });
 
@@ -115,11 +120,16 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
     // Primary: higher feasibility first (more likely to deliver the promised high net yield)
     if (fb !== fa) return fb - fa;
     // Tie-break: higher refined net BTC profit
-    return (b.refinedNetBtcProfit || b.expectedNetBtcProfit || 0) - (a.refinedNetBtcProfit || a.expectedNetBtcProfit || 0);
+    return (
+      (b.refinedNetBtcProfit || b.expectedNetBtcProfit || 0) - (a.refinedNetBtcProfit || a.expectedNetBtcProfit || 0)
+    );
   });
 
   // Calculate total projected net BTC profit from the *safe-to-realize* high-yield set
-  const totalExpectedNetBtc = rankedSafe.reduce((sum, c) => sum + (c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0), 0);
+  const totalExpectedNetBtc = rankedSafe.reduce(
+    (sum, c) => sum + (c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0),
+    0,
+  );
 
   // Library-driven simulation: what net BTC do we actually expect to realize when the automated exit rules fire?
   const realizationSimulation = simulateHighYieldExitOutcomes(rankedSafe);
@@ -129,11 +139,35 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
   const minCapture = AGGRESSIVE_YIELD_STRATEGIST_CONFIG.minSimulatedCaptureRate;
   const filteredSafe = rankedSafe.filter((c, idx) => {
     const sim = realizationSimulation.perCandidate[idx];
-    return sim && (sim.captureRate >= minCapture);
+    if (!sim) return false;
+    c.simulatedRealizedNetBtc = sim.simulatedRealizedNetBtc;
+    c.simulatedCaptureRate = sim.captureRate;
+    c.simulatedExitReason = sim.exitReason;
+    c.feasibilityAtExit = sim.feasibilityAtExit;
+    c.highProfitProtected = sim.highProfitProtected === true;
+    const gate = passesAggressiveRealizationGate(
+      {
+        simulatedRealizedNetBtc: sim.simulatedRealizedNetBtc || 0,
+        captureRate: sim.captureRate || 0,
+        feasibilityScore:
+          sim.feasibilityAtExit || c.realizationFeasibilityScore || calculateRealizationFeasibilityScore(c),
+        highProfitProtected: sim.highProfitProtected === true,
+      },
+      {
+        minRealizedNetBtc: AGGRESSIVE_VELOCITY_SCANNER_CONFIG.finalSelection.minRealizedNetBtc,
+        minCaptureRate: minCapture,
+        minFeasibilityScore: AGGRESSIVE_VELOCITY_SCANNER_CONFIG.finalSelection.minFeasibilityScore,
+      },
+    );
+    if (gate.override) c.realizationGateOverride = gate.override;
+    return gate.pass;
   });
 
   // Re-compute totals after the realization-quality filter
-  const finalTotalExpectedNetBtc = filteredSafe.reduce((sum, c) => sum + (c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0), 0);
+  const finalTotalExpectedNetBtc = filteredSafe.reduce(
+    (sum, c) => sum + (c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0),
+    0,
+  );
 
   // Leverage pre-computed realization data from Scanner (highNetYieldRankScore path) instead of re-running simulation
   // for the final selected set. This avoids redundant computation and keeps numbers consistent with Scanner.
@@ -150,8 +184,11 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
   // Attach a Strategist-level high-net-yield selection score: risk-adjusted realized profit (from Scanner)
   // further weighted by the actual capture rate observed in the exit simulation.
   // This builds explicit "projected net BTC return / risk" ranking logic inside the Strategist layer.
-  filteredSafe.forEach(c => {
-    const base = c.highNetYieldRankScore ?? ((c.simulatedRealizedNetBtc || c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0) * ((c.realizationFeasibilityScore || 0) / 100));
+  filteredSafe.forEach((c) => {
+    const base =
+      c.highNetYieldRankScore ??
+      (c.simulatedRealizedNetBtc || c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0) *
+        ((c.realizationFeasibilityScore || 0) / 100);
     const capture = c.simulatedCaptureRate ?? 0.5;
     c.strategistHighYieldSelectionScore = base * capture;
   });
@@ -164,9 +201,28 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
     return sb - sa;
   });
 
+  const selectionDiagnostics = {
+    scannerCandidateCount: candidates.length,
+    qualifiedCount: qualified.length,
+    shortlistedCount: selected.length,
+    safeExitCount: safeToRealize.length,
+    realizationQualifiedCount: filteredSafe.length,
+    finalSelectedCount: finalSelected.length,
+  };
+
+  const rejectionEvidence = {
+    scan: scanDiagnostics,
+    strategist: {
+      rejectedLowYieldCount: candidates.length - qualified.length,
+      rejectedUnsafeExitCount: selected.length - safeToRealize.length,
+      rejectedLowRealizationCount: rankedSafe.length - filteredSafe.length,
+    },
+    topRejectedReasons: (scanDiagnostics?.rejectedByReason || []).slice(0, 5),
+  };
+
   return {
     sleeve: SLEEVE_ID,
-    strategy: 'high-yield-aggressive-velocity',
+    strategy: "high-yield-aggressive-velocity",
     selectedCount: finalSelected.length,
     totalQualified: qualified.length,
     totalExpectedNetBtcProfit: parseFloat(finalTotalExpectedNetBtc.toFixed(8)),
@@ -176,17 +232,21 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
     rejectedLowYieldCount: candidates.length - qualified.length,
     rejectedUnsafeExitCount: selected.length - safeToRealize.length,
     rejectedLowRealizationCount: rankedSafe.length - filteredSafe.length,
-    realizationSimulation: { // Constructed from Scanner pre-computed fields for consistency
+    scanDiagnostics,
+    selectionDiagnostics,
+    rejectionEvidence,
+    realizationSimulation: {
+      // Constructed from Scanner pre-computed fields for consistency
       totalSimulatedRealizedNetBtc: parseFloat(finalSimulatedRealized.toFixed(8)),
       aggregateCaptureRate: parseFloat(finalAggregateCapture.toFixed(2)),
-      perCandidate: finalSelected.map(c => ({
+      perCandidate: finalSelected.map((c) => ({
         chain: c.chain,
         protocol: c.protocol,
         simulatedRealizedNetBtc: c.simulatedRealizedNetBtc,
-        captureRate: c.simulatedCaptureRate
-      }))
+        captureRate: c.simulatedCaptureRate,
+      })),
     },
-    rankedBy: 'strategistHighYieldSelectionScore (highNetYieldRankScore × simulatedCaptureRate)',
+    rankedBy: "strategistHighYieldSelectionScore (highNetYieldRankScore × simulatedCaptureRate)",
     generatedAt: new Date().toISOString(),
   };
 }
@@ -196,9 +256,10 @@ export async function selectHighYieldOpportunities(scannerResult = null) {
  * Given a list of opportunities, return only those with truly high net profit potential.
  */
 export function filterHighNetYieldOnly(opportunities = []) {
-  return opportunities.filter(o =>
-    o.expectedNetProfitQuality === 'high' &&
-    (o.expectedNetBtcProfit || 0) >= AGGRESSIVE_YIELD_STRATEGIST_CONFIG.minExpectedNetBtcProfit
+  return opportunities.filter(
+    (o) =>
+      o.expectedNetProfitQuality === "high" &&
+      (o.expectedNetBtcProfit || 0) >= AGGRESSIVE_YIELD_STRATEGIST_CONFIG.minExpectedNetBtcProfit,
   );
 }
 
@@ -207,13 +268,18 @@ export function filterHighNetYieldOnly(opportunities = []) {
  * Uses the accounting library to estimate realistic exit costs and computes expected net profit in BTC.
  * Can be called from Scanner, Risk&Exit, or anywhere that needs accurate high-yield projection.
  */
-export async function projectNetBtcProfitForOpportunity(opportunity, currentBtcPriceUsd = 105000) {
+export async function projectNetBtcProfitForOpportunity(
+  opportunity,
+  currentBtcPriceUsd = AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+) {
   // Fully delegate to the canonical library function (single source of truth for high net yield)
   return calculateExpectedNetBtcProfit({
     incentiveUsdPerDay: opportunity.incentiveUsdPerDay || 0,
     remainingHours: opportunity.remainingHours || 12,
     positionKey: `${opportunity.chain}:${opportunity.protocol}`,
-    currentBtcPriceUsd
+    currentBtcPriceUsd,
+    aprPct:
+      opportunity.aprPct ?? opportunity.apr ?? opportunity.apy ?? opportunity.totalApy ?? opportunity.rewardApy ?? null,
   });
 }
 
@@ -223,9 +289,9 @@ export async function projectNetBtcProfitForOpportunity(opportunity, currentBtcP
  */
 export async function getTopHighYieldOpportunities(scannerResult = null, maxCount = 5) {
   const result = await selectHighYieldOpportunities(scannerResult);
-  
+
   const top = result.candidates
-    .filter(c => c.expectedNetProfitQuality === 'high' && (c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0) > 0)
+    .filter((c) => c.expectedNetProfitQuality === "high" && (c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0) > 0)
     .slice(0, maxCount);
 
   const totalNetBtc = top.reduce((sum, c) => sum + (c.refinedNetBtcProfit || c.expectedNetBtcProfit || 0), 0);
@@ -235,7 +301,7 @@ export async function getTopHighYieldOpportunities(scannerResult = null, maxCoun
     count: top.length,
     totalExpectedNetBtcProfit: parseFloat(totalNetBtc.toFixed(8)),
     opportunities: top,
-    note: "High net yield candidates ranked by Realization Feasibility Score (probability of delivering expected net BTC profit via automated exit) + risk-adjusted profit."
+    note: "High net yield candidates ranked by Realization Feasibility Score (probability of delivering expected net BTC profit via automated exit) + risk-adjusted profit.",
   };
 }
 

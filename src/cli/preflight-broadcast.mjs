@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { defaultRunCommand } from "../session/shadow-refresh-runner.mjs";
 
 const IS_MAIN = process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false;
+const DEFAULT_PREFLIGHT_COMMAND_TIMEOUT_MS = 120_000;
 
 export function parseArgs(argv = []) {
   const flags = new Set(argv);
@@ -20,7 +21,9 @@ export function parseArgs(argv = []) {
   return {
     json: flags.has("--json"),
     target: options.target || null,
-    commandTimeoutMs: options["command-timeout-ms"] ? Number(options["command-timeout-ms"]) : null,
+    commandTimeoutMs: options["command-timeout-ms"]
+      ? Number(options["command-timeout-ms"])
+      : DEFAULT_PREFLIGHT_COMMAND_TIMEOUT_MS,
   };
 }
 
@@ -141,7 +144,9 @@ function evaluateWalletInventoryRefresh(payload) {
   const observedAt = payload?.observedAt || null;
   const totalUsd = finiteNumber(payload?.totalUsd);
   const liveScan = source !== "stored_treasury_snapshot";
-  const exactCoverage = walletCoverage === "full_rpc" && assetUniverseStatus === "closed";
+  const exactCoverage =
+    walletCoverage === "full_rpc" &&
+    (assetUniverseStatus === "closed" || (assetUniverseStatus === "needs_review" && unknownAssetBalanceCount === 0));
   const ok = liveScan && exactCoverage && scanErrorCount === 0 && unknownAssetBalanceCount === 0 && totalUsd !== null;
   return {
     ok,
@@ -251,6 +256,10 @@ function evaluatePaybackStatus(payload) {
 function evaluateDispatchDryRun(payload, target) {
   const results = payload?.record?.strategyResults || [];
   const result = results.find((item) => item.strategyId === target) || results[0] || null;
+  const surfaceStrategies = payload?.executionSurfaces?.strategies || [];
+  const surface = surfaceStrategies.find((item) => item?.id === (result?.strategyId || target)) || null;
+  const liveRunControl = surface?.evidence?.liveRunControl || null;
+  const nextEligibleAt = liveRunControl?.nextEligibleAt || null;
   if (!result) {
     return {
       ok: false,
@@ -258,14 +267,26 @@ function evaluateDispatchDryRun(payload, target) {
         readyForPolicyDispatch: false,
         readyForLiveBroadcast: false,
         strategyId: target,
+        nextEligibleAt: null,
+        liveAdmissionBlockers: [],
       },
       blocker: blocker("dispatch_dry_run", "dispatch_target_missing", { strategyId: target }),
     };
   }
   const readiness = result.broadcastReadiness || {};
+  const liveAdmissionBlockers =
+    readiness.advisoryEvidence?.liveAdmissionBlockers || surface?.liveAdmissionBlockers || [];
+  const canonicalLiveBlocker =
+    liveAdmissionBlockers.find(Boolean) ||
+    readiness.advisoryEvidence?.adviceCode ||
+    readiness.advisoryEvidence?.fallbackReason ||
+    null;
   const readyForPolicyDispatch = readiness.readyForPolicyDispatch === true;
   const readyForLiveBroadcast = readiness.readyForLiveBroadcast === true;
   const ok = readyForPolicyDispatch && readyForLiveBroadcast;
+  const blockerReason = readyForPolicyDispatch
+    ? canonicalLiveBlocker || "dispatch_not_ready_for_live_broadcast"
+    : "dispatch_not_ready_for_policy_dispatch";
   return {
     ok,
     summary: {
@@ -277,19 +298,19 @@ function evaluateDispatchDryRun(payload, target) {
       policyBlockers: readiness.policyDispatchBlockers || [],
       selectedMode: readiness.selectedMode || result.selectedMode || null,
       adviceCode: readiness.advisoryEvidence?.adviceCode || null,
+      nextEligibleAt,
+      liveAdmissionBlockers,
     },
     blocker: ok
       ? null
-      : blocker(
-          "dispatch_dry_run",
-          readyForPolicyDispatch ? "dispatch_not_ready_for_live_broadcast" : "dispatch_not_ready_for_policy_dispatch",
-          {
-            strategyId: result.strategyId || target,
-            policyBlockers: readiness.policyDispatchBlockers || [],
-            selectedMode: readiness.selectedMode || result.selectedMode || null,
-            adviceCode: readiness.advisoryEvidence?.adviceCode || null,
-          },
-        ),
+      : blocker("dispatch_dry_run", blockerReason, {
+          strategyId: result.strategyId || target,
+          policyBlockers: readiness.policyDispatchBlockers || [],
+          selectedMode: readiness.selectedMode || result.selectedMode || null,
+          adviceCode: readiness.advisoryEvidence?.adviceCode || null,
+          nextEligibleAt,
+          liveAdmissionBlockers,
+        }),
   };
 }
 

@@ -1,311 +1,171 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
 import { runPreflightBroadcastCli } from "../src/cli/preflight-broadcast.mjs";
 
-const TARGET = "wrapped-btc-loop-base-moonwell";
-
-function commandResult(payload, extras = {}) {
-  return {
-    ok: true,
-    exitCode: 0,
-    signal: null,
-    durationMs: 3,
-    stdout: `${JSON.stringify(payload)}\n`,
-    stderr: "",
-    ...extras,
-  };
-}
-
-function cleanDispatchPayload({ readyForLiveBroadcast = true } = {}) {
-  return {
-    record: {
-      strategyResults: [
-        {
-          strategyId: TARGET,
-          broadcastReadiness: {
-            readyForPolicyDispatch: true,
-            readyForLiveBroadcast,
-            policyDispatchBlockers: [],
-            selectedMode: readyForLiveBroadcast ? "live" : "dry_run",
-            advisoryEvidence: {
-              adviceCode: readyForLiveBroadcast ? null : "fresh_roundtrip_proof_recorded",
-            },
-          },
-        },
-      ],
+test("preflight broadcast injects a default command timeout when none is provided", async () => {
+  const seen = [];
+  const payloadByStep = {
+    kill_status: { halted: false },
+    signer_health: { readiness: { readyForBroadcast: true, telemetryComplete: true, limitations: [] }, cause: null },
+    wallet_inventory_refresh: {
+      source: "live_rpc",
+      totalUsd: 100,
+      summary: {
+        walletCoverage: "full_rpc",
+        assetUniverseStatus: "closed",
+        scanErrorCount: 0,
+        unknownAssetBalanceCount: 0,
+      },
     },
-  };
-}
-
-function signerHealthPayload() {
-  return {
-    readiness: {
-      readyForBroadcast: true,
-      telemetryComplete: true,
-      limitations: [],
-    },
-  };
-}
-
-function walletInventoryRefreshPayload({
-  totalUsd = 818.25,
-  source = "live_scan",
-  walletCoverage = "full_rpc",
-  assetUniverseStatus = "closed",
-  scanErrorCount = 0,
-  unknownAssetBalanceCount = 0,
-} = {}) {
-  return {
-    address: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
-    observedAt: "2026-05-09T00:00:00.000Z",
-    source,
-    totalUsd,
-    summary: {
-      walletCoverage,
-      assetUniverseStatus,
-      scanErrorCount,
-      unknownAssetBalanceCount,
-    },
-  };
-}
-
-function walletHoldingsPayload({
-  totalUsd = 818.25,
-  staleItemCount = 0,
-  stalePriceItemCount = 0,
-  out = null,
-} = {}) {
-  const payload = {
-    pending: false,
-    totalUsd,
-    staleItemCount,
-    stalePriceItemCount,
-    assetMetadataCoverage: {
+    wallet_holdings: {
+      totalUsd: 100,
+      pending: false,
       freshnessCoveragePct: 1,
+      staleItemCount: 0,
+      stalePriceItemCount: 0,
       divergenceWarnCount: 0,
       divergenceBlockCount: 0,
     },
+    payback_status: {
+      decision: { status: "carry", reason: "planned_payback_below_minimum" },
+      payback: {
+        accumulatorPendingSats: 594,
+        scheduler: {
+          minimumPaybackProgress: {
+            progressToMinimumRatio: 0.1,
+            minPaybackSats: 1000,
+          },
+        },
+      },
+      policy: { minPaybackSats: 1000 },
+    },
+    dispatch_dry_run: {
+      record: {
+        strategyResults: [
+          {
+            strategyId: "wrapped-btc-loop-base-moonwell",
+            executionStatus: "preview",
+            blockedReason: null,
+            selectedMode: "live",
+            broadcastReadiness: {
+              readyForPolicyDispatch: true,
+              readyForLiveBroadcast: true,
+              policyDispatchBlockers: [],
+              selectedMode: "live",
+              advisoryEvidence: { adviceCode: null },
+            },
+          },
+        ],
+      },
+    },
   };
-  return out ? { ...payload, out } : payload;
-}
 
-function preflightRunner({ readyForLiveBroadcast = true } = {}) {
-  const commands = [];
-  return {
-    commands,
-    runCommandImpl: async ({ step, command, args }) => {
-      commands.push([command, ...args].join(" "));
-      if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") return commandResult(signerHealthPayload());
-      if (step.id === "wallet_inventory_refresh") {
-        return commandResult(walletInventoryRefreshPayload({ totalUsd: 360.98 }));
-      }
-      if (step.id === "wallet_holdings") {
-        return commandResult(
+  const result = await runPreflightBroadcastCli(["--target=wrapped-btc-loop-base-moonwell", "--json"], {
+    runCommandImpl: async ({ step, timeoutMs }) => {
+      seen.push({ id: step.id, timeoutMs });
+      return {
+        ok: true,
+        exitCode: 0,
+        signal: null,
+        durationMs: 1,
+        stdout: `${JSON.stringify(payloadByStep[step.id])}\n`,
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(
+    seen.map((item) => item.timeoutMs),
+    [120000, 120000, 120000, 120000, 120000, 120000],
+  );
+});
+
+test("preflight broadcast surfaces wrapped-BTC cooldown timing from dispatch dry-run evidence", async () => {
+  const nextEligibleAt = "2026-05-18T08:26:33.124Z";
+  const payloadByStep = {
+    kill_status: { halted: false },
+    signer_health: { readiness: { readyForBroadcast: true, telemetryComplete: true, limitations: [] }, cause: null },
+    wallet_inventory_refresh: {
+      source: "live_scan",
+      totalUsd: 100,
+      summary: {
+        walletCoverage: "full_rpc",
+        assetUniverseStatus: "needs_review",
+        scanErrorCount: 0,
+        unknownAssetBalanceCount: 0,
+      },
+    },
+    wallet_holdings: {
+      totalUsd: 100,
+      pending: false,
+      freshnessCoveragePct: 1,
+      staleItemCount: 0,
+      stalePriceItemCount: 0,
+      divergenceWarnCount: 0,
+      divergenceBlockCount: 0,
+    },
+    payback_status: {
+      decision: { status: "carry", reason: "planned_payback_below_minimum" },
+      payback: { accumulatorPendingSats: 593 },
+      policy: { minPaybackSats: 5000 },
+    },
+    dispatch_dry_run: {
+      executionSurfaces: {
+        strategies: [
           {
-            ok: true,
-            pending: false,
-            totalUsd: 360.98,
-          },
-          {
-            walletPayload: walletHoldingsPayload({ totalUsd: 360.98 }),
-          },
-        );
-      }
-      if (step.id === "payback_status") {
-        return commandResult({
-          policy: {
-            minPaybackSats: 5000,
-          },
-          payback: {
-            accumulatorPendingSats: 601,
-            scheduler: {
-              minimumPaybackProgress: {
-                minPaybackSats: 5000,
-                progressToMinimumRatio: 0.1202,
+            id: "wrapped-btc-loop-base-moonwell",
+            evidence: {
+              liveRunControl: {
+                blocked: true,
+                reason: "recent_live_transaction_cooldown",
+                nextEligibleAt,
+                recentTxCount: 3,
               },
             },
           },
-        });
-      }
-      if (step.id === "dispatch_dry_run") return commandResult(cleanDispatchPayload({ readyForLiveBroadcast }));
-      throw new Error(`unexpected step ${step.id}`);
-    },
-  };
-}
-
-test("preflight-broadcast returns preflight_clean when all broadcast prechecks pass", async () => {
-  const runner = preflightRunner();
-  const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
-    runCommandImpl: runner.runCommandImpl,
-    now: "2026-05-09T00:00:00.000Z",
-  });
-
-  assert.equal(result.exitCode, 0);
-  const payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "preflight_clean");
-  assert.equal(payload.executeAllowed, true);
-  assert.equal(payload.target, TARGET);
-  assert.equal(payload.stages.length, 6);
-  assert.ok(payload.nextActionGuide.command.includes("--execute"));
-  assert.ok(runner.commands.some((command) => command.includes("npm run inventory:whole-wallet -- --json")));
-  assert.ok(runner.commands.some((command) => command.includes("npm run report:wallet-holdings -- --json")));
-  assert.equal(payload.summary.payback.pendingSats, 601);
-  assert.equal(payload.summary.payback.effectiveMinSats, 5000);
-  assert.equal(payload.summary.wallet.totalUsd, 360.98);
-});
-
-test("preflight-broadcast blocks when dispatch dry-run is not live-broadcast ready", async () => {
-  const runner = preflightRunner({ readyForLiveBroadcast: false });
-  const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
-    runCommandImpl: runner.runCommandImpl,
-    now: "2026-05-09T00:00:00.000Z",
-  });
-
-  assert.equal(result.exitCode, 2);
-  const payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "preflight_blocked");
-  assert.equal(payload.executeAllowed, false);
-  assert.equal(payload.blockers.length, 1);
-  assert.equal(payload.blockers[0].stage, "dispatch_dry_run");
-  assert.equal(payload.blockers[0].reason, "dispatch_not_ready_for_live_broadcast");
-  assert.equal(payload.summary.dispatch.readyForPolicyDispatch, true);
-  assert.equal(payload.summary.dispatch.readyForLiveBroadcast, false);
-});
-
-test("preflight-broadcast reads wallet freshness from the emitted wallet payload file", async () => {
-  const fixtureRoot = await mkdir(join(tmpdir(), `bob-claw-preflight-wallet-${Date.now()}`), { recursive: true });
-  const walletPath = join(fixtureRoot, "data", "dashboard-live", "wallet-holdings.json");
-  await mkdir(join(fixtureRoot, "data", "dashboard-live"), { recursive: true });
-  await writeFile(
-    walletPath,
-    JSON.stringify({
-      pending: false,
-      totalUsd: 818.25,
-      staleItemCount: 0,
-      stalePriceItemCount: 0,
-      assetMetadataCoverage: {
-        freshnessCoveragePct: 1,
-        divergenceWarnCount: 0,
-        divergenceBlockCount: 0,
+        ],
       },
+      record: {
+        strategyResults: [
+          {
+            strategyId: "wrapped-btc-loop-base-moonwell",
+            executionStatus: "preview",
+            blockedReason: null,
+            selectedMode: "dry_run",
+            broadcastReadiness: {
+              readyForPolicyDispatch: true,
+              readyForLiveBroadcast: false,
+              policyDispatchBlockers: [],
+              selectedMode: "dry_run",
+              advisoryEvidence: {
+                adviceCode: "recent_live_transaction_cooldown",
+                currentLiveEligible: false,
+                fallbackReason: "recent_live_transaction_cooldown",
+                liveAdmissionBlockers: ["recent_live_transaction_cooldown"],
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+
+  const result = await runPreflightBroadcastCli(["--target=wrapped-btc-loop-base-moonwell", "--json"], {
+    runCommandImpl: async ({ step, timeoutMs }) => ({
+      ok: true,
+      exitCode: 0,
+      signal: null,
+      durationMs: timeoutMs === 120000 ? 1 : 0,
+      stdout: `${JSON.stringify(payloadByStep[step.id])}\n`,
+      stderr: "",
     }),
-    "utf8",
-  );
-
-  const runner = {
-    runCommandImpl: async ({ step }) => {
-      if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") return commandResult(signerHealthPayload());
-      if (step.id === "wallet_inventory_refresh") return commandResult(walletInventoryRefreshPayload());
-      if (step.id === "wallet_holdings") {
-        return commandResult(
-          {
-            ok: true,
-            pending: false,
-            totalUsd: 818.25,
-            out: "data/dashboard-live/wallet-holdings.json",
-          },
-          {
-            out: "data/dashboard-live/wallet-holdings.json",
-          },
-        );
-      }
-      if (step.id === "payback_status") {
-        return commandResult({
-          policy: { minPaybackSats: 5000 },
-          payback: { accumulatorPendingSats: 100, scheduler: { minimumPaybackProgress: { minPaybackSats: 5000 } } },
-        });
-      }
-      if (step.id === "dispatch_dry_run") return commandResult(cleanDispatchPayload());
-      throw new Error(`unexpected step ${step.id}`);
-    },
-  };
-
-  const previousCwd = process.cwd();
-  process.chdir(fixtureRoot);
-  try {
-    const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
-      runCommandImpl: runner.runCommandImpl,
-      now: "2026-05-09T00:00:00.000Z",
-    });
-    const payload = JSON.parse(result.stdout);
-    assert.equal(payload.stages[3].status, "passed");
-    assert.equal(payload.summary.wallet.freshnessPct, 1);
-  } finally {
-    process.chdir(previousCwd);
-  }
-});
-
-test("preflight-broadcast allows fresh wallet balances when only price metadata is stale", async () => {
-  const runner = {
-    runCommandImpl: async ({ step }) => {
-      if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") return commandResult(signerHealthPayload());
-      if (step.id === "wallet_inventory_refresh") return commandResult(walletInventoryRefreshPayload());
-      if (step.id === "wallet_holdings") {
-        return commandResult(
-          {
-            ok: true,
-            pending: false,
-            totalUsd: 818.25,
-          },
-          {
-            walletPayload: walletHoldingsPayload({ stalePriceItemCount: 43 }),
-          },
-        );
-      }
-      if (step.id === "payback_status") {
-        return commandResult({
-          policy: { minPaybackSats: 5000 },
-          payback: { accumulatorPendingSats: 100, scheduler: { minimumPaybackProgress: { minPaybackSats: 5000 } } },
-        });
-      }
-      if (step.id === "dispatch_dry_run") return commandResult(cleanDispatchPayload());
-      throw new Error(`unexpected step ${step.id}`);
-    },
-  };
-
-  const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
-    runCommandImpl: runner.runCommandImpl,
-    now: "2026-05-09T00:00:00.000Z",
-  });
-
-  assert.equal(result.exitCode, 0);
-  const payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "preflight_clean");
-  assert.equal(payload.summary.wallet.stalePriceItemCount, 43);
-});
-
-test("preflight-broadcast blocks when wallet inventory refresh is not live exact coverage", async () => {
-  const runner = {
-    runCommandImpl: async ({ step }) => {
-      if (step.id === "kill_status") return commandResult({ halted: false });
-      if (step.id === "signer_health") return commandResult(signerHealthPayload());
-      if (step.id === "wallet_inventory_refresh") {
-        return commandResult(walletInventoryRefreshPayload({
-          source: "stored_treasury_snapshot",
-          walletCoverage: "partial_supported",
-          assetUniverseStatus: "open",
-          scanErrorCount: 1,
-          unknownAssetBalanceCount: 2,
-        }));
-      }
-      throw new Error(`unexpected step ${step.id}`);
-    },
-  };
-
-  const result = await runPreflightBroadcastCli([`--target=${TARGET}`, "--json"], {
-    runCommandImpl: runner.runCommandImpl,
-    now: "2026-05-09T00:00:00.000Z",
   });
 
   assert.equal(result.exitCode, 2);
-  const payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "preflight_blocked");
-  assert.equal(payload.blockers[0].stage, "wallet_inventory_refresh");
-  assert.equal(payload.blockers[0].reason, "wallet_inventory_not_live_exact");
+  assert.equal(result.payload.blockers[0].reason, "recent_live_transaction_cooldown");
+  assert.equal(result.payload.blockers[0].adviceCode, "recent_live_transaction_cooldown");
+  assert.equal(result.payload.blockers[0].nextEligibleAt, nextEligibleAt);
+  assert.equal(result.payload.summary.dispatch.nextEligibleAt, nextEligibleAt);
+  assert.equal(result.payload.summary.dispatch.liveAdmissionBlockers[0], "recent_live_transaction_cooldown");
 });

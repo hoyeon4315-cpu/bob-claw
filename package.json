@@ -67,6 +67,7 @@
     "report:signer-revert-costs": "node src/cli/report-signer-revert-costs.mjs",
     "report:inbound-transfer-attributions": "node src/cli/report-inbound-transfer-attributions.mjs",
     "report:btc-proxy-spreads": "node src/cli/report-btc-proxy-spreads.mjs",
+    "report:aggressive-velocity-status": "node src/cli/report-aggressive-velocity-status.mjs",
     "report:native-btc-surface": "node src/cli/report-native-btc-opportunity-surface.mjs",
     "report:native-btc-plan": "node src/cli/report-native-btc-plan.mjs",
     "report:strategy-tick-slice": "node src/cli/report-strategy-tick-slice.mjs --write",

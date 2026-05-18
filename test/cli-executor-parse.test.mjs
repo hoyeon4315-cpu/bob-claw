@@ -8,6 +8,7 @@ import { parseArgs as parseGasZipArgs } from "../src/cli/run-gas-zip-refuel.mjs"
 import { parseArgs as parseCapitalManagerArgs } from "../src/cli/plan-capital-manager-refill-jobs.mjs";
 import {
   buildFullAutomationReadiness,
+  collectReadinessDependencies,
   parseArgs as parseFullAutomationArgs,
   runJsonCli,
 } from "../src/cli/check-full-automation-readiness.mjs";
@@ -177,6 +178,50 @@ test("full automation readiness child command reports timeout instead of hanging
   assert.equal(result.error, "timeout_after_5ms");
 });
 
+test("full automation readiness collects dependency commands in parallel", async () => {
+  const started = [];
+  const resolvers = [];
+  const collectPromise = collectReadinessDependencies({
+    refresh: true,
+    runJsonCliImpl: (scriptPath, args) => {
+      started.push({ scriptPath, args });
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            ok: true,
+            status: 0,
+            signal: null,
+            stdout: "{}",
+            stderr: "",
+            json: { scriptPath, args },
+            error: null,
+          }),
+        );
+      });
+    },
+  });
+
+  assert.deepEqual(
+    started.map((item) => item.scriptPath),
+    [
+      "src/cli/run-inbound-inventory-watcher.mjs",
+      "src/cli/plan-capital-manager-refill-jobs.mjs",
+      "src/cli/run-strategy-catalog-dispatcher.mjs",
+      "src/cli/report-payback-status.mjs",
+    ],
+  );
+  assert.deepEqual(started[0].args, ["--json", "--write"]);
+  assert.deepEqual(started[1].args, ["--json", "--write", "--refresh-inventory"]);
+  assert.deepEqual(started[2].args, ["--json", "--write", "--mode=auto"]);
+  assert.deepEqual(started[3].args, ["--json"]);
+
+  for (const resolve of resolvers) resolve();
+  const reports = await collectPromise;
+
+  assert.equal(reports.strategyDispatch.json.scriptPath, "src/cli/run-strategy-catalog-dispatcher.mjs");
+  assert.deepEqual(reports.payback.json.args, ["--json"]);
+});
+
 test("full automation readiness blocks when a dependency command fails", () => {
   const report = buildFullAutomationReadiness({
     runtime: {
@@ -327,6 +372,216 @@ test("full automation readiness blocks when no auto refill or live strategy is a
   assert.deepEqual(report.blockers, ["capital_rebalancer_not_ready", "strategy_dispatch_not_ready"]);
 });
 
+test("full automation readiness prefers concrete wrapped BTC blocker over generic gateway wrapper blocker", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 3 },
+        jobs: [{ requiresManualReview: false }, { requiresManualReview: false }, { requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 14 },
+      executionSurfaces: {
+        summary: { liveEligibleCount: 0 },
+        strategies: [
+          {
+            id: "gateway_wrapped_btc_loops",
+            selectedMode: "shadow",
+            status: "candidate_for_validation",
+            reason: "policy_ready",
+            liveAdmissionBlockers: ["route_specific_executor_inputs_required"],
+          },
+          {
+            id: "wrapped-btc-loop-base-moonwell",
+            selectedMode: "dry_run",
+            status: "candidate_for_validation",
+            reason: "recent_live_transaction_cooldown",
+            liveAdmissionBlockers: ["recent_live_transaction_cooldown"],
+          },
+        ],
+      },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      activeRun: false,
+      status: "completed_with_blockers",
+      nextAction: "continue_live_watch",
+      refill: {
+        blockedCount: 0,
+        blockers: [],
+        attemptedCount: 2,
+        executedCount: 0,
+      },
+    },
+  });
+
+  assert.deepEqual(report.strategyDispatch.liveAdmissionBlockers, [
+    {
+      strategyId: "wrapped-btc-loop-base-moonwell",
+      selectedMode: "dry_run",
+      status: "candidate_for_validation",
+      reason: "recent_live_transaction_cooldown",
+      blockers: ["recent_live_transaction_cooldown"],
+    },
+  ]);
+});
+
+test("full automation readiness keeps concrete wrapped BTC blocker inside the top blocker slice", () => {
+  const report = buildFullAutomationReadiness({
+    runtime: {
+      summary: {
+        ready: true,
+        nextActionCode: "ready",
+      },
+    },
+    inbound: {
+      summary: {
+        inboundEventCount: 0,
+        operatingCapitalIngressCount: 0,
+        paybackExcludedCount: 0,
+      },
+    },
+    capitalManager: {
+      rebalancePlan: { decision: "REBALANCE_REQUIRED" },
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: {
+        summary: { jobCount: 3 },
+        jobs: [{ requiresManualReview: false }, { requiresManualReview: false }, { requiresManualReview: false }],
+      },
+    },
+    strategyDispatch: {
+      record: { batchStatus: "preview", selectedCount: 14 },
+      executionSurfaces: {
+        summary: { liveEligibleCount: 0 },
+        strategies: [
+          {
+            id: "gateway_wrapped_btc_loops",
+            selectedMode: "shadow",
+            status: "candidate_for_validation",
+            reason: "policy_ready",
+            liveAdmissionBlockers: ["route_specific_executor_inputs_required"],
+          },
+          {
+            id: "btc_proxy_spreads",
+            selectedMode: "shadow",
+            status: "thin_coverage",
+            reason: "partial_amount_match",
+            liveAdmissionBlockers: ["route_specific_executor_inputs_required"],
+          },
+          {
+            id: "stablecoin_entry_exit_loops",
+            selectedMode: "analysis",
+            status: "measured_below_policy",
+            reason: "amount_mismatch",
+            liveAdmissionBlockers: ["analysis_probe_only", "live_executor_not_bound"],
+          },
+          {
+            id: "tokenized_gold_rotation",
+            selectedMode: "analysis",
+            status: "thin_coverage",
+            reason: "gateway_gold_exit_quote_preflight_failed",
+            liveAdmissionBlockers: ["gateway_gold_exit_quote_preflight_failed", "status_not_candidate_for_validation"],
+          },
+          {
+            id: "defillama-yield-portfolio",
+            selectedMode: "shadow",
+            status: "shadow_ready",
+            reason: "receipt_bound_pools_via_snapshot_evidenceClass",
+            liveAdmissionBlockers: ["shadow_only", "live_executor_not_bound"],
+          },
+          {
+            id: "aggressive-velocity-v1",
+            selectedMode: "live",
+            status: "analysis_only",
+            reason: "no_high_yield_candidates_selected",
+            liveAdmissionBlockers: ["no_high_yield_candidates_selected"],
+          },
+          {
+            id: "triangular_flash_btc",
+            selectedMode: "dry_run",
+            status: "measured_below_policy",
+            reason: "latest_flash_negative",
+            liveAdmissionBlockers: ["flash_live_admission_blocked", "status_not_candidate_for_validation"],
+          },
+          {
+            id: "eth_family_gateway",
+            selectedMode: "shadow",
+            status: "unobserved",
+            reason: "no_multichain_eth_family_surface",
+            liveAdmissionBlockers: ["multichain_eth_surface_unconfirmed"],
+          },
+          {
+            id: "eth_mixed_stable_loops",
+            selectedMode: "analysis",
+            status: "unobserved",
+            reason: "no_mixed_eth_legs",
+            liveAdmissionBlockers: ["analysis_probe_only", "live_executor_not_bound"],
+          },
+          {
+            id: "wrapped-btc-loop-base-moonwell",
+            selectedMode: "dry_run",
+            status: "candidate_for_validation",
+            reason: "recent_live_transaction_cooldown",
+            liveAdmissionBlockers: ["recent_live_transaction_cooldown"],
+          },
+        ],
+      },
+    },
+    payback: {
+      payback: {
+        scheduler: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+        },
+      },
+    },
+    autopilot: {
+      present: true,
+      activeRun: false,
+      status: "completed_with_blockers",
+      nextAction: "continue_live_watch",
+      refill: {
+        blockedCount: 0,
+        blockers: [],
+        attemptedCount: 2,
+        executedCount: 0,
+      },
+    },
+  });
+
+  assert.equal(
+    report.strategyDispatch.liveAdmissionBlockers.some(
+      (entry) =>
+        entry.strategyId === "wrapped-btc-loop-base-moonwell" && entry.reason === "recent_live_transaction_cooldown",
+    ),
+    true,
+  );
+});
+
 test("full automation readiness treats Merkl canary auto-entry as a live execution lane", () => {
   const report = buildFullAutomationReadiness({
     runtime: {
@@ -461,11 +716,11 @@ test("full automation readiness treats completed live watch automation as ready 
     },
   });
 
-  assert.equal(report.ready, true);
-  assert.equal(report.strategyDispatch.ready, true);
+  assert.equal(report.ready, false);
+  assert.equal(report.strategyDispatch.ready, false);
   assert.equal(report.strategyDispatch.liveEligibleCount, 0);
   assert.equal(report.liveAutomation.ready, true);
-  assert.deepEqual(report.blockers, []);
+  assert.deepEqual(report.blockers, ["strategy_dispatch_not_ready"]);
 });
 
 test("full automation readiness reflects unresolved autopilot refill blockers and payback reserve gaps", () => {

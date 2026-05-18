@@ -1924,7 +1924,7 @@ function decideOverall({ audit, gateway, gas, decisionInputs = null }) {
   };
 }
 
-export function buildDashboardStatus(input, options = {}) {
+export async function buildDashboardStatus(input, options = {}) {
   const now = options.now || new Date().toISOString();
   const audit = buildOverfitAudit(
     {

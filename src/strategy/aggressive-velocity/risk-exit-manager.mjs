@@ -16,29 +16,60 @@
 import {
   backtestExitRules,
   calculateExpectedNetBtcProfit,
-  estimateAllInExitCost
-} from '../../ledger/aggressive-sleeve-accounting.mjs';
+  estimateAllInExitCost,
+} from "../../ledger/aggressive-sleeve-accounting.mjs";
+import {
+  AGGRESSIVE_EXIT_RULES,
+  AGGRESSIVE_REALIZATION_CONFIG,
+  AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+  AGGRESSIVE_VELOCITY_SLEEVE_ID as SLEEVE_ID,
+} from "../../config/aggressive-velocity/config.mjs";
 
-const SLEEVE_ID = 'aggressive-velocity-v1';
+function projectionAprPct(candidateOrMark = {}) {
+  return (
+    candidateOrMark.currentAprPct ??
+    candidateOrMark.aprPct ??
+    candidateOrMark.apr ??
+    candidateOrMark.apy ??
+    candidateOrMark.totalApy ??
+    candidateOrMark.rewardApy ??
+    null
+  );
+}
 
-export const AGGRESSIVE_EXIT_RULES = {
-  // High net profit protection thresholds (BTC denominated)
-  minRealizedProfitToExitBtc: 0.00003,   // Lock in profit once this net BTC is reached
-  maxDrawdownFromPeakBtc: 0.00002,       // Exit if unrealized drops this much from peak
-  maxHoldHours: 48,                      // Hard time cap for short-term incentive sleeve
-  minVelocityDecayPct: 35,               // Exit if daily incentive velocity drops >35% from entry
-  requirePositiveNetAtExit: true,        // Never exit at net loss if we entered for high yield
-
-  // Risk controls
-  maxConcurrentPositions: 4,
-  emergencyExitOnILBps: 1200,            // Force exit on extreme IL
-};
+export function passesAggressiveRealizationGate(
+  { simulatedRealizedNetBtc = 0, captureRate = 0, feasibilityScore = 0, highProfitProtected = false } = {},
+  {
+    minRealizedNetBtc = AGGRESSIVE_EXIT_RULES.minRealizedProfitToExitBtc,
+    minCaptureRate = 0.65,
+    minFeasibilityScore = 60,
+    protectedHighProfitMinCaptureRate = AGGRESSIVE_REALIZATION_CONFIG.protectedHighProfitMinCaptureRate,
+  } = {},
+) {
+  if (simulatedRealizedNetBtc < minRealizedNetBtc) {
+    return { pass: false, reason: "realized_net_btc_below_minimum" };
+  }
+  if (feasibilityScore < minFeasibilityScore) {
+    return { pass: false, reason: "realization_feasibility_below_minimum" };
+  }
+  if (captureRate >= minCaptureRate) {
+    return { pass: true, reason: null, override: null };
+  }
+  if (highProfitProtected === true && captureRate >= protectedHighProfitMinCaptureRate) {
+    return {
+      pass: true,
+      reason: null,
+      override: "protected_high_profit_capture_override",
+    };
+  }
+  return { pass: false, reason: "capture_rate_below_minimum" };
+}
 
 /**
  * Helper: Re-compute current expected net BTC profit using latest data.
  * This is the key to detecting velocity decay on live high-yield positions.
  */
-function computeCurrentProjectedNetProfit(candidateOrMark, currentBtcPriceUsd = 105000) {
+function computeCurrentProjectedNetProfit(candidateOrMark, currentBtcPriceUsd = AGGRESSIVE_VELOCITY_BTC_PRICE_USD) {
   const incentive = candidateOrMark.currentIncentiveUsdPerDay ?? candidateOrMark.incentiveUsdPerDay ?? 0;
   const remaining = candidateOrMark.currentRemainingHours ?? candidateOrMark.remainingHours ?? 6;
 
@@ -46,7 +77,8 @@ function computeCurrentProjectedNetProfit(candidateOrMark, currentBtcPriceUsd = 
     incentiveUsdPerDay: incentive,
     remainingHours: Math.max(remaining, 0.5),
     positionKey: `${candidateOrMark.chain}:${candidateOrMark.protocol}`,
-    currentBtcPriceUsd
+    currentBtcPriceUsd,
+    aprPct: projectionAprPct(candidateOrMark),
   });
 }
 
@@ -62,7 +94,8 @@ export function shouldExitHighYieldPosition(candidate, currentPositionMark = nul
     incentiveUsdPerDay: candidate.incentiveUsdPerDay || 0,
     remainingHours: candidate.remainingHours || 12,
     positionKey: `${candidate.chain}:${candidate.protocol}`,
-    currentBtcPriceUsd: 105000
+    currentBtcPriceUsd: AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+    aprPct: projectionAprPct(candidate),
   });
 
   const originalExpectedNetBtc = originalProjection.expectedNetBtcProfit;
@@ -71,23 +104,31 @@ export function shouldExitHighYieldPosition(candidate, currentPositionMark = nul
   // Strengthen exit rule for high net yield: if the candidate entered with only marginal feasibility
   // (as pre-computed by the Scanner), use stricter decay tolerance to protect the high profit.
   const entryFeasibility = candidate.realizationFeasibilityScore || 100;
-  const decayToleranceMultiplier = entryFeasibility < 70 ? 0.7 : 1.0; // earlier exit for marginal entry feasibility
+  const decayToleranceMultiplier =
+    entryFeasibility < AGGRESSIVE_REALIZATION_CONFIG.marginalEntryFeasibilityScore
+      ? AGGRESSIVE_REALIZATION_CONFIG.marginalEntryDecayToleranceMultiplier
+      : 1.0;
 
   // === NEW: Live re-projection using current incentive/remaining data (critical for decay protection) ===
   const liveProjection = computeCurrentProjectedNetProfit(
     currentPositionMark || candidate,
-    105000
+    AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
   );
   const currentProjectedNetBtc = liveProjection.expectedNetBtcProfit;
 
   // High quality + positive live projection is required for continued holding
-  if (quality === 'high' && currentProjectedNetBtc < AGGRESSIVE_EXIT_RULES.minRealizedProfitToExitBtc * 0.6) {
+  if (
+    quality === "high" &&
+    currentProjectedNetBtc <
+      AGGRESSIVE_EXIT_RULES.minRealizedProfitToExitBtc *
+        AGGRESSIVE_REALIZATION_CONFIG.highQualityMinProjectedProfitRatio
+  ) {
     return {
       shouldExit: true,
-      reason: 'live_projected_net_profit_too_low',
+      reason: "live_projected_net_profit_too_low",
       originalExpected: originalExpectedNetBtc,
       currentProjected: currentProjectedNetBtc,
-      action: 'exit_to_protect_from_further_decay'
+      action: "exit_to_protect_from_further_decay",
     };
   }
 
@@ -97,11 +138,11 @@ export function shouldExitHighYieldPosition(candidate, currentPositionMark = nul
   if (originalExpectedNetBtc > 0 && currentProjectedNetBtc < originalExpectedNetBtc * (1 - effectiveDecayPct / 100)) {
     return {
       shouldExit: true,
-      reason: 'high_yield_velocity_decay_detected',
+      reason: "high_yield_velocity_decay_detected",
       originalExpected: originalExpectedNetBtc,
       currentProjected: currentProjectedNetBtc,
       decayPct: Math.round((1 - currentProjectedNetBtc / originalExpectedNetBtc) * 100),
-      action: 'exit_before_further_profit_erosion'
+      action: "exit_before_further_profit_erosion",
     };
   }
 
@@ -112,19 +153,19 @@ export function shouldExitHighYieldPosition(candidate, currentPositionMark = nul
     if (realized >= AGGRESSIVE_EXIT_RULES.minRealizedProfitToExitBtc) {
       return {
         shouldExit: true,
-        reason: 'high_net_profit_target_reached',
+        reason: "high_net_profit_target_reached",
         realizedNetBtc: realized,
         currentProjected: currentProjectedNetBtc,
-        action: 'take_profit_and_redeploy'
+        action: "take_profit_and_redeploy",
       };
     }
 
     if (realized < -AGGRESSIVE_EXIT_RULES.maxDrawdownFromPeakBtc) {
       return {
         shouldExit: true,
-        reason: 'max_drawdown_from_expected_profit',
+        reason: "max_drawdown_from_expected_profit",
         realizedNetBtc: realized,
-        action: 'cut_loss_to_protect_sleeve'
+        action: "cut_loss_to_protect_sleeve",
       };
     }
   }
@@ -134,21 +175,21 @@ export function shouldExitHighYieldPosition(candidate, currentPositionMark = nul
   if (hoursHeld >= AGGRESSIVE_EXIT_RULES.maxHoldHours) {
     return {
       shouldExit: true,
-      reason: 'max_hold_time_reached',
+      reason: "max_hold_time_reached",
       hoursHeld,
       currentProjected: currentProjectedNetBtc,
-      action: 'time_exit_to_free_capital'
+      action: "time_exit_to_free_capital",
     };
   }
 
   // Default: hold only if live projection still supports high net yield
   return {
     shouldExit: false,
-    reason: 'still_tracking_high_net_profit',
+    reason: "still_tracking_high_net_profit",
     originalExpected: originalExpectedNetBtc,
     currentProjected: currentProjectedNetBtc,
     quality,
-    action: 'continue_monitoring'
+    action: "continue_monitoring",
   };
 }
 
@@ -163,13 +204,13 @@ export function filterCandidatesWithSafeExitPath(candidates = [], currentMarks =
     const mark = currentMarks[`${c.chain}:${c.protocol}`] || null;
     const decision = shouldExitHighYieldPosition(c, mark);
 
-    if (!decision.shouldExit || decision.action === 'take_profit_and_redeploy') {
+    if (!decision.shouldExit || decision.action === "take_profit_and_redeploy") {
       // Still good or ready to harvest — keep in active high-yield set
       safe.push({
         ...c,
         exitDecision: decision,
         safeForAutomatedExit: true,
-        realizationFeasibilityScore: calculateRealizationFeasibilityScore(c, mark)
+        realizationFeasibilityScore: calculateRealizationFeasibilityScore(c, mark),
       });
     }
   }
@@ -195,7 +236,8 @@ export function simulateHighYieldExitOutcomes(candidates = [], steps = 8) {
       incentiveUsdPerDay: c.incentiveUsdPerDay || 0,
       remainingHours: c.remainingHours || 12,
       positionKey: `${c.chain}:${c.protocol}`,
-      currentBtcPriceUsd: 105000
+      currentBtcPriceUsd: AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+      aprPct: projectionAprPct(c),
     });
 
     totalOriginalExpected += original.expectedNetBtcProfit;
@@ -213,7 +255,7 @@ export function simulateHighYieldExitOutcomes(candidates = [], steps = 8) {
         currentIncentiveUsdPerDay: currentIncentive,
         currentRemainingHours: currentRemaining,
         hoursHeld: (c.remainingHours || 12) - currentRemaining,
-        realizedNetBtc: realized > 0 ? realized : null
+        realizedNetBtc: realized > 0 ? realized : null,
       };
 
       const decision = shouldExitHighYieldPosition(c, mark);
@@ -224,7 +266,8 @@ export function simulateHighYieldExitOutcomes(candidates = [], steps = 8) {
           incentiveUsdPerDay: currentIncentive,
           remainingHours: currentRemaining,
           positionKey: `${c.chain}:${c.protocol}`,
-          currentBtcPriceUsd: 105000
+          currentBtcPriceUsd: 105000,
+          aprPct: projectionAprPct(c),
         });
         realized = atExit.expectedNetBtcProfit;
         exitedAtStep = s;
@@ -234,14 +277,17 @@ export function simulateHighYieldExitOutcomes(candidates = [], steps = 8) {
         feasibilityAtExit = calculateRealizationFeasibilityScore({
           ...c,
           currentIncentiveUsdPerDay: currentIncentive,
-          currentRemainingHours: currentRemaining
+          currentRemainingHours: currentRemaining,
         });
         break;
       }
 
       // Simulate decay for next step (realistic for short-term incentives)
-      currentIncentive *= 0.82; // ~18% drop per simulated period
-      currentRemaining = Math.max(1, currentRemaining * 0.75);
+      currentIncentive *= AGGRESSIVE_REALIZATION_CONFIG.simulation.incentiveDecayFactor;
+      currentRemaining = Math.max(
+        1,
+        currentRemaining * AGGRESSIVE_REALIZATION_CONFIG.simulation.remainingHoursDecayFactor,
+      );
     }
 
     // If never exited, take whatever is left at the end
@@ -250,16 +296,17 @@ export function simulateHighYieldExitOutcomes(candidates = [], steps = 8) {
         incentiveUsdPerDay: currentIncentive,
         remainingHours: currentRemaining,
         positionKey: `${c.chain}:${c.protocol}`,
-        currentBtcPriceUsd: 105000
+        currentBtcPriceUsd: AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+        aprPct: projectionAprPct(c),
       });
       realized = final.expectedNetBtcProfit;
-      exitReason = 'end_of_simulation';
+      exitReason = "end_of_simulation";
 
       // Record feasibility at the end of the simulation horizon (still useful for high net yield analysis)
       feasibilityAtExit = calculateRealizationFeasibilityScore({
         ...c,
         currentIncentiveUsdPerDay: currentIncentive,
-        currentRemainingHours: currentRemaining
+        currentRemainingHours: currentRemaining,
       });
     }
 
@@ -270,30 +317,37 @@ export function simulateHighYieldExitOutcomes(candidates = [], steps = 8) {
       protocol: c.protocol,
       originalExpectedNetBtc: original.expectedNetBtcProfit,
       simulatedRealizedNetBtc: parseFloat(realized.toFixed(8)),
-      captureRate: original.expectedNetBtcProfit > 0 
-        ? parseFloat((realized / original.expectedNetBtcProfit).toFixed(2)) 
-        : 0,
+      captureRate:
+        original.expectedNetBtcProfit > 0 ? parseFloat((realized / original.expectedNetBtcProfit).toFixed(2)) : 0,
       exitedAtStep,
       exitReason,
-      feasibilityAtExit,   // Feasibility score at the moment the automated exit rule triggered (key for high net yield protection analysis)
+      feasibilityAtExit, // Feasibility score at the moment the automated exit rule triggered (key for high net yield protection analysis)
       // Explicit flag for the highest-value opportunities the sleeve exists to chase.
       // True when a high-absolute-net-profit position was successfully exited by the automated rules
       // (not left until end_of_simulation). Strengthens evidence that high net yield is realizable.
-      highProfitProtected: original.expectedNetBtcProfit >= 0.00008 && exitReason !== 'end_of_simulation'
+      highProfitProtected:
+        original.expectedNetBtcProfit >= AGGRESSIVE_REALIZATION_CONFIG.highProfitThresholdBtc &&
+        exitReason !== "end_of_simulation",
     });
   }
 
-  const aggregateCapture = totalOriginalExpected > 0 
-    ? parseFloat((totalSimulatedRealized / totalOriginalExpected).toFixed(2)) 
-    : 0;
+  const aggregateCapture =
+    totalOriginalExpected > 0 ? parseFloat((totalSimulatedRealized / totalOriginalExpected).toFixed(2)) : 0;
 
   // High-profit-specific aggregates — the true success metric for the Aggressive Velocity Chaser
-  const highProfitCandidates = results.filter(r => (r.originalExpectedNetBtc || 0) >= 0.00008);
-  const highProfitProtectedCount = highProfitCandidates.filter(r => r.highProfitProtected).length;
-  const highProfitAggregateCapture = highProfitCandidates.length > 0
-    ? parseFloat((highProfitCandidates.reduce((s, r) => s + r.simulatedRealizedNetBtc, 0) /
-                   highProfitCandidates.reduce((s, r) => s + r.originalExpectedNetBtc, 0)).toFixed(2))
-    : 0;
+  const highProfitCandidates = results.filter(
+    (r) => (r.originalExpectedNetBtc || 0) >= AGGRESSIVE_REALIZATION_CONFIG.highProfitThresholdBtc,
+  );
+  const highProfitProtectedCount = highProfitCandidates.filter((r) => r.highProfitProtected).length;
+  const highProfitAggregateCapture =
+    highProfitCandidates.length > 0
+      ? parseFloat(
+          (
+            highProfitCandidates.reduce((s, r) => s + r.simulatedRealizedNetBtc, 0) /
+            highProfitCandidates.reduce((s, r) => s + r.originalExpectedNetBtc, 0)
+          ).toFixed(2),
+        )
+      : 0;
 
   return {
     sleeve: SLEEVE_ID,
@@ -305,7 +359,7 @@ export function simulateHighYieldExitOutcomes(candidates = [], steps = 8) {
     highProfitProtectedCount,
     highProfitAggregateCaptureRate: highProfitAggregateCapture,
     perCandidate: results,
-    note: "Library-driven simulation of automated exit rules on decaying high-yield opportunities. HighProfit* fields are the primary success signal for the High-Yield Velocity Chaser."
+    note: "Library-driven simulation of automated exit rules on decaying high-yield opportunities. HighProfit* fields are the primary success signal for the High-Yield Velocity Chaser.",
   };
 }
 
@@ -323,7 +377,8 @@ export function calculateRealizationFeasibilityScore(candidate, currentPositionM
     incentiveUsdPerDay: candidate.incentiveUsdPerDay || 0,
     remainingHours: candidate.remainingHours || 12,
     positionKey: `${candidate.chain}:${candidate.protocol}`,
-    currentBtcPriceUsd: 105000
+    currentBtcPriceUsd: AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+    aprPct: projectionAprPct(candidate),
   });
 
   // Current live projection (may have changed due to incentive decay)
@@ -331,7 +386,8 @@ export function calculateRealizationFeasibilityScore(candidate, currentPositionM
     incentiveUsdPerDay: currentPositionMark?.currentIncentiveUsdPerDay ?? candidate.incentiveUsdPerDay ?? 0,
     remainingHours: currentPositionMark?.currentRemainingHours ?? candidate.remainingHours ?? 6,
     positionKey: `${candidate.chain}:${candidate.protocol}`,
-    currentBtcPriceUsd: 105000
+    currentBtcPriceUsd: AGGRESSIVE_VELOCITY_BTC_PRICE_USD,
+    aprPct: projectionAprPct(currentPositionMark || candidate),
   });
 
   if (original.expectedNetBtcProfit <= 0) return 0;
@@ -341,20 +397,36 @@ export function calculateRealizationFeasibilityScore(candidate, currentPositionM
 
   // Exit cost buffer: higher original profit vs current exit cost = safer realization
   const exitCostBtc = live.totalRoundtripCostBtc || 0.00015;
-  const bufferRatio = Math.min(1, (original.expectedNetBtcProfit * 0.7) / Math.max(exitCostBtc, 0.00005));
+  const bufferRatio = Math.min(
+    1,
+    (original.expectedNetBtcProfit * AGGRESSIVE_REALIZATION_CONFIG.bufferRatioProfitShare) /
+      Math.max(exitCostBtc, AGGRESSIVE_REALIZATION_CONFIG.timeFactorDivisorHours ? 0.00005 : 0.00005),
+  );
 
   // Time pressure: less remaining time + still high profit = better (fast realization)
   const remaining = currentPositionMark?.currentRemainingHours ?? candidate.remainingHours ?? 6;
-  const timeFactor = Math.min(1, Math.max(0.4, remaining / 24)); // favor shorter campaigns for aggressive sleeve
+  const timeFactor = Math.min(
+    1,
+    Math.max(
+      AGGRESSIVE_REALIZATION_CONFIG.timeFactorFloor,
+      remaining / AGGRESSIVE_REALIZATION_CONFIG.timeFactorDivisorHours,
+    ),
+  );
 
   // Quality bonus from library
-  const qualityBonus = live.quality === 'high' ? 1.15 : (live.quality === 'medium' ? 1.0 : 0.7);
+  const qualityBonus =
+    AGGRESSIVE_REALIZATION_CONFIG.qualityBonusByLevel[live.quality] ??
+    AGGRESSIVE_REALIZATION_CONFIG.qualityBonusByLevel.low;
 
   // High absolute net profit protection: when the original expected net BTC is very high, we apply a
   // modest boost to feasibility. This strengthens the "high-yield opportunities can actually be realized safely"
   // signal precisely for the rare, high-value items the sleeve is designed to chase.
-  const highProfitProtection = original.expectedNetBtcProfit >= 0.00008 ? 1.12 :
-                               (original.expectedNetBtcProfit >= 0.00005 ? 1.05 : 1.0);
+  const highProfitProtection =
+    original.expectedNetBtcProfit >= AGGRESSIVE_REALIZATION_CONFIG.highProfitThresholdBtc
+      ? AGGRESSIVE_REALIZATION_CONFIG.highProfitProtectionByThreshold.high
+      : original.expectedNetBtcProfit >= AGGRESSIVE_REALIZATION_CONFIG.mediumProfitThresholdBtc
+        ? AGGRESSIVE_REALIZATION_CONFIG.highProfitProtectionByThreshold.medium
+        : AGGRESSIVE_REALIZATION_CONFIG.highProfitProtectionByThreshold.default;
 
   // Composite feasibility (0-100)
   let score = (retention * 45 + bufferRatio * 30 + (1 - timeFactor) * 15) * qualityBonus * highProfitProtection;
@@ -370,8 +442,10 @@ export function calculateRealizationFeasibilityScore(candidate, currentPositionM
  */
 export function rankByNetBtcProfitPerRisk(candidates = []) {
   return [...candidates].sort((a, b) => {
-    const scoreA = (a.refinedNetBtcProfit || a.expectedNetBtcProfit || 0) / Math.max(a.totalRoundtripCostBtc || 0.0001, 0.0001);
-    const scoreB = (b.refinedNetBtcProfit || b.expectedNetBtcProfit || 0) / Math.max(b.totalRoundtripCostBtc || 0.0001, 0.0001);
+    const scoreA =
+      (a.refinedNetBtcProfit || a.expectedNetBtcProfit || 0) / Math.max(a.totalRoundtripCostBtc || 0.0001, 0.0001);
+    const scoreB =
+      (b.refinedNetBtcProfit || b.expectedNetBtcProfit || 0) / Math.max(b.totalRoundtripCostBtc || 0.0001, 0.0001);
     return scoreB - scoreA;
   });
 }
@@ -379,9 +453,8 @@ export function rankByNetBtcProfitPerRisk(candidates = []) {
 export default {
   shouldExitHighYieldPosition,
   filterCandidatesWithSafeExitPath,
-  runExitRuleBacktest,
   rankByNetBtcProfitPerRisk,
   calculateRealizationFeasibilityScore,
   simulateHighYieldExitOutcomes,
-  AGGRESSIVE_EXIT_RULES
+  AGGRESSIVE_EXIT_RULES,
 };
