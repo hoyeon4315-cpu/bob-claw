@@ -9,10 +9,7 @@ import {
   appendExecutionReceiptReconciliation,
   loadLivePaybackReceiptStore,
 } from "../src/executor/ingestor/execution-receipt-ingest.mjs";
-import {
-  buildPaybackDashboardSlice,
-  buildProposedMinPaybackPatch,
-} from "../src/executor/payback/dashboard.mjs";
+import { buildPaybackDashboardSlice, buildProposedMinPaybackPatch } from "../src/executor/payback/dashboard.mjs";
 
 function nativePriceFixture() {
   return {
@@ -194,7 +191,7 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
     auditLogLines: [],
     receiptStore,
     now: "2026-04-17T12:00:00.000Z",
-    decisionBuilder: async ({ recipientOverride } = {}) => (
+    decisionBuilder: async ({ recipientOverride } = {}) =>
       recipientOverride
         ? {
             status: "carry",
@@ -222,8 +219,7 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
                 bitcoinDestAddressEnv: "PAYBACK_BTC_DEST_ADDR",
               },
             },
-          }
-    ),
+          },
   });
 
   assert.equal(payback.lastPaybackSettledAt, null);
@@ -251,6 +247,31 @@ test("payback loader excludes simulated dry-run loop receipts and dashboard slic
   assert.equal(payback.scheduler.previewAfterDestination?.progressToMinimumRatio, 0.2);
   assert.equal(payback.carry.active, false);
   assert.equal(payback.carry.pendingSats, payback.accumulatorPendingSats);
+});
+
+test("payback loader keeps only latest treasury inventory snapshot", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bob-claw-payback-latest-inventory-"));
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(
+    join(dataDir, "treasury-inventory.jsonl"),
+    [
+      JSON.stringify({
+        observedAt: "2026-04-17T10:00:00.000Z",
+        tokens: [{ chain: "base", ticker: "wBTC.OFT", actual: "10000" }],
+      }),
+      JSON.stringify({
+        observedAt: "2026-04-17T11:00:00.000Z",
+        tokens: [{ chain: "base", ticker: "wBTC.OFT", actual: "20000" }],
+      }),
+    ].join("\n") + "\n",
+    "utf8",
+  );
+
+  const receiptStore = await loadLivePaybackReceiptStore({ dataDir });
+
+  assert.equal(receiptStore.treasuryInventory.length, 1);
+  assert.equal(receiptStore.treasuryInventory[0].observedAt, "2026-04-17T11:00:00.000Z");
+  assert.equal(receiptStore.treasuryInventory[0].tokens[0].actual, "20000");
 });
 
 test("payback dashboard exposes current minimum payback gap when destination is already configured", async () => {

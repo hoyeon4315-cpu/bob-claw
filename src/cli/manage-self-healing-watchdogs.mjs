@@ -7,17 +7,13 @@ import { resolve } from "node:path";
 import { homedir } from "node:os";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import {
-  defaultLaunchAgentsDir,
-  defaultLaunchdLogDir,
-  renderLaunchAgentPlist,
-} from "../runtime/launchd.mjs";
+import { defaultLaunchAgentsDir, defaultLaunchdLogDir, renderLaunchAgentPlist } from "../runtime/launchd.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
 import { resolveNodeExecutable } from "../runtime/node-path.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
-function parseArgs(argv) {
+function parseArgs(argv = process.argv.slice(2)) {
   const flags = new Set(argv);
   return {
     install: flags.has("--install"),
@@ -49,6 +45,27 @@ function buildSpecs(options) {
       programArguments: [
         resolve(options.nodePath),
         resolve(options.rootDir, "src/cli/backfill-capital-audit-pairs.mjs"),
+        "--write",
+      ],
+      environmentVariables: sharedEnv,
+      runAtLoad: true,
+      keepAlive: false,
+      startInterval: 300,
+      throttleInterval: 30,
+      processType: "Background",
+    },
+    {
+      id: "async-settlement-watcher",
+      label: "com.bobclaw.async-settlement-watcher",
+      description: "Async settlement and signer confirmation watcher",
+      scriptPath: resolve(options.rootDir, "src/cli/run-async-settlement-watcher.mjs"),
+      plistPath: resolve(options.launchAgentsDir, "com.bobclaw.async-settlement-watcher.plist"),
+      stdoutPath: resolve(options.logDir, "async-settlement-watcher.out.log"),
+      stderrPath: resolve(options.logDir, "async-settlement-watcher.err.log"),
+      workingDirectory: resolve(options.rootDir),
+      programArguments: [
+        resolve(options.nodePath),
+        resolve(options.rootDir, "src/cli/run-async-settlement-watcher.mjs"),
         "--write",
       ],
       environmentVariables: sharedEnv,
@@ -129,7 +146,9 @@ async function main() {
 
   if (args.print) {
     if (args.json) {
-      console.log(JSON.stringify({ specs: specs.map((s) => ({ id: s.id, label: s.label, plistPath: s.plistPath })) }, null, 2));
+      console.log(
+        JSON.stringify({ specs: specs.map((s) => ({ id: s.id, label: s.label, plistPath: s.plistPath })) }, null, 2),
+      );
       return;
     }
     for (const spec of specs) {

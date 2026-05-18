@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import {
   executorStrategyBindingsPath,
   runWrappedBtcLoopLiveScenario,
 } from "../executor/strategies/wrapped-btc-loop-live.mjs";
 import { signerSocketPath } from "../executor/signer/client.mjs";
+
+const IS_MAIN = process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false;
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -36,6 +39,10 @@ function parseArgs(argv) {
   };
 }
 
+export function wrappedBtcLoopLiveExitCode(result = {}) {
+  return result?.ok === false || result?.blockedReason ? 2 : 0;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const result = await runWrappedBtcLoopLiveScenario({
@@ -59,6 +66,7 @@ async function main() {
 
   if (args.json) {
     console.log(JSON.stringify(result, null, 2));
+    process.exitCode = wrappedBtcLoopLiveExitCode(result);
     return;
   }
 
@@ -75,14 +83,19 @@ async function main() {
   }
   console.log(`entryCount=${result.entryResults.length}`);
   console.log(`unwindCount=${result.unwindResults.length}`);
-  console.log(`receiptAutoIngest=${result.receiptAutoIngest.ran ? "ran" : result.receiptAutoIngest.reason || "skipped"}`);
+  console.log(
+    `receiptAutoIngest=${result.receiptAutoIngest.ran ? "ran" : result.receiptAutoIngest.reason || "skipped"}`,
+  );
   const entryTxHashes = result.entryResults.map((item) => item.broadcast?.txHash).filter(Boolean);
   const unwindTxHashes = result.unwindResults.map((item) => item.broadcast?.txHash).filter(Boolean);
   if (entryTxHashes.length > 0) console.log(`entryTxHashes=${entryTxHashes.join(",")}`);
   if (unwindTxHashes.length > 0) console.log(`unwindTxHashes=${unwindTxHashes.join(",")}`);
+  process.exitCode = wrappedBtcLoopLiveExitCode(result);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (IS_MAIN) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

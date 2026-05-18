@@ -132,6 +132,8 @@ const OPERATOR_ACTION_REFILL_BLOCKERS = new Set([
   "funding_source_rejected",
   "requires_manual_funding",
 ]);
+const REFILL_EXECUTION_COMMAND_GRACE_MS = 30_000;
+const REFILL_EXECUTION_RECOVERY_GRACE_MS = 30_000;
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -537,6 +539,45 @@ function forcedRefillMethodArgs(job = {}, activeMethod = null) {
 
 function commandErrorText(result = {}) {
   return [result?.error?.message, result?.stderr, result?.stdout].filter(Boolean).join("\n");
+}
+
+function resolveRefillExecutionCommandTimeout(timeoutMs) {
+  const baseTimeoutMs = finiteNumber(timeoutMs);
+  const safeBaseTimeoutMs = !Number.isFinite(baseTimeoutMs) || baseTimeoutMs <= 0 ? 0 : baseTimeoutMs;
+  return safeBaseTimeoutMs + REFILL_EXECUTION_RECOVERY_GRACE_MS + REFILL_EXECUTION_COMMAND_GRACE_MS;
+}
+
+function resolveRefillExecutionSignerWaitTimeout(timeoutMs) {
+  const baseTimeoutMs = finiteNumber(timeoutMs);
+  const safeBaseTimeoutMs = !Number.isFinite(baseTimeoutMs) || baseTimeoutMs <= 0 ? 0 : baseTimeoutMs;
+  return safeBaseTimeoutMs + REFILL_EXECUTION_COMMAND_GRACE_MS;
+}
+
+function countRefillExecutionPlanSteps(plan = null) {
+  if (!plan || typeof plan !== "object") return 0;
+  let count = 0;
+  if (Array.isArray(plan.steps) && plan.steps.length > 0) {
+    count += plan.steps.length;
+  }
+  if (Array.isArray(plan.stepIds) && plan.stepIds.length > 0) {
+    count += plan.stepIds.length;
+  }
+  for (const key of ["step1", "step2", "step3"]) {
+    count += countRefillExecutionPlanSteps(plan?.[key]?.plan || null);
+  }
+  return count;
+}
+
+function refillExecutionStepCount(previewJson = null) {
+  const plan = previewJson?.preparation?.plan || null;
+  const counted = countRefillExecutionPlanSteps(plan);
+  return counted > 0 ? counted : 1;
+}
+
+function resolveRefillExecutionCommandTimeoutForPreview(timeoutMs, previewJson = null) {
+  const stepCount = refillExecutionStepCount(previewJson);
+  const perStepBudgetMs = resolveRefillExecutionSignerWaitTimeout(timeoutMs);
+  return perStepBudgetMs * stepCount + REFILL_EXECUTION_RECOVERY_GRACE_MS;
 }
 
 function classifyRefillRouteError(result = {}) {
@@ -2136,7 +2177,7 @@ export async function runAllChainAutopilot({
           ],
           runCommandImpl,
           cwd,
-          timeoutMs,
+          timeoutMs: resolveRefillExecutionCommandTimeoutForPreview(timeoutMs, preview.json),
           steps,
         });
         if (refillSourceDebitLikely(execution) || refillSourceDebitIndeterminate(execution, { activeMethod: method })) {
@@ -2408,7 +2449,7 @@ export async function runAllChainAutopilot({
     args: ["src/cli/report-strategy-execution-surfaces.mjs", "--json", "--write"],
     runCommandImpl,
     cwd,
-    timeoutMs: Math.min(30_000, timeoutMs),
+    timeoutMs: Math.min(120_000, timeoutMs),
     steps,
   });
   const handoffAmountSats = wrappedBtcHandoffAmountSats(

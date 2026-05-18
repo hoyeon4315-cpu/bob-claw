@@ -890,7 +890,101 @@ test("all-chain autopilot gives long-running canary sweep its own timeout", asyn
   );
 });
 
-test("all-chain autopilot bounds optional strategy surface refresh timeout", async () => {
+test("all-chain autopilot gives refill execute child process grace beyond confirmation timeout", async () => {
+  const seen = [];
+  const command = ({ args, timeoutMs }) => {
+    seen.push({ args, timeoutMs });
+    const name = args[0];
+    if (name.endsWith("plan-capital-manager-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          rebalancePlan: { decision: "REFILL_REQUIRED", actions: [] },
+          capitalPlan: { decision: "REFILL_REQUIRED", summary: { actionCount: 1, blockerCount: 0 } },
+          jobs: {
+            summary: { jobCount: 1, estimatedAssetValueUsd: 25 },
+            jobs: [
+              {
+                jobId: "grace-refill-1",
+                chain: "base",
+                asset: "ETH",
+                type: "refill_token",
+                executionMethod: "same_chain_token_to_token_swap",
+                requiresManualReview: false,
+                fundingSource: { selectionStatus: "ready" },
+              },
+            ],
+          },
+        },
+      };
+    }
+    if (name.endsWith("plan-treasury-refill-jobs.mjs")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          summary: { jobCount: 0 },
+          jobs: [],
+        },
+      };
+    }
+    if (name.endsWith("run-refill-job-stub.mjs")) {
+      if (args.includes("--execute")) {
+        return {
+          ok: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          json: {
+            forcedMethod: "same_chain_token_to_token_swap",
+            preparation: { status: "ready", executionMethod: "same_chain_token_to_token_swap" },
+            execution: { settlementStatus: "source_confirmed_only" },
+            outcomeEvent: { status: "pending_confirmation" },
+            error: { message: "Signer daemon response timed out after 300000ms" },
+          },
+        };
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        json: {
+          forcedMethod: "same_chain_token_to_token_swap",
+          preparation: {
+            status: "ready",
+            executionMethod: "same_chain_token_to_token_swap",
+            plan: {
+              stepIds: ["approve_input_token", "swap_input_to_output"],
+            },
+          },
+        },
+      };
+    }
+    return fakeCommand({ args });
+  };
+
+  await runAllChainAutopilot({
+    execute: true,
+    write: false,
+    timeoutMs: 300000,
+    runCommandImpl: command,
+  });
+
+  const refillExecute = seen.find(
+    (entry) => entry.args[0].endsWith("run-refill-job-stub.mjs") && entry.args.includes("--execute"),
+  );
+  assert.equal(refillExecute.args.includes("--timeout-ms=300000"), true);
+  assert.equal(refillExecute.args.includes("--confirmation-timeout-ms=300000"), true);
+  assert.equal(refillExecute.timeoutMs, 690000);
+});
+
+test("all-chain autopilot gives strategy surface refresh enough budget for pre-dispatch live gating", async () => {
   const seen = [];
   const command = ({ args, timeoutMs }) => {
     seen.push({ args, timeoutMs });
@@ -901,7 +995,7 @@ test("all-chain autopilot bounds optional strategy surface refresh timeout", asy
         stdout: "",
         stderr: "spawnSync node ETIMEDOUT",
         json: null,
-        error: { name: "Error", message: "Command timed out after 30000ms" },
+        error: { name: "Error", message: `Command timed out after ${timeoutMs}ms` },
       };
     }
     return fakeCommand({ args });
@@ -918,7 +1012,7 @@ test("all-chain autopilot bounds optional strategy surface refresh timeout", asy
   const dispatchStep = report.steps.find((step) => step.name === "strategy_catalog_dispatch");
   const surfaceCommand = seen.find((entry) => entry.args[0] === "src/cli/report-strategy-execution-surfaces.mjs");
 
-  assert.equal(surfaceCommand.timeoutMs, 30_000);
+  assert.equal(surfaceCommand.timeoutMs, 120_000);
   assert.equal(surfaceStep.ok, false);
   assert.equal(dispatchStep.ok, true);
   assert.equal(report.status, "completed_with_blockers");
