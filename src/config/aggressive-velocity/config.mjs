@@ -208,6 +208,10 @@ export function resolveAggressiveVelocityAccountingCost(chain) {
   };
 }
 
+export function getAggressiveVelocityMinNetBtc() {
+  return AGGRESSIVE_VELOCITY_SCANNER_CONFIG.minExpectedNetBtcProfit;
+}
+
 export function resolveAggressiveVelocityFeasibilityConfig(chain) {
   const normalizedChain = normalizeAggressiveVelocityChain(chain) || "ethereum";
   return Object.freeze({
