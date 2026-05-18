@@ -9,6 +9,7 @@ import { buildEmergencyUnwindExecutionPlan, evaluateLeverageWatcher } from "../d
 import { buildOracleSanitySnapshot } from "../market/oracle-sanity.mjs";
 import { summarizeWrappedBtcLendingLoopDryRunRuns } from "./wrapped-btc-lending-loop-dry-run.mjs";
 import { resolveWrappedBtcLoopBindingSupport } from "./wrapped-btc-loop-bindings.mjs";
+import { buildWrappedBtcLoopReceiptHistory } from "./wrapped-btc-loop-receipt-history.mjs";
 import { buildSliceDryRunSummary } from "./slice-dryrun-summary-builder.mjs";
 
 const DEFAULT_STRATEGY_CONFIG = Object.freeze({
@@ -75,10 +76,18 @@ export function buildDefaultWrappedBtcLendingLoopConfig() {
 export function validateWrappedBtcLendingLoopConfig(config = {}) {
   const missingFields = validateRequiredNumbers(config);
   const errors = [];
-  if (Number.isFinite(config.unwindTriggerHealthFactor) && Number.isFinite(config.healthFactorMin) && config.unwindTriggerHealthFactor > config.healthFactorMin) {
+  if (
+    Number.isFinite(config.unwindTriggerHealthFactor) &&
+    Number.isFinite(config.healthFactorMin) &&
+    config.unwindTriggerHealthFactor > config.healthFactorMin
+  ) {
     errors.push("unwindTriggerHealthFactor must be less than or equal to healthFactorMin");
   }
-  if (Number.isFinite(config.healthFactorMin) && Number.isFinite(config.targetHealthFactor) && config.healthFactorMin > config.targetHealthFactor) {
+  if (
+    Number.isFinite(config.healthFactorMin) &&
+    Number.isFinite(config.targetHealthFactor) &&
+    config.healthFactorMin > config.targetHealthFactor
+  ) {
     errors.push("healthFactorMin must be less than or equal to targetHealthFactor");
   }
   if (Number.isFinite(config.maxLtvPct) && (config.maxLtvPct <= 0 || config.maxLtvPct >= 100)) {
@@ -138,7 +147,8 @@ function buildLoopIterations(config = {}, market = {}) {
     totalDebtUsd,
     targetLtvPct,
     effectiveLtvPct: totalCollateralUsd > 0 ? (totalDebtUsd / totalCollateralUsd) * 100 : null,
-    projectedHealthFactor: totalDebtUsd > 0 ? liquidationThresholdPct / ((totalDebtUsd / totalCollateralUsd) * 100) : null,
+    projectedHealthFactor:
+      totalDebtUsd > 0 ? liquidationThresholdPct / ((totalDebtUsd / totalCollateralUsd) * 100) : null,
     projectedLiquidationBufferPct:
       totalCollateralUsd > 0 ? liquidationThresholdPct - (totalDebtUsd / totalCollateralUsd) * 100 : null,
   };
@@ -164,14 +174,24 @@ function buildEconomics(loop = {}, market = {}, initialCapitalUsd = null, dryRun
       entryLoopFeesUsd: round(loop.entryFeesUsd, 4),
       unwindSlippageUsd: round(unwindSlippageUsd, 4),
       unwindFixedCostUsd: round(unwindFixedCostUsd, 4),
-      annualNetCarryUsd: round(annualSupplyUsd - annualBorrowUsd - loop.entryFeesUsd - unwindSlippageUsd - unwindFixedCostUsd, 4),
+      annualNetCarryUsd: round(
+        annualSupplyUsd - annualBorrowUsd - loop.entryFeesUsd - unwindSlippageUsd - unwindFixedCostUsd,
+        4,
+      ),
       annualNetCarryPctOnInitialCapital:
         Number.isFinite(initialCapitalUsd) && initialCapitalUsd > 0
-          ? round(((annualSupplyUsd - annualBorrowUsd - loop.entryFeesUsd - unwindSlippageUsd - unwindFixedCostUsd) / initialCapitalUsd) * 100, 4)
+          ? round(
+              ((annualSupplyUsd - annualBorrowUsd - loop.entryFeesUsd - unwindSlippageUsd - unwindFixedCostUsd) /
+                initialCapitalUsd) *
+                100,
+              4,
+            )
           : null,
     },
     estimated: {
-      status: dryRunSummary.dryRunReceiptRecorded ? "simulated_dry_run_estimate" : "unavailable_until_protocol_adapter_and_rate_feed_exist",
+      status: dryRunSummary.dryRunReceiptRecorded
+        ? "simulated_dry_run_estimate"
+        : "unavailable_until_protocol_adapter_and_rate_feed_exist",
       valueUsd: realizedNetCarryUsd != null ? round(realizedNetCarryUsd, 4) : null,
       sampleCount: dryRunSummary.passedCount ?? 0,
     },
@@ -269,6 +289,7 @@ export function buildWrappedBtcLendingLoopScaffold({
     existingSummary: summarizeWrappedBtcLendingLoopDryRunRuns(dryRunReceipts),
   });
   const economics = buildEconomics(loop, market, config.perTradeCapUsd, dryRunReceipts);
+  const liveExecutionReceiptHistory = buildWrappedBtcLoopReceiptHistory(config, dryRunReceipts);
   const watcherPlan = buildWatcherPlan(config, market, loop);
   const watcherRuntime = evaluateLeverageWatcher({
     strategyConfig: config,
@@ -347,6 +368,11 @@ export function buildWrappedBtcLendingLoopScaffold({
     watcherRuntime,
     unwindPlan,
     emergencyUnwindExecution,
+    liveExecutionPolicy: {
+      expectedNetReady: Number.isFinite(economics?.estimated?.valueUsd),
+      expectedNetUsd: economics?.estimated?.valueUsd ?? null,
+      receiptHistory: liveExecutionReceiptHistory,
+    },
     pnl: economics,
     blockers,
     readiness: {

@@ -74,22 +74,28 @@ test("kill-switch audit reader filters to the requested kill-switch path", async
     const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
     const productionPath = join(root, "prod.kill");
     const testPath = join(root, "test.kill");
-    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
-      action: "halt",
-      reason: "auto_kill:failure_burst_per_strategy",
-      actor: "risk:auto-kill",
-      killSwitchPath: productionPath,
-      previousState: "running",
-      now: "2026-05-04T18:16:45.378Z",
-    }), { auditPath });
-    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
-      action: "halt",
-      reason: "watchdog_heartbeat_stale",
-      actor: "executor:watchdog",
-      killSwitchPath: testPath,
-      previousState: "running",
-      now: "2026-05-04T21:10:26.618Z",
-    }), { auditPath });
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: "auto_kill:failure_burst_per_strategy",
+        actor: "risk:auto-kill",
+        killSwitchPath: productionPath,
+        previousState: "running",
+        now: "2026-05-04T18:16:45.378Z",
+      }),
+      { auditPath },
+    );
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: "watchdog_heartbeat_stale",
+        actor: "executor:watchdog",
+        killSwitchPath: testPath,
+        previousState: "running",
+        now: "2026-05-04T21:10:26.618Z",
+      }),
+      { auditPath },
+    );
 
     const latest = await readLatestKillSwitchAuditRecord({
       auditPath,
@@ -108,37 +114,50 @@ test("kill-switch status reads current file payload and matching audit reason", 
   try {
     const killSwitchPath = join(root, "KILL_SWITCH");
     const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
-    await writeFile(killSwitchPath, JSON.stringify({
-      schemaVersion: 1,
-      evaluatedAt: "2026-05-04T18:16:45.378Z",
-      triggers: [
+    await writeFile(
+      killSwitchPath,
+      JSON.stringify(
         {
-          trigger: "failure_burst_per_strategy",
-          strategyId: "gateway-btc-funding-transfer",
-          failureCount: 6,
-          threshold: 5,
-          windowMs: 300000,
+          schemaVersion: 1,
+          evaluatedAt: "2026-05-04T18:16:45.378Z",
+          triggers: [
+            {
+              trigger: "failure_burst_per_strategy",
+              strategyId: "gateway-btc-funding-transfer",
+              failureCount: 6,
+              threshold: 5,
+              windowMs: 300000,
+            },
+          ],
+          killSwitchPath,
+          alreadyArmed: false,
         },
-      ],
-      killSwitchPath,
-      alreadyArmed: false,
-    }, null, 2));
-    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
-      action: "halt",
-      reason: "auto_kill:failure_burst_per_strategy",
-      actor: "risk:auto-kill",
-      killSwitchPath,
-      previousState: "running",
-      now: "2026-05-04T18:16:45.378Z",
-    }), { auditPath });
-    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
-      action: "halt",
-      reason: "watchdog_heartbeat_stale",
-      actor: "executor:watchdog",
-      killSwitchPath: join(root, "TEST_ONLY.kill"),
-      previousState: "running",
-      now: "2026-05-04T21:10:26.618Z",
-    }), { auditPath });
+        null,
+        2,
+      ),
+    );
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: "auto_kill:failure_burst_per_strategy",
+        actor: "risk:auto-kill",
+        killSwitchPath,
+        previousState: "running",
+        now: "2026-05-04T18:16:45.378Z",
+      }),
+      { auditPath },
+    );
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: "watchdog_heartbeat_stale",
+        actor: "executor:watchdog",
+        killSwitchPath: join(root, "TEST_ONLY.kill"),
+        previousState: "running",
+        now: "2026-05-04T21:10:26.618Z",
+      }),
+      { auditPath },
+    );
 
     const status = await readKillSwitchStatus({ killSwitchPath, auditPath });
 
@@ -158,14 +177,17 @@ test("kill-switch status includes dashboard replay only for the matching kill-sw
     const killSwitchPath = join(root, "KILL_SWITCH");
     const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
     await writeFile(killSwitchPath, "halted_at=2026-05-05T00:00:00.000Z\nreason=manual\nactor=operator\n");
-    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
-      action: "halt",
-      reason: "manual",
-      actor: "operator",
-      killSwitchPath,
-      previousState: "running",
-      now: "2026-05-05T00:00:00.000Z",
-    }), { auditPath });
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: "manual",
+        actor: "operator",
+        killSwitchPath,
+        previousState: "running",
+        now: "2026-05-05T00:00:00.000Z",
+      }),
+      { auditPath },
+    );
 
     const replay = { triggered: false, staleArm: true };
     const status = await readKillSwitchStatus({
@@ -235,26 +257,36 @@ test("kill-switch status does not let resume review packets replace the active h
   try {
     const killSwitchPath = join(root, "KILL_SWITCH");
     const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
-    await writeFile(killSwitchPath, JSON.stringify({
-      schemaVersion: 1,
-      evaluatedAt: "2026-05-04T18:16:45.378Z",
-    }), "utf8");
-    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
-      action: "halt",
-      reason: "auto_kill:failure_burst_per_strategy",
-      actor: "risk:auto-kill",
+    await writeFile(
       killSwitchPath,
-      previousState: "running",
-      now: "2026-05-04T18:16:45.378Z",
-    }), { auditPath });
-    await appendKillSwitchAuditRecord(buildKillSwitchAuditRecord({
-      action: "resume_review_packet",
-      reason: "operator_resume_review",
-      actor: "operator-via-llm",
-      killSwitchPath,
-      previousState: "halted",
-      now: "2026-05-05T06:00:00.000Z",
-    }), { auditPath });
+      JSON.stringify({
+        schemaVersion: 1,
+        evaluatedAt: "2026-05-04T18:16:45.378Z",
+      }),
+      "utf8",
+    );
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "halt",
+        reason: "auto_kill:failure_burst_per_strategy",
+        actor: "risk:auto-kill",
+        killSwitchPath,
+        previousState: "running",
+        now: "2026-05-04T18:16:45.378Z",
+      }),
+      { auditPath },
+    );
+    await appendKillSwitchAuditRecord(
+      buildKillSwitchAuditRecord({
+        action: "resume_review_packet",
+        reason: "operator_resume_review",
+        actor: "operator-via-llm",
+        killSwitchPath,
+        previousState: "halted",
+        now: "2026-05-05T06:00:00.000Z",
+      }),
+      { auditPath },
+    );
 
     const status = await readKillSwitchStatus({ killSwitchPath, auditPath });
 
@@ -308,4 +340,41 @@ test("resume review packet keeps operator checklist explicit and non-mutating", 
   assert.equal(packet.checklist.find((item) => item.id === "blocker_mitigated").answer, "yes");
   assert.equal(packet.nextAction, "operator_may_review_resume_command");
   assert.equal(packet.clearsKillSwitch, false);
+});
+
+test("readKillSwitchStatus auto-clears stale watchdog arm (temp file repro: file removed + audit appended + halted=false)", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-kill-stale-arm-"));
+  try {
+    const killSwitchPath = join(root, "KILL_SWITCH");
+    const auditPath = join(root, "logs", "kill-switch-audit.jsonl");
+    // content that triggers rawContentLooksLikeWatchdogTimestamp (no reason/actor/halted_at)
+    await writeFile(killSwitchPath, "evaluatedAt=2026-05-16T12:00:00.000Z\n");
+    const beforeExists = await (async () => {
+      try {
+        await readFile(killSwitchPath);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    assert.equal(beforeExists, true, "pre: KILL_SWITCH file must exist");
+
+    const status = await readKillSwitchStatus({ killSwitchPath, auditPath });
+
+    assert.equal(status.halted, false, "returned status must be cleared (halted:false)");
+    const afterExists = await (async () => {
+      try {
+        await readFile(killSwitchPath);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    assert.equal(afterExists, false, "post: KILL_SWITCH file must actually be removed");
+    const auditRaw = await readFile(auditPath, "utf8");
+    const hasAutoClear = auditRaw.includes("auto_cleared_stale_arm");
+    assert.equal(hasAutoClear, true, "audit trail must contain auto_cleared_stale_arm record");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

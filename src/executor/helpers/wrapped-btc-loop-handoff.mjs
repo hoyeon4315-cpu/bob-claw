@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { config } from "../../config/env.mjs";
 import { shellQuote } from "../../lib/shell-quote.mjs";
 import { buildTokenDexExperimentPlan, executeTokenDexExperimentPlan } from "./token-dex-experiment.mjs";
 
@@ -7,6 +10,7 @@ export const WRAPPED_BTC_LOOP_HANDOFF_INPUT_TOKEN = "wbtc.oft";
 export const WRAPPED_BTC_LOOP_HANDOFF_OUTPUT_TOKEN = "cbbtc";
 export const WRAPPED_BTC_LOOP_HANDOFF_INPUT_ASSET = "wBTC.OFT";
 export const WRAPPED_BTC_LOOP_HANDOFF_TARGET_ASSET = "cbBTC";
+const WRAPPED_BTC_LOOP_SLICE_FILE = "wrapped-btc-lending-loop-slice.json";
 
 function toPositiveIntegerString(value, label) {
   if (typeof value === "bigint") {
@@ -27,7 +31,39 @@ function toPositiveIntegerString(value, label) {
 }
 
 function normalizeAssetSymbol(value = null) {
-  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function finiteNumber(value = null) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+async function readWrappedBtcLoopExpectedNetUsd({ dataDir = config.dataDir, readFileImpl = readFile } = {}) {
+  try {
+    const document = JSON.parse(await readFileImpl(join(dataDir, WRAPPED_BTC_LOOP_SLICE_FILE), "utf8"));
+    return (
+      finiteNumber(document?.liveExecutionPolicy?.expectedNetUsd) ??
+      finiteNumber(document?.policyPreview?.expectedNetUsd) ??
+      finiteNumber(document?.executorIntentPreview?.expectedNetUsd) ??
+      finiteNumber(document?.pnl?.estimated?.valueUsd)
+    );
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    return null;
+  }
+}
+
+function handoffSystemEconomics(expectedNetUsd = null) {
+  const numericExpectedNetUsd = finiteNumber(expectedNetUsd);
+  if (numericExpectedNetUsd === null) return null;
+  return {
+    estimatedNetPnlUsd: numericExpectedNetUsd,
+    effectiveSystemNetPnlUsd: numericExpectedNetUsd,
+  };
 }
 
 function handoffCommand({ amountSats, senderAddress = null, execute = false } = {}) {
@@ -42,11 +78,7 @@ function handoffCommand({ amountSats, senderAddress = null, execute = false } = 
   return parts.join(" ");
 }
 
-export function isWrappedBtcLoopDepositHandoffCandidate({
-  chain = null,
-  landedAsset = null,
-  targetAsset = null,
-} = {}) {
+export function isWrappedBtcLoopDepositHandoffCandidate({ chain = null, landedAsset = null, targetAsset = null } = {}) {
   return (
     String(chain || "").toLowerCase() === WRAPPED_BTC_LOOP_HANDOFF_CHAIN &&
     normalizeAssetSymbol(landedAsset) === normalizeAssetSymbol(WRAPPED_BTC_LOOP_HANDOFF_INPUT_ASSET) &&
@@ -77,10 +109,13 @@ export async function buildWrappedBtcLoopDepositHandoffPlan({
   amountSats,
   senderAddress,
   now = new Date().toISOString(),
+  expectedNetUsd = null,
+  readExpectedNetUsdImpl = readWrappedBtcLoopExpectedNetUsd,
   ...tokenDexOptions
 } = {}) {
   if (!senderAddress) throw new Error("EVM sender address is required");
   const normalizedAmountSats = toPositiveIntegerString(amountSats, "amountSats");
+  const resolvedExpectedNetUsd = finiteNumber(expectedNetUsd) ?? (await readExpectedNetUsdImpl());
   const conversionPlan = await buildTokenDexExperimentPlan({
     ...tokenDexOptions,
     chain: WRAPPED_BTC_LOOP_HANDOFF_CHAIN,
@@ -88,6 +123,13 @@ export async function buildWrappedBtcLoopDepositHandoffPlan({
     senderAddress,
     inputToken: WRAPPED_BTC_LOOP_HANDOFF_INPUT_TOKEN,
     outputToken: WRAPPED_BTC_LOOP_HANDOFF_OUTPUT_TOKEN,
+    systemEconomics: handoffSystemEconomics(resolvedExpectedNetUsd),
+    intentMetadata:
+      finiteNumber(resolvedExpectedNetUsd) === null
+        ? null
+        : {
+            expectedNetUsd: resolvedExpectedNetUsd,
+          },
     now,
   });
   const commands = buildWrappedBtcLoopHandoffCommands({
@@ -105,11 +147,7 @@ export async function buildWrappedBtcLoopDepositHandoffPlan({
     handoffStatus: conversionPlan.planStatus === "ready" ? "conversion_ready" : "blocked",
     blockedReason: conversionPlan.blockedReason || null,
     commands,
-    nextCommands: [
-      commands.loopIntentPreview,
-      commands.loopDryRun,
-      commands.loopReport,
-    ],
+    nextCommands: [commands.loopIntentPreview, commands.loopDryRun, commands.loopReport],
     conversionPlan,
     notes: [
       "This handoff uses the existing token DEX experiment executor to convert Base wBTC.OFT into Base cbBTC before the wrapped-BTC loop tries to use cbBTC as collateral.",
@@ -118,10 +156,7 @@ export async function buildWrappedBtcLoopDepositHandoffPlan({
   };
 }
 
-export async function executeWrappedBtcLoopDepositHandoffPlan({
-  handoffPlan,
-  ...options
-} = {}) {
+export async function executeWrappedBtcLoopDepositHandoffPlan({ handoffPlan, ...options } = {}) {
   const conversionPlan = handoffPlan?.conversionPlan || null;
   if (!conversionPlan) {
     throw new Error("Wrapped BTC loop handoff plan is required");
@@ -134,7 +169,8 @@ export async function executeWrappedBtcLoopDepositHandoffPlan({
     schemaVersion: 1,
     executedAt: new Date().toISOString(),
     strategyId: handoffPlan.strategyId || WRAPPED_BTC_LOOP_HANDOFF_STRATEGY_ID,
-    handoffStatus: conversionExecution.settlementStatus === "delivered" ? "converted" : conversionExecution.settlementStatus,
+    handoffStatus:
+      conversionExecution.settlementStatus === "delivered" ? "converted" : conversionExecution.settlementStatus,
     blockedReason: conversionExecution.blockedReason || null,
     nextCommands: handoffPlan.nextCommands || [],
     conversionExecution,

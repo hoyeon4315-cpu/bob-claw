@@ -19,6 +19,7 @@ import { evaluateLeverageCollateralRule } from "./leverage-collateral-rule.mjs";
 import { evaluateLiquidityWatch } from "../risk/liquidity-watch.mjs";
 import { evaluateTinyLiveCanaryPolicy } from "./tiny-live-canary-policy.mjs";
 import { checkKillSwitch } from "./kill-switch.mjs";
+import { evaluateAggressiveVelocityPolicy } from "./aggressive-velocity-policy.mjs"; // Phase 4: sleeve-specific gate for aggressive-velocity-v1 manifests (Light Transition)
 import { evaluateGasPriceCeiling } from "./gas-price-ceiling.mjs";
 import { evaluatePreBroadcastSimulation } from "./pre-broadcast-simulator.mjs";
 import { evaluateStaleQuote } from "./stale-quote.mjs";
@@ -225,6 +226,12 @@ export async function evaluateIntentPolicies({
       strategyCaps,
       microCanaryStatus: riskContext?.microCanaryStatus || effectiveIntent.metadata?.microCanaryStatus || null,
       auditRecords,
+      now,
+    }),
+    // Phase 4 sleeve gate — only activates for aggressive-velocity manifests / intents (loose coupling)
+    evaluateAggressiveVelocityPolicy({
+      manifest: effectiveIntent?.metadata?.aggressiveVelocityManifest || null,
+      intent: effectiveIntent,
       now,
     }),
     liquidityVerdict

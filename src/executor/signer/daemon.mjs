@@ -3,6 +3,7 @@
 import net from "node:net";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { config, getBooleanEnv, getEnv, getNumberEnv } from "../../config/env.mjs";
 import { readJsonl } from "../../lib/jsonl-read.mjs";
@@ -21,6 +22,10 @@ import { resolveDefaultHeartbeatPath, resolveDefaultSignerSocketPath } from "../
 import { writeHeartbeat } from "../watchdog/heartbeat.mjs";
 import { checkKillSwitch, resolveKillSwitchPath } from "../policy/kill-switch.mjs";
 import { loadRuntimeRiskContext } from "../runtime/risk-context.mjs";
+import {
+  buildWrappedBtcLoopReceiptHistory,
+  WRAPPED_BTC_LOOP_LIVE_INTENT_TYPE,
+} from "../../strategy/wrapped-btc-loop-receipt-history.mjs";
 
 export function parseArgs(argv) {
   const flags = new Set(argv);
@@ -106,6 +111,26 @@ function mergeCurrentAllocations(primary = null, fallback = null) {
   return out;
 }
 
+const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
+
+async function augmentReceiptRecordsForIntent({ intent, receiptRecords = [], dataDir } = {}) {
+  if (intent?.strategyId !== WRAPPED_BTC_LOOP_STRATEGY_ID) return receiptRecords;
+  const hasStrategySpecificReceipts = (receiptRecords || []).some(
+    (record) =>
+      record?.strategyId === WRAPPED_BTC_LOOP_STRATEGY_ID || record?.intentType === WRAPPED_BTC_LOOP_LIVE_INTENT_TYPE,
+  );
+  if (hasStrategySpecificReceipts) return receiptRecords;
+  const dryRunReceipts = await readJsonl(dataDir, "wrapped-btc-loop-dry-runs").catch(() => []);
+  const supplemental = buildWrappedBtcLoopReceiptHistory(
+    {
+      id: WRAPPED_BTC_LOOP_STRATEGY_ID,
+      chain: intent?.chain || "base",
+    },
+    dryRunReceipts,
+  ).receiptRecords;
+  return supplemental.length > 0 ? [...receiptRecords, ...supplemental] : receiptRecords;
+}
+
 async function readAddressOrNull(getter) {
   try {
     return await getter();
@@ -122,6 +147,24 @@ async function readAddressInfoOrNull(getter) {
   }
 }
 
+function buildConfirmationTimeoutError(timeoutMs) {
+  const error = new Error(`waitForTransaction timed out after ${timeoutMs}ms`);
+  error.name = "EvmConfirmationTimeout";
+  error.timedOut = true;
+  error.timeoutMs = timeoutMs;
+  return error;
+}
+
+async function waitForConfirmationWithTimeout(waiter, timeoutMs) {
+  const safeTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 120_000;
+  return Promise.race([
+    waiter(),
+    delay(safeTimeoutMs).then(() => {
+      throw buildConfirmationTimeoutError(safeTimeoutMs);
+    }),
+  ]);
+}
+
 export async function handleIntentCommand({
   message,
   signers,
@@ -132,11 +175,16 @@ export async function handleIntentCommand({
 }) {
   const intent = normalizeExecutionIntent(message.intent);
   const dataDir = resolve(cwd, config.dataDir);
-  const [auditRecords, receiptRecords, capitalAuditRecords] = await Promise.all([
+  const [auditRecords, baseReceiptRecords, capitalAuditRecords] = await Promise.all([
     readSignerAuditLog({ rootDir: cwd }),
     readJsonl(dataDir, "receipt-reconciliations"),
     loadCapitalAuditRecords(dataDir),
   ]);
+  const receiptRecords = await augmentReceiptRecordsForIntent({
+    intent,
+    receiptRecords: baseReceiptRecords,
+    dataDir,
+  });
   const capitalAuditState = replayAuditForCapitalGaps({ auditRecords, capitalAuditRecords });
   const runtimeRiskContext = await loadRuntimeRiskContextImpl({
     rootDir: cwd,
@@ -265,10 +313,60 @@ export async function handleIntentCommand({
       }
 
       if (message.awaitConfirmation === true && intent.family === "evm") {
-        receipt = await signer.waitForTransaction(intent.chain, broadcast.txHash, {
-          confirmations: Number.isFinite(message.confirmations) ? message.confirmations : 1,
-          timeoutMs: Number.isFinite(message.timeoutMs) ? message.timeoutMs : 120_000,
-        });
+        const confirmationTimeoutMs = Number.isFinite(message.timeoutMs) ? message.timeoutMs : 120_000;
+        try {
+          receipt = await waitForConfirmationWithTimeout(
+            () =>
+              signer.waitForTransaction(intent.chain, broadcast.txHash, {
+                confirmations: Number.isFinite(message.confirmations) ? message.confirmations : 1,
+                timeoutMs: confirmationTimeoutMs,
+              }),
+            confirmationTimeoutMs,
+          );
+        } catch (error) {
+          if (error?.timedOut === true) {
+            await appendSignerAuditRecord(
+              buildSignerAuditRecord({
+                intent,
+                policyVerdict: "approved",
+                lifecycle: {
+                  stage: "confirmation_pending",
+                  txHash: broadcast.txHash,
+                  signer: signed.metadata || null,
+                },
+                broadcast,
+                error,
+              }),
+              { rootDir: cwd },
+            );
+            transactionNotification = await notifyLiveTransaction({
+              intent,
+              broadcast,
+              stage: "broadcasted",
+              ...(transactionNotifyImpl ? { sendImpl: transactionNotifyImpl } : {}),
+            }).catch((notifyError) => ({
+              sent: false,
+              skipped: false,
+              reason: "telegram_send_failed",
+              error: {
+                name: notifyError.name,
+                message: notifyError.message,
+              },
+            }));
+            return {
+              status: "ok",
+              policy,
+              signed: redactSignedEnvelope(signed),
+              broadcast,
+              receipt: null,
+              autoIngest: null,
+              transactionNotification,
+              confirmationPending: true,
+              confirmationTimeoutMs,
+            };
+          }
+          throw error;
+        }
         const serializedReceipt = serializeReceipt(receipt);
         await appendSignerAuditRecord(
           buildSignerAuditRecord({

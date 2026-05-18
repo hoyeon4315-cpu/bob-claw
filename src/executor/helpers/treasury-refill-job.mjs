@@ -400,6 +400,17 @@ function executionReasonForJob(job = {}) {
   );
 }
 
+function refillIntentMetadataForJob(job = {}) {
+  const metadata = {};
+  if (job.policyRevision) metadata.policyRevision = job.policyRevision;
+  if (job.jobId) metadata.jobId = job.jobId;
+  if (String(job.origin || "").startsWith("capital_rebalance")) {
+    metadata.capitalRebalance = true;
+    metadata.refill = true;
+  }
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
+
 function bridgeQuoteCostUsd(job = {}, plan = null) {
   const jobCost = Number.isFinite(job?.fundingSource?.expectedExecutionRefillCostUsd)
     ? job.fundingSource.expectedExecutionRefillCostUsd
@@ -468,6 +479,7 @@ async function buildStableBridgeFallbackCompositePlan({
     senderAddress,
     inputToken: source.token,
     outputToken: sourceStableToken,
+    intentMetadata: refillIntentMetadataForJob(job),
     executionReason: executionReasonForJob(job),
   });
   if (step1Plan.planStatus !== "ready") return null;
@@ -514,6 +526,7 @@ async function buildStableBridgeFallbackCompositePlan({
     senderAddress,
     inputToken: destinationStableToken,
     outputToken: job.token,
+    intentMetadata: refillIntentMetadataForJob(job),
     executionReason: executionReasonForJob(job),
   });
   if (step3Plan.planStatus !== "ready") return null;
@@ -578,6 +591,7 @@ export async function buildTreasuryRefillExecutionPlan({
       outputToken: tokenToToken ? job.token : "native",
       strategyId,
       systemEconomics: job.systemEconomics || null,
+      intentMetadata: refillIntentMetadataForJob(job),
       executionReason: executionReasonForJob(job),
     });
     const requiredGasBudgetWei = nativeGasBudgetForPlan(plan);
@@ -608,6 +622,7 @@ export async function buildTreasuryRefillExecutionPlan({
       senderAddress,
       outputToken: job.token,
       systemEconomics: job.systemEconomics || null,
+      intentMetadata: refillIntentMetadataForJob(job),
       executionReason: executionReasonForJob(job),
     });
   } else if (executor === "gateway_btc_consolidation") {
@@ -666,6 +681,7 @@ export async function buildTreasuryRefillExecutionPlan({
           senderAddress,
           inputToken: destinationBtcSettlementToken,
           outputToken: job.token,
+          intentMetadata: refillIntentMetadataForJob(job),
           executionReason: executionReasonForJob(job),
         });
         if (destinationDexPlan.planStatus !== "ready") {
@@ -786,6 +802,7 @@ export async function buildTreasuryRefillExecutionPlan({
       senderAddress,
       inputToken: source.token,
       outputToken: "wbtc.oft",
+      intentMetadata: refillIntentMetadataForJob(job),
       executionReason: executionReasonForJob(job),
     });
 
@@ -861,6 +878,7 @@ export async function buildTreasuryRefillExecutionPlan({
             senderAddress,
             inputToken: destinationBtcSettlementToken,
             outputToken: job.token,
+            intentMetadata: refillIntentMetadataForJob(job),
             executionReason: executionReasonForJob(job),
           });
           if (step3Plan.planStatus !== "ready") {

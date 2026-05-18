@@ -116,6 +116,23 @@ test("wrapped BTC handoff plan wraps token dex conversion into cbBTC", async () 
   ]);
 });
 
+test("wrapped BTC handoff plan carries wrapped loop EV evidence into conversion steps", async () => {
+  const plan = await buildWrappedBtcLoopDepositHandoffPlan({
+    amountSats: 10000,
+    senderAddress: "0x1111111111111111111111111111111111111111",
+    client: odosClientFixture(),
+    estimateGasImpl: async () => estimateGasFixture(),
+    gasSnapshotImpl: async () => gasSnapshotFixture(),
+    readExpectedNetUsdImpl: async () => 0.4913,
+    now: "2026-04-21T08:00:00.000Z",
+  });
+
+  for (const step of plan.conversionPlan.steps) {
+    assert.equal(step.intent.systemEconomics?.effectiveSystemNetPnlUsd, 0.4913);
+    assert.equal(step.intent.systemEconomics?.estimatedNetPnlUsd, 0.4913);
+  }
+});
+
 test("wrapped BTC handoff execution delegates to token dex settlement proof", async () => {
   const plan = await buildWrappedBtcLoopDepositHandoffPlan({
     amountSats: 10000,
@@ -133,9 +150,15 @@ test("wrapped BTC handoff execution delegates to token dex settlement proof", as
     destinationPollIntervalMs: 0,
     readErc20BalanceImpl: async (_chain, token) => ({
       rpcUrl: "https://base-rpc.example",
-      balance: BigInt(String(token).toLowerCase() === String(plan.conversionPlan.inputToken).toLowerCase()
-        ? (stepIndex > 1 ? 0 : 10000)
-        : (stepIndex > 1 ? 9900 : 0)),
+      balance: BigInt(
+        String(token).toLowerCase() === String(plan.conversionPlan.inputToken).toLowerCase()
+          ? stepIndex > 1
+            ? 0
+            : 10000
+          : stepIndex > 1
+            ? 9900
+            : 0,
+      ),
     }),
     sendCommand: async () => {
       stepIndex += 1;

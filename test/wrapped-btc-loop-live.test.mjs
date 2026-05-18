@@ -10,8 +10,11 @@ import {
   finalizeWrappedBtcLoopLiveReceipt,
   prepareLiveLoopIntent,
   resolveWrappedBtcLoopSignerClientTimeout,
+  runWrappedBtcLoopLiveScenario,
 } from "../src/executor/strategies/wrapped-btc-loop-live.mjs";
+import { buildSignerAuditRecord } from "../src/executor/signer/audit-log.mjs";
 import { validateEvmTransactionSemantics } from "../src/executor/signer/evm-local-signer.mjs";
+import { normalizeExecutionIntent } from "../src/executor/signer/signer-interface.mjs";
 import { WRAPPED_BTC_LOOP_LIVE_PROOF_LATEST_FILE } from "../src/strategy/wrapped-btc-loop-live-proof.mjs";
 
 function bindingsFixture() {
@@ -1260,7 +1263,7 @@ test("wrapped loop signer client timeout stays above confirmation wait for live 
       confirmationTimeoutMs: 120_000,
       awaitConfirmation: true,
     }),
-    125_000,
+    150_000,
   );
   assert.equal(
     resolveWrappedBtcLoopSignerClientTimeout({
@@ -1278,6 +1281,84 @@ test("wrapped loop signer client timeout stays above confirmation wait for live 
     }),
     30_000,
   );
+});
+
+test("wrapped loop live scenario recovers confirmed signer audit after client timeout", async () => {
+  const bindingsDocument = blockedBindingsFixture();
+  const signerHealth = {
+    addresses: {
+      base: "0x1111111111111111111111111111111111111111",
+    },
+  };
+  const prices = {
+    btc: 75_000,
+    tokenByKey: {
+      btc: 75_000,
+      usd_stable: 1,
+    },
+  };
+  let auditRecord = null;
+
+  const result = await runWrappedBtcLoopLiveScenario({
+    bindingsDocument,
+    scenarioId: "healthy_baseline",
+    perTradeCapUsdOverride: 7,
+    marketAssumptionsOverride: { minIncrementUsd: 100 },
+    prices,
+    signerHealth,
+    estimateGasImpl: estimateGasFixture,
+    readErc20BalanceImpl: async () => ({
+      balance: 1_000_000n,
+    }),
+    sendSignerCommandImpl: async ({ message }) => {
+      const recoveredIntent = normalizeExecutionIntent(message.intent);
+      auditRecord = buildSignerAuditRecord({
+        intent: recoveredIntent,
+        policyVerdict: "approved",
+        lifecycle: {
+          stage: "confirmed",
+          txHash: "0xrecover-confirmed",
+        },
+        broadcast: {
+          txHash: "0xrecover-confirmed",
+          nonce: 7,
+          from: signerHealth.addresses.base,
+          to: recoveredIntent.tx.to,
+        },
+        realized: {
+          hash: null,
+          blockNumber: 123,
+          status: 1,
+          gasUsed: "42840",
+          gasPrice: null,
+          effectiveGasPrice: "6000000",
+          fee: "257040000000",
+        },
+        observedAt: "2026-04-17T00:00:05.000Z",
+      });
+      throw new Error("Signer daemon response timed out after 150000ms");
+    },
+    readSignerAuditLogImpl: async () => [auditRecord].filter(Boolean),
+    runReceiptAutoIngestImpl: async () => ({
+      ran: true,
+      code: 0,
+      stdout: "ok",
+      stderr: "",
+    }),
+    dataDir: "/tmp/bob-claw-test",
+    now: "2026-04-17T00:00:00.000Z",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "ok");
+  assert.equal(result.confirmationPending, false);
+  assert.equal(result.entryResults.length, 3);
+  assert.equal(
+    result.entryResults.every((item) => item.recoveredFromAudit === true),
+    true,
+  );
+  assert.equal(result.entryResults[0].broadcast.txHash, "0xrecover-confirmed");
+  assert.equal(result.receiptAutoIngest.ran, true);
 });
 
 test("wrapped loop live intent refreshes gas limit just before execution", async () => {

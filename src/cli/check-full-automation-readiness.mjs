@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readJsonIfExists } from "../estimator/load-canary-state.mjs";
 import { collectExecutorRuntimeReadiness } from "../runtime/executor-runtime-readiness.mjs";
+import { buildAggressiveVelocityStatus } from "./report-aggressive-velocity-status.mjs";
+import { overlayAggressiveVelocityExecutionSurface } from "./report-strategy-execution-surfaces.mjs";
 import {
   buildAllChainAutopilotDashboardSlice,
   refillNeedsLiveRemediation,
@@ -87,6 +89,114 @@ export function runJsonCli(scriptPath, args = [], { timeoutMs = readinessChildTi
   };
 }
 
+export function runJsonCliAsync(scriptPath, args = [], { timeoutMs = readinessChildTimeoutMs() } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let killTimer = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutHandle);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(result);
+    };
+    const timeoutHandle = setTimeout(() => {
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 1_000);
+      finish({
+        ok: false,
+        status: null,
+        signal: "SIGTERM",
+        stdout,
+        stderr,
+        json: null,
+        error: `timeout_after_${timeoutMs}ms`,
+      });
+    }, timeoutMs);
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      finish({
+        ok: false,
+        status: null,
+        signal: null,
+        stdout,
+        stderr,
+        json: null,
+        error: error.message,
+      });
+    });
+    child.on("close", (status, signal) => {
+      if (settled) return;
+      if (status !== 0) {
+        finish({
+          ok: false,
+          status: status ?? 1,
+          signal: signal || null,
+          stdout,
+          stderr,
+          json: null,
+          error: stderr.trim() || stdout.trim() || `exit ${status ?? 1}`,
+        });
+        return;
+      }
+      try {
+        const parsed = JSON.parse(stdout);
+        finish({
+          ok: true,
+          status: 0,
+          signal: signal || null,
+          stdout,
+          stderr,
+          json: parsed,
+          error: null,
+        });
+      } catch (error) {
+        finish({
+          ok: false,
+          status: 0,
+          signal: signal || null,
+          stdout,
+          stderr,
+          json: null,
+          error: `invalid_json:${error.message}`,
+        });
+      }
+    });
+  });
+}
+
+export async function collectReadinessDependencies({ refresh = false, runJsonCliImpl = runJsonCliAsync } = {}) {
+  const refreshArgs = refresh ? ["--json", "--write"] : ["--json"];
+  const [inbound, capitalManager, strategyDispatch, payback] = await Promise.all([
+    runJsonCliImpl("src/cli/run-inbound-inventory-watcher.mjs", refreshArgs),
+    runJsonCliImpl(
+      "src/cli/plan-capital-manager-refill-jobs.mjs",
+      refresh ? ["--json", "--write", "--refresh-inventory"] : ["--json"],
+    ),
+    runJsonCliImpl(
+      "src/cli/run-strategy-catalog-dispatcher.mjs",
+      refresh ? ["--json", "--write", "--mode=auto"] : ["--json", "--mode=auto"],
+    ),
+    runJsonCliImpl("src/cli/report-payback-status.mjs", ["--json"]),
+  ]);
+  return { inbound, capitalManager, strategyDispatch, payback };
+}
+
 function classifyRefillIssue(reason = null) {
   const text = String(reason || "").trim();
   if (!text) return "unknown";
@@ -141,6 +251,15 @@ function countByCategory(items = []) {
 function strategyLiveAdmissionBlockers(strategyDispatch = {}) {
   const strategies = strategyDispatch?.executionSurfaces?.strategies || [];
   if (!Array.isArray(strategies)) return [];
+  const hasConcreteWrappedBtcLoop = strategies.some(
+    (strategy) => String(strategy?.id || "") === "wrapped-btc-loop-base-moonwell",
+  );
+  const modeRank = new Map([
+    ["live", 0],
+    ["dry_run", 1],
+    ["shadow", 2],
+    ["analysis", 3],
+  ]);
   return strategies
     .map((strategy = {}) => ({
       strategyId: strategy.id || null,
@@ -149,7 +268,24 @@ function strategyLiveAdmissionBlockers(strategyDispatch = {}) {
       reason: strategy.reason || null,
       blockers: Array.isArray(strategy.liveAdmissionBlockers) ? strategy.liveAdmissionBlockers.filter(Boolean) : [],
     }))
+    .filter(
+      (strategy) =>
+        !(
+          hasConcreteWrappedBtcLoop &&
+          strategy.strategyId === "gateway_wrapped_btc_loops" &&
+          strategy.blockers.includes("route_specific_executor_inputs_required")
+        ),
+    )
     .filter((strategy) => strategy.strategyId && strategy.blockers.length > 0)
+    .sort((left, right) => {
+      const leftWrapped = left.strategyId === "wrapped-btc-loop-base-moonwell" ? 0 : 1;
+      const rightWrapped = right.strategyId === "wrapped-btc-loop-base-moonwell" ? 0 : 1;
+      if (leftWrapped !== rightWrapped) return leftWrapped - rightWrapped;
+      const leftMode = modeRank.get(left.selectedMode) ?? 99;
+      const rightMode = modeRank.get(right.selectedMode) ?? 99;
+      if (leftMode !== rightMode) return leftMode - rightMode;
+      return String(left.strategyId || "").localeCompare(String(right.strategyId || ""));
+    })
     .slice(0, 8);
 }
 
@@ -195,14 +331,15 @@ export function buildFullAutomationReadiness({
     !unresolvedRefillRoutes &&
     autopilot?.nextAction === "continue_live_watch" &&
     !["failed", "invalid", "error"].includes(String(autopilot?.status || ""));
-  const dispatchReady =
-    (liveEligibleCount > 0 || merklCanaryLiveLaneReady || liveWatchReady) &&
-    dispatchBatchStatus !== "failed" &&
-    dispatchBatchStatus !== "invalid";
   const paybackStatus = payback?.payback?.scheduler?.status || null;
   const paybackReason = payback?.payback?.scheduler?.reason || null;
   const paybackIsolationReady = ingressIsolationReady;
   const liveAdmissionBlockers = strategyLiveAdmissionBlockers(strategyDispatch);
+  const dispatchReady =
+    liveAdmissionBlockers.length === 0 &&
+    (liveEligibleCount > 0 || merklCanaryLiveLaneReady || liveWatchReady) &&
+    dispatchBatchStatus !== "failed" &&
+    dispatchBatchStatus !== "invalid";
   const capitalAutomationReady =
     capitalPlanDecision === "BALANCED" ||
     capitalPlanDecision === "READY" ||
@@ -292,18 +429,21 @@ export function buildFullAutomationReadiness({
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const runtime = await collectExecutorRuntimeReadiness();
-  const refreshArgs = args.refresh ? ["--json", "--write"] : ["--json"];
-  const inbound = runJsonCli("src/cli/run-inbound-inventory-watcher.mjs", refreshArgs);
-  const capitalManager = runJsonCli(
-    "src/cli/plan-capital-manager-refill-jobs.mjs",
-    args.refresh ? ["--json", "--write", "--refresh-inventory"] : ["--json"],
-  );
-  const strategyDispatch = runJsonCli(
-    "src/cli/run-strategy-catalog-dispatcher.mjs",
-    args.refresh ? ["--json", "--write", "--mode=auto"] : ["--json", "--mode=auto"],
-  );
-  const payback = runJsonCli("src/cli/report-payback-status.mjs", ["--json"]);
+  const [runtime, dependencyReports, aggressiveStatus] = await Promise.all([
+    collectExecutorRuntimeReadiness(),
+    collectReadinessDependencies({ refresh: args.refresh }),
+    buildAggressiveVelocityStatus(),
+  ]);
+  const { inbound, capitalManager, strategyDispatch, payback } = dependencyReports;
+  if (strategyDispatch.ok && strategyDispatch.json?.executionSurfaces) {
+    strategyDispatch.json = {
+      ...strategyDispatch.json,
+      executionSurfaces: overlayAggressiveVelocityExecutionSurface(
+        strategyDispatch.json.executionSurfaces,
+        aggressiveStatus,
+      ),
+    };
+  }
   const commandHealth = {
     inbound: { ok: inbound.ok, error: inbound.error },
     capitalManager: { ok: capitalManager.ok, error: capitalManager.error },
@@ -316,6 +456,7 @@ async function main() {
   );
   const autopilot = buildAllChainAutopilotDashboardSlice(
     resolveAllChainAutopilotReport(autopilotLatest, autopilotLatestCompleted),
+    { capitalManagerRefillJobsLatest: capitalManager.json },
   );
 
   const report = buildFullAutomationReadiness({

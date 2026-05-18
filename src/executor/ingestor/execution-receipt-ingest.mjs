@@ -4,8 +4,11 @@ import { ZERO_TOKEN } from "../../assets/tokens.mjs";
 import { config } from "../../config/env.mjs";
 import { buildReceiptReconciliation, YIELD_KINDS } from "../../ledger/receipt-reconciliation.mjs";
 import { emptyPricesUsd, getCoinGeckoPricesUsd } from "../../market/prices.mjs";
-import { readJsonl } from "../../lib/jsonl-read.mjs";
+import { readJsonl, readLatestJsonlRecord } from "../../lib/jsonl-read.mjs";
 import { JsonlStore } from "../../lib/jsonl-store.mjs";
+import { readTransactionByHash, readTransactionReceipt } from "../../evm/transaction-read.mjs";
+import { appendSignerAuditRecord, readSignerAuditLog } from "../signer/audit-log.mjs";
+import { buildCapitalAuditClosureRecord } from "../capital/capital-audit-pair.mjs";
 import {
   getAsyncSettlementHandler,
   hasAsyncSettlementHandler,
@@ -39,9 +42,7 @@ function executionStepResults(execution) {
 
 function lastStepResult(execution) {
   const steps = executionStepResults(execution);
-  return steps.length > 0
-    ? steps.at(-1)
-    : null;
+  return steps.length > 0 ? steps.at(-1) : null;
 }
 
 function signerResultsFromExecution(execution) {
@@ -75,7 +76,7 @@ function normalizedReceiptFromExecution(execution) {
   const receipt = receipts.at(-1);
   const totalGasUsed = receipts.reduce((sum, item) => sum + BigInt(item.gasUsed ?? 0), 0n);
   const totalGasCostWei = receipts.reduce(
-    (sum, item) => sum + (BigInt(item.gasUsed ?? 0) * BigInt(item.effectiveGasPrice ?? 0)),
+    (sum, item) => sum + BigInt(item.gasUsed ?? 0) * BigInt(item.effectiveGasPrice ?? 0),
     0n,
   );
   return {
@@ -88,6 +89,118 @@ function normalizedReceiptFromExecution(execution) {
         : String(receipt.effectiveGasPrice ?? receipt.gasPrice ?? "0"),
     gasCostWei: totalGasCostWei.toString(),
   };
+}
+
+function signerAuditStage(record = {}) {
+  return record?.lifecycle?.stage || null;
+}
+
+function signerAuditTxHash(record = {}) {
+  return record?.broadcast?.txHash || record?.lifecycle?.txHash || null;
+}
+
+const ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+
+function topicAddress(topic) {
+  if (typeof topic !== "string") return null;
+  const hex = topic.toLowerCase().replace(/^0x/, "");
+  if (hex.length < 40) return null;
+  return `0x${hex.slice(-40)}`;
+}
+
+function inferDexSwapOutputUnitsFromReceipt({ receipt = null, outputToken = null, recipient = null } = {}) {
+  const normalizedOutputToken = lowercase(outputToken);
+  const normalizedRecipient = lowercase(recipient);
+  if (!normalizedOutputToken || !normalizedRecipient || !Array.isArray(receipt?.logs)) return null;
+  let netAmount = 0n;
+  for (const log of receipt.logs) {
+    if (lowercase(log?.address) !== normalizedOutputToken) continue;
+    const topics = Array.isArray(log?.topics) ? log.topics : [];
+    if (lowercase(topics[0]) !== ERC20_TRANSFER_TOPIC) continue;
+    const from = topicAddress(topics[1]);
+    const to = topicAddress(topics[2]);
+    const amount = typeof log?.data === "string" ? BigInt(log.data) : 0n;
+    if (to === normalizedRecipient) netAmount += amount;
+    if (from === normalizedRecipient) netAmount -= amount;
+  }
+  return netAmount > 0n ? netAmount.toString() : null;
+}
+
+function signerAuditOutput(record = {}, receipt = null, transaction = null) {
+  if (record?.intent?.approval) {
+    return {
+      actualOutputUsd: 0,
+    };
+  }
+  if (record?.intent?.intentType === "dex_swap") {
+    const recipient =
+      record?.broadcast?.from || record?.lifecycle?.signer?.from || transaction?.from || receipt?.from || null;
+    const outputToken = record?.intent?.metadata?.outputToken || null;
+    const actualOutputUnits = inferDexSwapOutputUnitsFromReceipt({
+      receipt,
+      outputToken,
+      recipient,
+    });
+    if (outputToken) {
+      return {
+        actualOutputUnits,
+        chain: record?.chain || null,
+        token: outputToken,
+        priceUsd: null,
+      };
+    }
+  }
+  return {};
+}
+
+function receiptRealizedSummary(receipt) {
+  if (!receipt || typeof receipt !== "object") return null;
+  const gasUsed = receipt.gasUsed != null ? String(receipt.gasUsed) : null;
+  const gasPrice = receipt.gasPrice != null ? String(receipt.gasPrice) : null;
+  const effectiveGasPrice = receipt.effectiveGasPrice != null ? String(receipt.effectiveGasPrice) : null;
+  const fee =
+    receipt.fee != null
+      ? String(receipt.fee)
+      : gasUsed && (effectiveGasPrice || gasPrice)
+        ? (BigInt(gasUsed) * BigInt(effectiveGasPrice || gasPrice)).toString()
+        : null;
+  return {
+    hash: receipt.hash || null,
+    blockNumber: receipt.blockNumber ?? null,
+    status: receipt.status ?? null,
+    gasUsed,
+    gasPrice,
+    effectiveGasPrice,
+    fee,
+  };
+}
+
+function finalSignerAuditIntentHashes(records = []) {
+  return new Set(
+    (records || [])
+      .filter((record) => ["confirmed", "reverted", "rejected", "error"].includes(signerAuditStage(record)))
+      .map((record) => record?.intentHash)
+      .filter(Boolean),
+  );
+}
+
+function pendingSignerConfirmationCandidates(records = []) {
+  const finalIntentHashes = finalSignerAuditIntentHashes(records);
+  const latestByIntent = new Map();
+  for (const record of records || []) {
+    const stage = signerAuditStage(record);
+    if (!["broadcasted", "confirmation_pending"].includes(stage)) continue;
+    if (record?.intent?.mode !== "live") continue;
+    if (record?.chain == null || record.chain === "bitcoin") continue;
+    if (!record?.intentHash || finalIntentHashes.has(record.intentHash)) continue;
+    const txHash = signerAuditTxHash(record);
+    if (!txHash) continue;
+    const previous = latestByIntent.get(record.intentHash);
+    if (!previous || String(record.timestamp || "") >= String(previous.timestamp || "")) {
+      latestByIntent.set(record.intentHash, record);
+    }
+  }
+  return [...latestByIntent.values()];
 }
 
 function transactionForExecution(execution) {
@@ -145,8 +258,7 @@ function routeContextForGatewayExecution(execution) {
   }
   return {
     routeKey:
-      plan.routeKey ||
-      `${plan.route.srcChain}:${plan.route.srcToken}->${plan.route.dstChain}:${plan.route.dstToken}`,
+      plan.routeKey || `${plan.route.srcChain}:${plan.route.srcToken}->${plan.route.dstChain}:${plan.route.dstToken}`,
     amount: plan.amount,
     srcChain: plan.route.srcChain,
     dstChain: plan.route.dstChain,
@@ -393,16 +505,19 @@ function ingestionDescriptorForExecution(execution) {
   if (strategyId === "defillama-yield-portfolio") {
     const plan = execution?.plan || {};
     const action = String(plan.action || plan.type || plan.intent || "deposit").toLowerCase();
-    const kind = action.includes("withdraw") || action.includes("redeem") || action.includes("exit")
-      ? "defillama_yield_withdraw"
-      : action.includes("claim") || action.includes("reward")
-        ? "defillama_yield_reward_claim"
-        : "defillama_yield_deposit";
+    const kind =
+      action.includes("withdraw") || action.includes("redeem") || action.includes("exit")
+        ? "defillama_yield_withdraw"
+        : action.includes("claim") || action.includes("reward")
+          ? "defillama_yield_reward_claim"
+          : "defillama_yield_deposit";
     const poolId = plan.poolId || plan.target?.poolId || plan.metadata?.poolId || "defillama-unknown";
     const protocol = plan.protocol || plan.target?.protocol || plan.family || "defillama";
     return {
       kind,
-      routeContext: (typeof routeContextForDexExecution === "function" ? routeContextForDexExecution(execution) : null) || {
+      routeContext: (typeof routeContextForDexExecution === "function"
+        ? routeContextForDexExecution(execution)
+        : null) || {
         routeKey: `${plan.srcChain || plan.chain}:${plan.srcAsset || "unknown"}->${plan.dstChain || plan.chain}:${plan.dstAsset || "share"}`,
         amount: plan.amount || "0",
         srcChain: plan.srcChain || plan.chain || null,
@@ -425,7 +540,7 @@ function ingestionDescriptorForExecution(execution) {
         entrySharePrice: plan.entrySharePrice || null,
         // Capture decision-time values from plan (populated by adapter/catalog tick using snapshot at allocation)
         // Snapshot fallback enrichment happens later in append for cases where plan omits them.
-        apy: Number.isFinite(plan.apy) ? plan.apy : (Number.isFinite(plan.apyBps) ? plan.apyBps / 10000 : null),
+        apy: Number.isFinite(plan.apy) ? plan.apy : Number.isFinite(plan.apyBps) ? plan.apyBps / 10000 : null,
         tvlUsd: Number.isFinite(plan.tvlUsd) ? plan.tvlUsd : null,
         newPool: typeof plan.newPool === "boolean" ? plan.newPool : null,
       },
@@ -473,13 +588,15 @@ export async function appendExecutionReceiptReconciliation({
         const snapTvl = finiteNumber(pool.tvlUsd);
         const snapCount = finiteNumber(pool.count);
         const snapOutlier = pool.outlier === true;
-        const snapNew = (snapTvl != null && snapTvl < 5_000_000) || (snapCount != null && snapCount < 100) || snapOutlier;
+        const snapNew =
+          (snapTvl != null && snapTvl < 5_000_000) || (snapCount != null && snapCount < 100) || snapOutlier;
         finalYieldContext = {
           ...finalYieldContext,
           apy: finalYieldContext.apy != null ? finalYieldContext.apy : snapApy,
           tvlUsd: finalYieldContext.tvlUsd != null ? finalYieldContext.tvlUsd : snapTvl,
           newPool: finalYieldContext.newPool != null ? finalYieldContext.newPool : snapNew,
-          apyMean30d: finalYieldContext.apyMean30d != null ? finalYieldContext.apyMean30d : finiteNumber(pool.apyMean30d),
+          apyMean30d:
+            finalYieldContext.apyMean30d != null ? finalYieldContext.apyMean30d : finiteNumber(pool.apyMean30d),
         };
       }
     } catch {
@@ -530,6 +647,151 @@ export async function appendExecutionReceiptReconciliation({
   };
 }
 
+export async function backfillPendingSignerConfirmations({
+  auditRecords = null,
+  existingReceiptRecords = null,
+  rootDir = process.cwd(),
+  dataDir = config.dataDir,
+  store = new JsonlStore(dataDir),
+  priceReader = getCoinGeckoPricesUsd,
+  readTransactionReceiptImpl = readTransactionReceipt,
+  readTransactionByHashImpl = readTransactionByHash,
+  appendSignerAuditRecordImpl = appendSignerAuditRecord,
+  readSignerAuditLogImpl = readSignerAuditLog,
+  now = new Date().toISOString(),
+} = {}) {
+  const records = Array.isArray(auditRecords) ? auditRecords : await readSignerAuditLogImpl({ rootDir });
+  const receipts = Array.isArray(existingReceiptRecords)
+    ? existingReceiptRecords
+    : await readJsonl(dataDir, "receipt-reconciliations").catch(() => []);
+  const existingReceiptTxHashes = new Set(receipts.map((record) => lowercase(record?.txHash)).filter(Boolean));
+  const candidates = pendingSignerConfirmationCandidates(records);
+  const prices = await priceReader().catch(() => emptyPricesUsd());
+  const processed = [];
+  for (const record of candidates) {
+    const txHash = signerAuditTxHash(record);
+    if (!txHash) continue;
+    let receipt;
+    try {
+      receipt = await readTransactionReceiptImpl(record.chain, txHash);
+    } catch {
+      continue;
+    }
+    if (!receipt) continue;
+    const receiptTxHash = receipt.hash || txHash;
+    const normalizedTxHash = lowercase(receiptTxHash);
+    let receiptRecord = receipts.find((entry) => lowercase(entry?.txHash) === normalizedTxHash) || null;
+    let transaction = null;
+    const loadTransaction = async () => {
+      if (transaction !== null) return transaction;
+      transaction = await readTransactionByHashImpl(record.chain, receiptTxHash).catch(() => null);
+      return transaction;
+    };
+    if (!receiptRecord) {
+      transaction = await loadTransaction();
+      receiptRecord = buildReceiptReconciliation({
+        kind: record?.intent?.intentType || "signer_broadcast",
+        chain: record.chain,
+        txHash: receiptTxHash,
+        routeContext: null,
+        receipt,
+        transaction,
+        prices,
+        output: signerAuditOutput(record, receipt, transaction),
+        observedAt: now,
+      });
+      if (!existingReceiptTxHashes.has(normalizedTxHash) && store?.append) {
+        await store.append("receipt-reconciliations", receiptRecord);
+      }
+      existingReceiptTxHashes.add(normalizedTxHash);
+      receipts.push(receiptRecord);
+    } else if (receiptRecord?.reconciliationStatus === "pending_output") {
+      transaction = await loadTransaction();
+      const inferredOutput = signerAuditOutput(record, receipt, transaction);
+      if (inferredOutput?.actualOutputUnits !== undefined && inferredOutput?.actualOutputUnits !== null) {
+        receiptRecord = buildReceiptReconciliation({
+          kind: receiptRecord?.kind || record?.intent?.intentType || "signer_broadcast",
+          chain: record.chain,
+          txHash: receiptTxHash,
+          routeContext: receiptRecord?.routeContext || null,
+          receipt,
+          transaction,
+          prices,
+          output: inferredOutput,
+          observedAt: now,
+        });
+      }
+    }
+    if (store?.append) {
+      await store.append(
+        "capital-audit-pairs",
+        buildCapitalAuditClosureRecord({
+          auditRecord: record,
+          receiptRecord,
+          observedAt: now,
+        }),
+      );
+    }
+    const status = Number(receipt.status ?? 0);
+    const finalStage = status === 0 ? "reverted" : "confirmed";
+    if (auditRecords === null) {
+      const currentAuditRecords = await readSignerAuditLogImpl({ rootDir }).catch(() => []);
+      const alreadyFinalized = currentAuditRecords.some((entry) => {
+        const entryTxHash = lowercase(signerAuditTxHash(entry));
+        return (
+          entry?.intentHash === record.intentHash &&
+          entryTxHash === normalizedTxHash &&
+          signerAuditStage(entry) === finalStage
+        );
+      });
+      if (alreadyFinalized) {
+        continue;
+      }
+    }
+    const finalRecord = {
+      ...record,
+      timestamp: now,
+      policyVerdict: status === 0 ? "errored" : "approved",
+      lifecycle: {
+        stage: finalStage,
+        txHash: receiptTxHash,
+      },
+      broadcast: record.broadcast || { txHash: receiptTxHash },
+      realized: {
+        ...receiptRealizedSummary(receipt),
+        actualKnownCostUsd: receiptRecord?.realized?.actualKnownCostUsd ?? null,
+      },
+      error:
+        status === 0
+          ? {
+              name: "EvmReceiptReverted",
+              message: "Transaction reverted after broadcast",
+            }
+          : null,
+    };
+    if (appendSignerAuditRecordImpl) {
+      await appendSignerAuditRecordImpl(finalRecord, { rootDir });
+    }
+    processed.push({
+      strategyId: record.strategyId,
+      chain: record.chain,
+      intentHash: record.intentHash,
+      txHash: receiptTxHash,
+      stage: finalRecord.lifecycle.stage,
+      receiptReconciled: receiptRecord?.reconciliationStatus || null,
+      auditAppended: Boolean(appendSignerAuditRecordImpl),
+      receiptAppended: Boolean(store?.append),
+    });
+  }
+  return {
+    schemaVersion: 1,
+    observedAt: now,
+    candidateCount: candidates.length,
+    processedCount: processed.length,
+    processed,
+  };
+}
+
 export async function backfillExecutionReceiptReconciliations({
   dataDir = config.dataDir,
   priceReader = getCoinGeckoPricesUsd,
@@ -546,12 +808,14 @@ export async function backfillExecutionReceiptReconciliations({
   for (const name of sources) {
     const records = await readJsonl(dataDir, name);
     for (const execution of records) {
-      results.push(await appendExecutionReceiptReconciliation({
-        execution,
-        dataDir,
-        store,
-        priceReader,
-      }));
+      results.push(
+        await appendExecutionReceiptReconciliation({
+          execution,
+          dataDir,
+          store,
+          priceReader,
+        }),
+      );
     }
   }
   return {
@@ -579,14 +843,16 @@ async function findProtocolPositionProof(txHash, dataDir) {
   const records = await readJsonl(dataDir, "merkl-portfolio-positions").catch(() => []);
   const matched = [...records]
     .reverse()
-    .find((r) =>
-      (r.txHash && String(r.txHash).toLowerCase() === normalizedTxHash) ||
-      (r.entryTxHash && String(r.entryTxHash).toLowerCase() === normalizedTxHash)
+    .find(
+      (r) =>
+        (r.txHash && String(r.txHash).toLowerCase() === normalizedTxHash) ||
+        (r.entryTxHash && String(r.entryTxHash).toLowerCase() === normalizedTxHash),
     );
   if (!matched) return null;
   const proof = matched.redeemProof || matched.shareProof || matched.positionProof || null;
   if (proof && proof.status === "delivered") return proof;
-  if (matched.shareDelta || matched.event === "position_opened") return { status: "delivered", observedDelta: matched.shareDelta || "1", proofSource: "position_opened_record" };
+  if (matched.shareDelta || matched.event === "position_opened")
+    return { status: "delivered", observedDelta: matched.shareDelta || "1", proofSource: "position_opened_record" };
   return null;
 }
 
@@ -646,6 +912,7 @@ export async function runAsyncSettlementWatcher({
       skippedReason: "async_settlement_disabled",
     };
   }
+  const effectiveStore = store || null;
   const pendingPairs = (await readJsonl(dataDir, "capital-audit-pairs").catch(() => []))
     .filter((r) => r.status === "pending" || r.status === "pending_with_grace")
     .filter((r) => r.txHash && r.intentHash);
@@ -664,7 +931,9 @@ export async function runAsyncSettlementWatcher({
       prices: await priceReader().catch(() => emptyPricesUsd()),
       observedAt: new Date().toISOString(),
     });
-    await store.append("receipt-reconciliations", receiptRecord);
+    if (effectiveStore?.append) {
+      await effectiveStore.append("receipt-reconciliations", receiptRecord);
+    }
     const closureRecord = {
       schemaVersion: 1,
       status: "closed",
@@ -678,19 +947,33 @@ export async function runAsyncSettlementWatcher({
       reconciliationStatus: "reconciled",
       validation: { ok: true, method: "async_settlement_watcher" },
     };
-    await store.append("capital-audit-pairs", closureRecord);
+    if (effectiveStore?.append) {
+      await effectiveStore.append("capital-audit-pairs", closureRecord);
+    }
     processed.push({ txHash: pair.txHash, strategyId: pair.strategyId, proofSource: proof.proofSource });
   }
+  const signerConfirmationBackfill = await backfillPendingSignerConfirmations({
+    dataDir,
+    store: effectiveStore,
+    priceReader,
+    appendSignerAuditRecordImpl: effectiveStore?.append ? appendSignerAuditRecord : null,
+  });
   return {
     schemaVersion: 1,
     observedAt: new Date().toISOString(),
     pendingCount: pendingPairs.length,
     processedCount: processed.length,
     processed,
+    signerConfirmationCandidateCount: signerConfirmationBackfill.candidateCount,
+    signerConfirmationProcessedCount: signerConfirmationBackfill.processedCount,
+    signerConfirmations: signerConfirmationBackfill.processed,
   };
 }
 
-export async function loadPaybackAuditLog({ logsDir = join(process.cwd(), "logs"), fileName = "signer-audit.jsonl" } = {}) {
+export async function loadPaybackAuditLog({
+  logsDir = join(process.cwd(), "logs"),
+  fileName = "signer-audit.jsonl",
+} = {}) {
   try {
     const text = await readFile(join(logsDir, fileName), "utf8");
     return text
@@ -706,22 +989,24 @@ export async function loadPaybackAuditLog({ logsDir = join(process.cwd(), "logs"
 export async function loadLivePaybackReceiptStore({ dataDir = config.dataDir } = {}) {
   const [
     receiptReconciliations,
-    treasuryInventory,
+    latestTreasuryInventory,
     marketPriceSnapshots,
     wrappedBtcLoopReceipts,
     wrappedBtcLoopLiveProof,
   ] = await Promise.all([
     readJsonl(dataDir, "receipt-reconciliations"),
-    readJsonl(dataDir, "treasury-inventory"),
+    readLatestJsonlRecord(dataDir, "treasury-inventory"),
     readJsonl(dataDir, "market-price-snapshots"),
     readJsonl(dataDir, "wrapped-btc-loop-dry-runs"),
     readJsonIfExists(join(dataDir, "wrapped-btc-loop-live-success-latest.json")),
   ]);
 
-  const signerBackedLoopReceipts = wrappedBtcLoopReceipts.filter((item) => item?.executionMode && item.executionMode !== "simulated_dry_run");
+  const signerBackedLoopReceipts = wrappedBtcLoopReceipts.filter(
+    (item) => item?.executionMode && item.executionMode !== "simulated_dry_run",
+  );
   return {
     receiptReconciliations,
-    treasuryInventory,
+    treasuryInventory: latestTreasuryInventory ? [latestTreasuryInventory] : [],
     marketPriceSnapshots,
     wrappedBtcLoopReceipts: signerBackedLoopReceipts,
     wrappedBtcLoopLiveProofs: wrappedBtcLoopLiveProof ? [wrappedBtcLoopLiveProof] : [],

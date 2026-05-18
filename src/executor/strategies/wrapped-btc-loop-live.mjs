@@ -10,7 +10,9 @@ import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
 import { writeTextIfChanged } from "../../lib/file-write.mjs";
 import { ReceiptAutoIngestTimeoutError } from "../ingestor/receipt-auto-ingest.mjs";
 import { runReceiptAutoIngest } from "../ingestor/receipt-auto-ingest.mjs";
+import { readSignerAuditLog } from "../signer/audit-log.mjs";
 import { readSignerHealth, sendSignerCommand } from "../signer/client.mjs";
+import { hashIntent, normalizeExecutionIntent } from "../signer/signer-interface.mjs";
 import { buildDefaultWrappedBtcLendingLoopConfig } from "../../strategy/wrapped-btc-lending-loop-slice.mjs";
 import {
   inspectWrappedBtcLoopBindingsDocument,
@@ -29,6 +31,7 @@ import { applyGasBuffer, DEFAULT_GATEWAY_GAS_BUFFER_BPS } from "../helpers/gatew
 
 export const WRAPPED_BTC_LOOP_STRATEGY_ID = "wrapped-btc-loop-base-moonwell";
 export const DEFAULT_EXECUTOR_STRATEGY_BINDINGS_PATH = "./state/executor-strategy-bindings.json";
+export const WRAPPED_BTC_LOOP_CONFIRMATION_RESPONSE_GRACE_MS = 30_000;
 const WRAPPED_BTC_LOOP_SLICE_FILE = "wrapped-btc-lending-loop-slice.json";
 
 function unique(values = []) {
@@ -62,7 +65,69 @@ export function resolveWrappedBtcLoopSignerClientTimeout({
   }
   const safeBaseTimeoutMs = Number.isFinite(baseTimeoutMs) ? baseTimeoutMs : 30_000;
   const safeConfirmationWaitMs = Number.isFinite(confirmationWaitMs) ? confirmationWaitMs : 120_000;
-  return Math.max(safeBaseTimeoutMs, safeConfirmationWaitMs + 5_000);
+  return Math.max(safeBaseTimeoutMs, safeConfirmationWaitMs + WRAPPED_BTC_LOOP_CONFIRMATION_RESPONSE_GRACE_MS);
+}
+
+function signerTimeoutError(error) {
+  return /Signer daemon response timed out after \d+ms/u.test(String(error?.message || ""));
+}
+
+function signerAuditTxHash(record = {}) {
+  return record?.broadcast?.txHash || record?.lifecycle?.txHash || null;
+}
+
+function signerAuditReceipt(record = {}) {
+  if (!record?.realized || typeof record.realized !== "object") return null;
+  return {
+    hash: record.realized.hash || signerAuditTxHash(record) || null,
+    status: record.realized.status ?? null,
+    blockNumber: record.realized.blockNumber ?? null,
+    gasUsed: record.realized.gasUsed ?? null,
+    gasPrice: record.realized.gasPrice ?? null,
+    effectiveGasPrice: record.realized.effectiveGasPrice ?? null,
+    fee: record.realized.fee ?? null,
+  };
+}
+
+function recoveredWrappedBtcLoopSignerResultFromAuditRecord(record = null) {
+  const stage = record?.lifecycle?.stage || null;
+  const txHash = signerAuditTxHash(record);
+  if (!record || !txHash) return null;
+  if (!["broadcasted", "confirmation_pending", "confirmed", "reverted"].includes(stage)) return null;
+  const receipt = signerAuditReceipt(record);
+  if (stage === "reverted") {
+    return {
+      status: "error",
+      recoveredFromAudit: true,
+      broadcast: record.broadcast || { txHash },
+      receipt,
+      error: {
+        name: "EvmReceiptReverted",
+        message: "Transaction reverted after broadcast",
+      },
+    };
+  }
+  return {
+    status: "ok",
+    recoveredFromAudit: true,
+    broadcast: record.broadcast || { txHash },
+    receipt,
+    confirmationPending: stage !== "confirmed",
+  };
+}
+
+async function recoverWrappedBtcLoopSignerTimeoutResult({
+  intent,
+  readSignerAuditLogImpl = readSignerAuditLog,
+  rootDir = process.cwd(),
+} = {}) {
+  const normalizedIntent = normalizeExecutionIntent(intent);
+  const intentHash = hashIntent(normalizedIntent);
+  const auditRecords = await readSignerAuditLogImpl({ rootDir }).catch(() => []);
+  const matchingRecord = [...auditRecords]
+    .reverse()
+    .find((record) => record?.intentHash === intentHash || record?.intentId === normalizedIntent.intentId);
+  return recoveredWrappedBtcLoopSignerResultFromAuditRecord(matchingRecord);
 }
 
 function normalizeOptionalPositiveInteger(value) {
@@ -728,21 +793,32 @@ async function executeIntent(intent, options = {}) {
     estimateGasImpl: options.estimateGasImpl,
     gasBufferBps: options.gasBufferBps,
   });
-  const result = await sendSignerCommand({
-    socketPath: options.socketPath,
-    timeoutMs: resolveWrappedBtcLoopSignerClientTimeout({
-      timeoutMs: options.timeoutMs,
-      confirmationTimeoutMs: options.confirmationTimeoutMs,
-      awaitConfirmation: options.awaitConfirmation !== false,
-    }),
-    message: {
-      command: options.command || "sign_and_broadcast",
+  let result = null;
+  try {
+    result = await (options.sendSignerCommandImpl || sendSignerCommand)({
+      socketPath: options.socketPath,
+      timeoutMs: resolveWrappedBtcLoopSignerClientTimeout({
+        timeoutMs: options.timeoutMs,
+        confirmationTimeoutMs: options.confirmationTimeoutMs,
+        awaitConfirmation: options.awaitConfirmation !== false,
+      }),
+      message: {
+        command: options.command || "sign_and_broadcast",
+        intent: preparedIntent,
+        awaitConfirmation: options.awaitConfirmation !== false,
+        confirmations: options.confirmations ?? 1,
+        timeoutMs: options.confirmationTimeoutMs ?? 120_000,
+      },
+    });
+  } catch (error) {
+    if (!signerTimeoutError(error)) throw error;
+    result = await recoverWrappedBtcLoopSignerTimeoutResult({
       intent: preparedIntent,
-      awaitConfirmation: options.awaitConfirmation !== false,
-      confirmations: options.confirmations ?? 1,
-      timeoutMs: options.confirmationTimeoutMs ?? 120_000,
-    },
-  });
+      readSignerAuditLogImpl: options.readSignerAuditLogImpl,
+      rootDir: options.rootDir,
+    });
+    if (!result) throw error;
+  }
   return {
     intent: preparedIntent,
     ...classifyIntentResult(result),
@@ -769,7 +845,7 @@ async function executeIntentBatch(intents = [], options = {}) {
   for (const intent of intents) {
     const result = await executeIntent(intent, options);
     results.push(result);
-    if (result.status !== "ok") {
+    if (result.status !== "ok" || result.confirmationPending === true) {
       break;
     }
   }
@@ -777,6 +853,7 @@ async function executeIntentBatch(intents = [], options = {}) {
 }
 
 export async function runWrappedBtcLoopLiveScenario({
+  bindingsDocument = null,
   bindingsPath = executorStrategyBindingsPath(),
   scenarioId = "healthy_baseline",
   strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID,
@@ -795,23 +872,32 @@ export async function runWrappedBtcLoopLiveScenario({
   estimateGasImpl = estimateGas,
   readErc20BalanceImpl = undefined,
   simulateTransactionCallImpl = undefined,
+  sendSignerCommandImpl = sendSignerCommand,
+  readSignerAuditLogImpl = readSignerAuditLog,
+  runReceiptAutoIngestImpl = runReceiptAutoIngest,
+  signerHealth = null,
+  prices = null,
+  dataDir = config.dataDir,
+  rootDir = process.cwd(),
+  writeTextIfChangedImpl = writeTextIfChanged,
+  readExistingLiveProofImpl = undefined,
   gasBufferBps = DEFAULT_GATEWAY_GAS_BUFFER_BPS,
   cwd = process.cwd(),
   now = new Date().toISOString(),
 } = {}) {
-  const bindingsDocument = await loadExecutorStrategyBindings(bindingsPath);
-  const [prices, signerHealth] = await Promise.all([
-    getCoinGeckoPricesUsd().catch(() => null),
-    readSignerHealth({ socketPath, timeoutMs }),
+  const resolvedBindingsDocument = bindingsDocument || (await loadExecutorStrategyBindings(bindingsPath));
+  const [resolvedPrices, resolvedSignerHealth] = await Promise.all([
+    prices ? prices : getCoinGeckoPricesUsd().catch(() => null),
+    signerHealth ? signerHealth : readSignerHealth({ socketPath, timeoutMs }),
   ]);
   const expectedNetUsd = await readWrappedBtcLoopExpectedNetEvidence();
   const plan = await buildWrappedBtcLoopScenarioPlan({
-    bindingsDocument,
+    bindingsDocument: resolvedBindingsDocument,
     strategyId,
     scenarioId,
     now,
-    signerAddress: signerHealth?.addresses?.base || null,
-    prices,
+    signerAddress: resolvedSignerHealth?.addresses?.base || null,
+    prices: resolvedPrices,
     perTradeCapUsdOverride,
     marketAssumptionsOverride,
     maxLoopIterationsOverride,
@@ -850,7 +936,7 @@ export async function runWrappedBtcLoopLiveScenario({
   if (command !== "sign_only") {
     const unwindInventory = await evaluateWrappedBtcLoopUnwindInventory({
       plan,
-      signerAddress: signerHealth?.addresses?.base || null,
+      signerAddress: resolvedSignerHealth?.addresses?.base || null,
       ...(readErc20BalanceImpl ? { readErc20BalanceImpl } : {}),
     });
     if (!unwindInventory.ok) {
@@ -866,11 +952,15 @@ export async function runWrappedBtcLoopLiveScenario({
     confirmations,
     confirmationTimeoutMs,
     timeoutMs,
-    signerAddress: signerHealth?.addresses?.base || null,
+    signerAddress: resolvedSignerHealth?.addresses?.base || null,
     estimateGasImpl,
     gasBufferBps,
+    sendSignerCommandImpl,
+    readSignerAuditLogImpl,
+    rootDir,
   });
   const entryFailed = entryResults.some((item) => item.status !== "ok");
+  const entryConfirmationPending = entryResults.some((item) => item.confirmationPending === true);
   const unwindResults = entryFailed
     ? []
     : await executeIntentBatch(plan.unwindIntents, {
@@ -880,23 +970,33 @@ export async function runWrappedBtcLoopLiveScenario({
         confirmations,
         confirmationTimeoutMs,
         timeoutMs,
-        signerAddress: signerHealth?.addresses?.base || null,
+        signerAddress: resolvedSignerHealth?.addresses?.base || null,
         estimateGasImpl,
         gasBufferBps,
+        sendSignerCommandImpl,
+        readSignerAuditLogImpl,
+        rootDir,
       });
   const unwindFailed = unwindResults.some((item) => item.status !== "ok");
+  const unwindConfirmationPending = unwindResults.some((item) => item.confirmationPending === true);
+  const confirmationPending = entryConfirmationPending || unwindConfirmationPending;
   let receiptContext = null;
   let receiptAutoIngest = {
     ran: false,
-    reason: command === "sign_only" ? "broadcast_required_for_receipt_ingest" : "execution_incomplete",
+    reason:
+      command === "sign_only"
+        ? "broadcast_required_for_receipt_ingest"
+        : confirmationPending
+          ? "confirmation_pending"
+          : "execution_incomplete",
   };
 
-  if (!entryFailed && !unwindFailed && command !== "sign_only") {
+  if (!entryFailed && !unwindFailed && !confirmationPending && command !== "sign_only") {
     receiptContext = buildWrappedBtcLoopReceiptContext({
       plan,
       entryResults,
       unwindResults,
-      prices,
+      prices: resolvedPrices,
     });
     ({ receiptAutoIngest } = await finalizeWrappedBtcLoopLiveReceipt({
       strategyId,
@@ -908,6 +1008,10 @@ export async function runWrappedBtcLoopLiveScenario({
       receiptContext,
       cwd,
       now,
+      dataDir,
+      runReceiptAutoIngestImpl,
+      writeTextIfChangedImpl,
+      readExistingLiveProofImpl,
     }));
   }
 
@@ -926,6 +1030,8 @@ export async function runWrappedBtcLoopLiveScenario({
     unwindResults,
     receiptContext,
     receiptAutoIngest,
+    confirmationPending,
+    status: confirmationPending ? "confirmation_pending" : !entryFailed && !unwindFailed ? "ok" : "error",
     ok: !entryFailed && !unwindFailed,
   };
 }
