@@ -1,5 +1,11 @@
 # AI Agent Operations
 
+For cross-tool work, `AGENTS.md` is the top-level operating law. Shared docs
+such as `docs/skill-usage-guidelines.md` and this file are supporting source
+surfaces. `.grok/**` and `.claude/**` are tool-specific prompt surfaces and
+should not be mixed across tools unless the task explicitly targets that
+compatibility layer.
+
 Verified on 2026-04-24 against Ollama and Claude Code docs.
 
 ## Recommended Launch
@@ -37,6 +43,11 @@ npm run ai:claude:kimi:coordinator
 
 ## Role Agents
 
+Use this document for ownership/routing boundaries first. Then use the active
+tool's own prompt surface (`.grok/**` for Grok sessions, `.claude/**` for
+Claude sessions). Do not let `.claude/**` compatibility files steer Grok or
+other tool sessions.
+
 - `bob-claw-coordinator` - planning and delegation only; routes work to specialized agents and may claim progress/completion only after verifying each child returned proof (diff/file list, command output, or artifact path). Proofless child output is treated as `child output lacks proof`, remains `[ ]` or blocked, and must be re-run or replaced.
 - `strategy-agent` - strategy modules, receipt-backed evidence, strategy reports.
 - `policy-agent` - deterministic policy and risk gates.
@@ -44,6 +55,7 @@ npm run ai:claude:kimi:coordinator
 - `treasury-agent` - capital movement planning, refills, Gateway consolidation intents.
 - `infra-agent` - CLI wiring, graphify, dashboard slices, package scripts, test harness.
 - `verifier-agent` - read-only diff inspection, targeted checks, graphify status, residual-risk report, and unsupported-progress-claim detection when completion text lacks matching proof.
+- New specialized ownership (via defi-portfolio-accounting skill + infra/coordinator): Aggressive Velocity Sleeve DeFi accounting (plan Section 8). Thin SKILL.md + pure `src/ledger/aggressive-sleeve-accounting.mjs` (TDD first). Read-only on core surfaces; write limited to `data/aggressive-yield/`. 4 subagents (Scanner, Strategist, Risk&Exit, Cost Optimizer) call the pure library directly. No Gateway, no core payback mutation, no signer, no conservative core. Declared in skill frontmatter + skill-usage matrix row 13.
 
 ## Memory Policy
 

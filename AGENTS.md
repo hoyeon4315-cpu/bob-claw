@@ -16,6 +16,14 @@ Read in this order:
 6. `docs/dashboard-context.md` before dashboard UI or public-status work
 7. `docs/operator-memory.md` only for historical context; never as live truth
 
+Across all coding tools, treat `AGENTS.md` as the single top-level operating
+law. Shared docs such as `docs/system-map.md`,
+`docs/harness-engineering.md`, `docs/skill-usage-guidelines.md`, and
+`docs/ai-agent-operations.md` are supporting operating surfaces only.
+Tool-specific prompt files (`.grok/**`, `.claude/**`, etc.) are compatibility
+layers for their own tool only and must not override the shared docs or
+replace `AGENTS.md`.
+
 Engineering confidence standard: **evidence-complete confidence**.
 
 Put durable law here. Put architecture, runbooks, checklists, and role-specific
@@ -98,20 +106,21 @@ output. If the command returns no usable data, report **"데이터 부족"** exa
 
 ## Subagent Usage
 
-Subagents and skills are useful tools that can be actively used to improve focus and execution speed. They are not a second source of truth, but may be leveraged whenever they help deliver results faster or more reliably. All core safety invariants (literal `Gateway` check, file scope, 5-Step Mandatory Verification, and ownership boundaries) remain mandatory.
+Subagents and skills are useful tools that can be actively used to improve focus and execution speed. They are not a second source of truth, but may be leveraged whenever they help deliver results faster or more reliably. All core safety invariants (task-definition validation, file scope, 5-Step Mandatory Verification, and ownership boundaries) remain mandatory.
 
 - `AGENTS.md` applies to every coding agent, skill, and delegated session.
 - The main session owns orchestration. It decides whether work stays direct,
   goes to one role agent, or is split across parallel role agents by ownership
   and independence of the work.
-- If the task name or description contains the literal word **`Gateway`**, do
-  not use a skill or subagent. The primary session handles it directly.
 - Delegate only independent slices. Do not assign overlapping write ownership or
   the same file set to multiple child agents unless one of them is read-only
   verification.
 - Every delegated prompt must include the task objective, exact ownership/file
   scope, explicit out-of-scope boundaries, required proof format, and the stop
   condition for handing control back to the parent.
+- Build delegation and routing from the shared docs first, then the current
+  tool's native prompt surface. Do not let one tool's compatibility prompts
+  steer another tool's routing or ownership decisions.
 - Default delegated execution target is the main repository worktree. If a
   child agent uses any separate worktree (including `.grok/worktrees/`), it
   must not claim completion until it also provides a main-worktree-applicable
@@ -125,7 +134,7 @@ Subagents and skills are useful tools that can be actively used to improve focus
   single-threaded. Discretionary summons still require independent scope,
   ownership fit, and a complete child contract.
 - Every delegated prompt must start with:
-  `Original Task Name: <verbatim user request>`.
+  `Original Task Name: <verbatim task-defining user request only>`.
 - Every delegated session must execute the full 5-step Mandatory Verification
   Procedure from the next section before reading files or calling tools.
 - Delegation stays inside the declared ownership in
@@ -225,16 +234,18 @@ skill/subagent activation; no shortcuts; integrate then continue):**
 
 1. Re-read in full: `AGENTS.md`, `docs/system-map.md`,
    `docs/harness-engineering.md`, and `docs/skill-usage-guidelines.md`
-   (BOB Gateway Protection section). Quote the `updated_at`/version headers to
-   prove freshness.
-2. Run the BOB Gateway Protection literal-word check (`\bGateway\b` or
-   equivalent) against `Original Task Name:` and the full user request. If the
-   word appears, emit the exact refusal block from
-   `docs/skill-usage-guidelines.md` and halt. Absolute priority over later
-   steps.
+   (delegation and verification sections). Quote the `updated_at`/version
+   headers to prove freshness.
+2. Validate the task-defining text and delegated objective before any tool or
+   file read. Use `Original Task Name:` plus the parent's explicit objective and
+   scope text only. Ignore quoted logs, copied policy blocks, file contents,
+   transcript excerpts, and refusal-template text attached only as reference or
+   evidence. If the requested work is ambiguous, contradictory, or not
+   ownership-safe, refuse and return to the parent/coordinator. Absolute
+   priority over later steps.
 3. Enforce file scope: confirm the task is 100% inside this skill/agent's
    declared ownership (frontmatter + Role Agents table in
-   `docs/ai-agent-operations.md`). Any other ownership or Gateway surface means
+   `docs/ai-agent-operations.md`). Any out-of-scope ownership surface means
    refusal and return to the parent/coordinator.
 4. Execute the AGENTS Diagnostic Entry Point(s) appropriate to the question type
    plus any graphify `query/explain/path` needed to keep reads minimal. Paste
