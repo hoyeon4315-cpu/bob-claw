@@ -178,6 +178,69 @@ test("true producer not_evidenced does not override proxy when dry-run still pre
   assert.deepEqual(evidence.exit_or_redeem_ev.value.trueProducerMissingFields, ["yt_price_in_asset"]);
 });
 
+test("true producer invalid_input (dimensional rejection) surfaces invalidFields on proxy slot and exit_or_redeem_ev stays non-evidenced", () => {
+  const mark = pendleMark();
+  const drr = pendleDryRun();
+  const trueReport = {
+    schemaVersion: 1,
+    results: [
+      {
+        opportunityId: OPP,
+        evidenced: false,
+        missingFields: [],
+        invalidFields: [
+          "mark_underlying_asset_price_usd_missing",
+          "mark_asset_price_usd_misapplies_underlying_full_price",
+          "exit_quote_unit_not_asset_per_yt",
+        ],
+        producerName: "pendle_yt_exit_from_position",
+      },
+    ],
+  };
+  const { evidence } = buildLifecycleEvidence({
+    candidate: { opportunityId: OPP, chain: CHAIN },
+    protocolPositionMarks: [mark],
+    pendleYtDryRun: drr,
+    pendleYtExitFromPosition: trueReport,
+  });
+  assert.equal(evidence.exit_or_redeem_ev.status, "proxy");
+  assert.notEqual(evidence.exit_or_redeem_ev.value.provenanceKind, "true_exit_ev");
+  assert.ok(
+    Array.isArray(evidence.exit_or_redeem_ev.value.trueProducerInvalidFields) &&
+      evidence.exit_or_redeem_ev.value.trueProducerInvalidFields.includes(
+        "mark_asset_price_usd_misapplies_underlying_full_price",
+      ),
+  );
+  // cost_floor MUST fall back to dry-run proxy provenance, NOT
+  // pendle-yt-exit-from-position-latest.json, because the true producer
+  // rejected the inputs.
+  assert.equal(evidence.cost_floor.provenance, "pendle-yt-dry-run-latest.json");
+});
+
+test("true producer invalid_input with no dry-run proxy emits exit_or_redeem_ev missing carrying invalidFields", () => {
+  const mark = pendleMark();
+  const trueReport = {
+    schemaVersion: 1,
+    results: [
+      {
+        opportunityId: OPP,
+        evidenced: false,
+        invalidFields: ["mark_underlying_asset_price_usd_missing"],
+        producerName: "pendle_yt_exit_from_position",
+      },
+    ],
+  };
+  const { evidence } = buildLifecycleEvidence({
+    candidate: { opportunityId: OPP, chain: CHAIN },
+    protocolPositionMarks: [mark],
+    pendleYtDryRun: null,
+    pendleYtExitFromPosition: trueReport,
+  });
+  assert.equal(evidence.exit_or_redeem_ev.status, "missing");
+  assert.equal(evidence.exit_or_redeem_ev.value.producerName, "pendle_yt_exit_from_position");
+  assert.deepEqual(evidence.exit_or_redeem_ev.value.invalidFields, ["mark_underlying_asset_price_usd_missing"]);
+});
+
 test("Pendle dry-run-only emits exit_or_redeem_ev as proxy with provenanceKind + true producer name", () => {
   const mark = pendleMark();
   const drr = pendleDryRun();

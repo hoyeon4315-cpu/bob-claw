@@ -467,6 +467,62 @@ test("duplicate-entry safety: open + proxy exit EV still rejects enter for same 
   assert.equal(result.action, "hold");
 });
 
+test("dimensional invalid_input from true producer must NOT emit action:exit even with dry-run proxy net positive", () => {
+  // Even with an entry-canary proxy showing positive expectedNetUsd, the mapper
+  // must NOT promote to action:"exit" because exitEvIsTrue requires
+  // provenanceKind:"true_exit_ev". An invalid_input result from the true
+  // producer surfaces as proxy or missing, never as evidenced true_exit_ev.
+  const result = nextLegalCapitalAction({
+    blockers: ["open_position_active"],
+    capResult: { status: "ready" },
+    expectedRealizedNetUsd: 100,
+    lifecycleEvidence: envelope({
+      exit_or_redeem_ev: {
+        status: "proxy",
+        value: {
+          expectedNetUsd: 100,
+          provenanceKind: "entry_canary_ev_proxy",
+          proxyAcceptedByPolicy: false,
+          trueExitProducerName: "pendle_yt_exit_from_position",
+          trueProducerInvalidFields: [
+            "mark_asset_price_usd_misapplies_underlying_full_price",
+            "exit_quote_unit_not_asset_per_yt",
+          ],
+        },
+      },
+      cost_floor: { status: "evidenced", value: { costFloorUsd: 0.06 }, provenance: "test" },
+      receipt_or_closed_at_state: { status: "evidenced", value: { status: "open" }, provenance: "test" },
+    }),
+  });
+  assert.notEqual(result.action, "exit");
+  assert.equal(result.action, "hold");
+  assert.equal(result.holdQuality, "incomplete_evidence");
+  assert.ok(Array.isArray(result.proxyEvidenceKeys) && result.proxyEvidenceKeys.includes("exit_or_redeem_ev"));
+});
+
+test("missing exit producer with invalidFields populated surfaces as missing key (no fabricated exit)", () => {
+  const result = nextLegalCapitalAction({
+    blockers: ["open_position_active"],
+    capResult: { status: "ready" },
+    expectedRealizedNetUsd: 0,
+    lifecycleEvidence: envelope({
+      exit_or_redeem_ev: {
+        status: "missing",
+        value: {
+          provenanceKind: "missing_exit_ev_producer",
+          producerName: "pendle_yt_exit_from_position",
+          invalidFields: ["mark_underlying_asset_price_usd_missing"],
+        },
+        provenance: "pendle_yt_exit_from_position",
+      },
+    }),
+  });
+  assert.notEqual(result.action, "exit");
+  assert.equal(result.action, "hold");
+  assert.equal(result.holdQuality, "incomplete_evidence");
+  assert.ok(result.missingEvidence.includes("exit_or_redeem_ev"));
+});
+
 test("taxonomy lists all 12 named actions and includes hold with evidence requirements", () => {
   assert.equal(NEXT_LEGAL_CAPITAL_ACTIONS.length, 12);
   for (const action of [

@@ -8,10 +8,16 @@ import {
 const OPP = "pendle-direct:8453:0x6ae9";
 const CHAIN = "base";
 
+// Synthetic Pendle YT position mark carrying every dimensional invariant
+// field. Defaults model a small canary: 0.5 YT-cbBTC with cbBTC underlying.
 function ytMark({
   status = "open",
-  assetAmount = 349.2417,
-  assetPriceUsd = 77000,
+  assetAmount = 0.5,
+  assetDecimals = 18,
+  assetPriceUsd = 900,
+  underlyingAssetSymbol = "cbBTC",
+  underlyingAssetPriceUsd = 77000,
+  valuationProvenance = "current_position_onchain",
   observedAt = "2026-05-19T03:00:00.000Z",
   opportunityId = OPP,
   chain = CHAIN,
@@ -26,8 +32,12 @@ function ytMark({
     bindingKind: "pendle_market_swap",
     assetSymbol: "YT",
     assetAmount,
-    shareBalance: "349241714986569603215",
+    assetDecimals,
+    shareBalance: "500000000000000000",
     assetPriceUsd,
+    underlyingAssetSymbol,
+    underlyingAssetPriceUsd,
+    valuationProvenance,
     healthFactor: null,
     walletAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
     freshness: "fresh",
@@ -38,12 +48,15 @@ function ytMark({
 
 function canaryQueueWith({
   opportunityId = OPP,
-  ytPriceInAsset = 0.011764,
+  ytPriceInAsset = 0.012,
   impliedApyDecimal = 0.156,
   yearsToExpiry = 0.082,
   marketAddress = "0x6ae9",
   ytTokenAddress = "0xf90c",
   maturity = "2026-06-18T00:00:00.000Z",
+  unit = "asset_per_yt",
+  quotedAt = "2026-05-19T03:00:30.000Z",
+  quoteIntent = "yt_market_swap",
 } = {}) {
   return {
     queue: [
@@ -66,6 +79,9 @@ function canaryQueueWith({
               ytPriceInAsset,
               impliedApyDecimal,
               yearsToExpiry,
+              unit,
+              quotedAt,
+              quoteIntent,
             },
           },
         },
@@ -74,9 +90,10 @@ function canaryQueueWith({
   };
 }
 
-test("evidenced=true: computes true expectedNetUsd from actual share balance × ytPriceInAsset × assetPriceUsd minus chain cost floor", () => {
-  const mark = ytMark({ assetAmount: 100, assetPriceUsd: 50000 });
-  const queue = canaryQueueWith({ ytPriceInAsset: 0.02 });
+test("evidenced=true: dimensionally valid synthetic small position computes net USD from underlying price not asset slot", () => {
+  // 0.5 YT × 0.012 (asset/YT) × 77000 ($/asset) = 462; − 0.06 cost floor = 461.94
+  const mark = ytMark({ assetAmount: 0.5 });
+  const queue = canaryQueueWith({ ytPriceInAsset: 0.012 });
   const result = computePendleYtExitFromPosition({
     opportunityId: OPP,
     chain: CHAIN,
@@ -85,17 +102,172 @@ test("evidenced=true: computes true expectedNetUsd from actual share balance × 
   });
   assert.equal(result.evidenced, true);
   assert.equal(result.producerName, "pendle_yt_exit_from_position");
-  assert.equal(result.ytAmount, 100);
-  assert.equal(result.ytPriceInAsset, 0.02);
-  assert.equal(result.assetPriceUsd, 50000);
-  // 100 * 0.02 = 2 asset units
-  assert.ok(Math.abs(result.exitAssetUnits - 2) < 1e-9);
-  // 2 * 50000 = 100000 gross
-  assert.ok(Math.abs(result.exitGrossUsd - 100000) < 1e-6);
-  // base chain: exit 0.01 + gas 0.05 = 0.06
+  assert.equal(result.underlyingAssetSymbol, "cbBTC");
+  assert.equal(result.underlyingAssetPriceUsd, 77000);
+  assert.equal(result.valuationProvenance, "current_position_onchain");
+  assert.equal(result.quoteUnit, "asset_per_yt");
+  assert.equal(result.quoteIntent, "yt_market_swap");
+  assert.ok(Math.abs(result.exitAssetUnits - 0.006) < 1e-9);
+  assert.ok(Math.abs(result.exitGrossUsd - 462) < 1e-6);
   assert.ok(Math.abs(result.costFloorUsd - 0.06) < 1e-9);
-  assert.ok(Math.abs(result.expectedNetUsd - 99999.94) < 1e-6);
-  assert.equal(result.chainCostProfile, "base");
+  assert.ok(Math.abs(result.expectedNetUsd - 461.94) < 1e-6);
+});
+
+test("invalid_input: rejects mark missing underlyingAssetPriceUsd even when assetAmount and ytPriceInAsset are finite", () => {
+  const mark = ytMark();
+  delete mark.underlyingAssetPriceUsd;
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [mark],
+    canaryQueue: canaryQueueWith(),
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("mark_underlying_asset_price_usd_missing"));
+});
+
+test("invalid_input: rejects when assetSymbol=YT and assetPriceUsd equals underlying full price (NAV misuse pattern)", () => {
+  // Reproduces the current real-world defect: mark sets assetPriceUsd to the
+  // full underlying USD price as if the YT token itself were worth one unit
+  // of underlying. Producer rejects regardless of opportunityId.
+  const mark = ytMark({ assetPriceUsd: 77000, underlyingAssetPriceUsd: 77000 });
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [mark],
+    canaryQueue: canaryQueueWith(),
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("mark_asset_price_usd_misapplies_underlying_full_price"));
+});
+
+test("invalid_input: rejects exitQuote without explicit unit=asset_per_yt", () => {
+  const queue = canaryQueueWith();
+  delete queue.queue[0].protocolBindingPlan.resolvedBinding.exitQuote.unit;
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [ytMark()],
+    canaryQueue: queue,
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("exit_quote_unit_not_asset_per_yt"));
+});
+
+test("invalid_input: rejects exitQuote without quotedAt or quoteIntent", () => {
+  const queue = canaryQueueWith();
+  delete queue.queue[0].protocolBindingPlan.resolvedBinding.exitQuote.quotedAt;
+  delete queue.queue[0].protocolBindingPlan.resolvedBinding.exitQuote.quoteIntent;
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [ytMark()],
+    canaryQueue: queue,
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("exit_quote_quoted_at_missing"));
+  assert.ok(result.invalidFields.includes("exit_quote_intent_missing"));
+});
+
+test("invalid_input: rejects when valuationProvenance is missing or not a current-position kind", () => {
+  const mark = ytMark({ valuationProvenance: "stale_snapshot" });
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [mark],
+    canaryQueue: canaryQueueWith(),
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("mark_valuation_provenance_not_current_position"));
+});
+
+test("invalid_input: rejects when ytPriceInAsset > 1 (per-YT price cannot exceed underlying)", () => {
+  const queue = canaryQueueWith({ ytPriceInAsset: 1.2 });
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [ytMark()],
+    canaryQueue: queue,
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("yt_price_in_asset_exceeds_one"));
+});
+
+test("invalid_input: rejects when mark lacks assetDecimals (cannot trust raw-vs-human unit interpretation)", () => {
+  const mark = ytMark();
+  delete mark.assetDecimals;
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [mark],
+    canaryQueue: canaryQueueWith(),
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("mark_asset_decimals_missing"));
+});
+
+test("real-world target fixture (mark.assetPriceUsd=77053 reused as underlying) returns evidenced=false with explicit invalid fields", () => {
+  // Reproduces the exact shape of the current protocol-position-marks.jsonl
+  // row for the target opportunity. No opportunityId / market address is
+  // hardcoded into the producer; this is a generic dimensional rejection.
+  const realMark = {
+    event: "position_marked",
+    status: "open",
+    observedAt: "2026-05-19T09:03:07.079Z",
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolId: "pendle",
+    bindingKind: "pendle_market_swap",
+    assetSymbol: "YT",
+    assetAmount: 349.2417149865696,
+    assetDecimals: 18,
+    shareBalance: "349241714986569603215",
+    assetPriceUsd: 77053,
+    healthFactor: null,
+    walletAddress: "0x96262bE63AA687563789225c2fE898c27a3b0AE4",
+    freshness: "fresh",
+    confidence: "verified_current",
+    // NO underlyingAssetPriceUsd, NO underlyingAssetSymbol, NO valuationProvenance
+  };
+  const realQueue = {
+    queue: [
+      {
+        opportunityId: OPP,
+        chain: CHAIN,
+        protocolId: "pendle",
+        protocolBindingPlan: {
+          bindingKind: "pendle_yt_buy_sell_redeem",
+          resolvedBinding: {
+            exitQuote: {
+              source: "pendle_fair_value_model",
+              outputUsd: 10,
+              depthUsd: 10000,
+              slippageBps: 5,
+              ytPriceInAsset: 0.011710754641074295,
+              impliedApyDecimal: 0.156,
+              yearsToExpiry: 0.081,
+              // NO unit, NO quotedAt, NO quoteIntent
+            },
+          },
+        },
+      },
+    ],
+  };
+  const result = computePendleYtExitFromPosition({
+    opportunityId: OPP,
+    chain: CHAIN,
+    protocolPositionMarks: [realMark],
+    canaryQueue: realQueue,
+  });
+  assert.equal(result.evidenced, false);
+  assert.ok(result.invalidFields.includes("mark_underlying_asset_symbol_missing"));
+  assert.ok(result.invalidFields.includes("mark_underlying_asset_price_usd_missing"));
+  assert.ok(result.invalidFields.includes("mark_valuation_provenance_missing"));
+  assert.ok(result.invalidFields.includes("exit_quote_unit_not_asset_per_yt"));
+  assert.ok(result.invalidFields.includes("exit_quote_quoted_at_missing"));
+  assert.ok(result.invalidFields.includes("exit_quote_intent_missing"));
+  // Should NOT emit fake $315K
+  assert.equal(result.expectedNetUsd, undefined);
 });
 
 test("evidenced=false: missingFields lists exact gaps when canary queue is null", () => {
@@ -160,7 +332,7 @@ test("ignores closed marks", () => {
 });
 
 test("ethereum chain uses higher exit + gas cost floor", () => {
-  const mark = { ...ytMark({ assetAmount: 1, assetPriceUsd: 1000 }), chain: "ethereum" };
+  const mark = { ...ytMark({ assetAmount: 1, underlyingAssetPriceUsd: 1000, assetPriceUsd: 12 }), chain: "ethereum" };
   const queue = {
     queue: [
       {
@@ -169,7 +341,16 @@ test("ethereum chain uses higher exit + gas cost floor", () => {
         protocolId: "pendle",
         protocolBindingPlan: {
           bindingKind: "pendle_yt_buy_sell_redeem",
-          resolvedBinding: { exitQuote: { ytPriceInAsset: 0.1, impliedApyDecimal: 0.2, yearsToExpiry: 0.5 } },
+          resolvedBinding: {
+            exitQuote: {
+              ytPriceInAsset: 0.1,
+              impliedApyDecimal: 0.2,
+              yearsToExpiry: 0.5,
+              unit: "asset_per_yt",
+              quotedAt: "2026-05-19T03:00:30.000Z",
+              quoteIntent: "yt_market_swap",
+            },
+          },
         },
       },
     ],
@@ -185,9 +366,10 @@ test("ethereum chain uses higher exit + gas cost floor", () => {
   assert.ok(Math.abs(result.costFloorUsd - 1.25) < 1e-9);
 });
 
-test("buildPendleYtExitFromPositionReport returns one row per unique open YT mark", () => {
-  const m1 = ytMark({ opportunityId: "opp-a", assetAmount: 10, assetPriceUsd: 100 });
-  const m2 = ytMark({ opportunityId: "opp-b", assetAmount: 20, assetPriceUsd: 200 });
+test("buildPendleYtExitFromPositionReport returns one row per unique open YT mark; invalidCount counts dimensional rejections", () => {
+  const m1 = ytMark({ opportunityId: "opp-a", assetAmount: 10, underlyingAssetPriceUsd: 100, assetPriceUsd: 1.2 });
+  const m2 = { ...ytMark({ opportunityId: "opp-b" }) };
+  delete m2.underlyingAssetPriceUsd;
   const queue = {
     queue: [
       {
@@ -196,7 +378,14 @@ test("buildPendleYtExitFromPositionReport returns one row per unique open YT mar
         protocolId: "pendle",
         protocolBindingPlan: {
           bindingKind: "pendle_yt_buy_sell_redeem",
-          resolvedBinding: { exitQuote: { ytPriceInAsset: 0.01 } },
+          resolvedBinding: {
+            exitQuote: {
+              ytPriceInAsset: 0.01,
+              unit: "asset_per_yt",
+              quotedAt: "2026-05-19T03:00:30.000Z",
+              quoteIntent: "yt_market_swap",
+            },
+          },
         },
       },
       {
@@ -205,7 +394,14 @@ test("buildPendleYtExitFromPositionReport returns one row per unique open YT mar
         protocolId: "pendle",
         protocolBindingPlan: {
           bindingKind: "pendle_yt_buy_sell_redeem",
-          resolvedBinding: { exitQuote: { ytPriceInAsset: 0.01 } },
+          resolvedBinding: {
+            exitQuote: {
+              ytPriceInAsset: 0.01,
+              unit: "asset_per_yt",
+              quotedAt: "2026-05-19T03:00:30.000Z",
+              quoteIntent: "yt_market_swap",
+            },
+          },
         },
       },
     ],
@@ -215,8 +411,8 @@ test("buildPendleYtExitFromPositionReport returns one row per unique open YT mar
     canaryQueue: queue,
   });
   assert.equal(report.openPositionCount, 2);
-  assert.equal(report.evidencedCount, 2);
-  assert.equal(report.results.length, 2);
+  assert.equal(report.evidencedCount, 1);
+  assert.equal(report.invalidCount, 1);
 });
 
 test("report is read-only and never has signer/broadcast fields", () => {

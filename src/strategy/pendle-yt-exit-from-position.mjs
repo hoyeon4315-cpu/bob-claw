@@ -1,39 +1,46 @@
 // True read-only exit-from-position EV producer for Pendle YT.
 //
-// This is the producer named `pendle_yt_exit_from_position` referenced by
-// `lifecycle-evidence.mjs` and `next-legal-capital-action.mjs`. Unlike the
-// pre-existing entry-side `evaluatePendleYtEv` (which uses a hypothetical
-// $10 notional × APR × holdDays formula), this producer:
+// This producer never emits `evidenced:true` unless every dimensional
+// invariant for the valuation chain is explicitly proven by the inputs
+// (no implicit assumptions, no full-underlying USD price reused as a per-YT
+// USD price, no stale fair-value-only quote without a current-quote
+// attestation). When the invariant fails, the producer emits
+// `evidenced:false` with `invalidFields` listing exact dimensional gaps
+// and/or `missingFields` listing missing inputs. The lifecycle envelope
+// surfaces both lists so downstream consumers can route hold/incomplete
+// rather than dispatch a fabricated exit.
 //
-//   1. Reads the actual open YT position size from
-//      `protocol-position-marks.jsonl` (`assetAmount`/`shareBalance` for
-//      the matching `opportunityId + chain + pendle_market_swap + YT`).
-//   2. Reads the Pendle fair-value exit quote (`ytPriceInAsset`,
-//      `impliedApyDecimal`, `yearsToExpiry`) from the resolved binding on
-//      the matching canary queue item (already populated by
-//      `report-pendle-direct-canaries.mjs` from a real
-//      `buildPendleOnChainExitQuote` call).
-//   3. Reads the BTC/asset price the mark was observed at (`assetPriceUsd`).
-//   4. Computes exit asset units = `ytAmount * ytPriceInAsset` and exit
-//      USD value at the mark's `assetPriceUsd`.
-//   5. Subtracts chain-specific exit + gas cost floor (from
-//      `pendle-yt-ev.mjs::PENDLE_YT_EV_POLICY.chainCosts`).
+// Inputs (per opportunity):
+//   1. Latest open Pendle YT position mark from
+//      `protocol-position-marks.jsonl`. Must carry: `assetAmount`,
+//      `assetSymbol=YT`, `assetDecimals`, `underlyingAssetSymbol`,
+//      `underlyingAssetPriceUsd`, and `valuationProvenance`.
+//   2. Resolved binding `exitQuote` from `merkl-canary-queue.json` for the
+//      same opportunity. Must carry: `ytPriceInAsset`, `unit="asset_per_yt"`,
+//      `quotedAt` (ISO), and `quoteIntent` in {"yt_market_swap","yt_redeem"}.
+//   3. Chain-specific exit + gas cost floor from `pendle-yt-ev.mjs`.
 //
-// Output `expectedNetUsd` is the realized exit EV at current state. No
-// signer, no key, no live execution.  The CLI dispatcher writes the
-// result to `data/pendle-yt-exit-from-position-latest.json`; the selector
-// pipeline passes it through to `buildLifecycleEvidence`.
+// Formula (only when invariant holds):
+//   exitAssetUnits = ytAmount × ytPriceInAsset
+//   exitGrossUsd   = exitAssetUnits × underlyingAssetPriceUsd
+//   costFloorUsd   = chainCosts[chain].exit + chainCosts[chain].gas
+//   expectedNetUsd = exitGrossUsd − costFloorUsd
 //
-// Failure modes are explicit: each opportunity reports `evidenced:true`
-// only when every input field is present. Otherwise `evidenced:false`
-// with `missingFields` listing the exact gap. The lifecycle envelope
-// emits `status:"missing"` with `producerName:"pendle_yt_exit_from_position"`
-// for any opp without an `evidenced:true` row.
+// Anti-overfit: no opportunityId, market address, or dollar ceiling is
+// hardcoded. The invariant rejects (a) marks that misuse the underlying
+// asset's full USD price as the YT's `assetPriceUsd`, (b) exit quotes
+// that lack explicit per-YT unit declaration or current-quote
+// attestation, and (c) any combination producing a per-YT USD price
+// strictly greater than the underlying USD price.
 
 import { PENDLE_YT_EV_POLICY } from "./pendle-yt-ev.mjs";
 
 const PENDLE_PROTOCOL_ID = "pendle";
 const PENDLE_YT_SYMBOL = "YT";
+const ALLOWED_VALUATION_PROVENANCE = new Set(["current_position_onchain", "position_reader_verified_current"]);
+const ALLOWED_QUOTE_INTENTS = new Set(["yt_market_swap", "yt_redeem"]);
+const ALLOWED_QUOTE_UNIT = "asset_per_yt";
+const MISAPPLIED_PRICE_REL_TOLERANCE = 1e-3;
 
 function finite(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -110,16 +117,68 @@ function validateInputs({ mark, queueItem, binding, exitQuote }) {
   if (!exitQuote) missingFields.push("binding_exit_quote");
   if (mark && finite(mark.assetAmount) === null) missingFields.push("mark_asset_amount");
   if (exitQuote && finite(exitQuote.ytPriceInAsset) === null) missingFields.push("yt_price_in_asset");
-  if (mark && finite(mark.assetPriceUsd) === null) missingFields.push("mark_asset_price_usd");
   return missingFields;
 }
 
-function buildMissingResult({ opportunityId, chain, mark, missingFields, now }) {
+function validateMarkInvariant(mark, invalidFields) {
+  if (!mark) return;
+  if (finite(mark.assetDecimals) === null) invalidFields.push("mark_asset_decimals_missing");
+  if (!mark.underlyingAssetSymbol) invalidFields.push("mark_underlying_asset_symbol_missing");
+  if (finite(mark.underlyingAssetPriceUsd) === null) invalidFields.push("mark_underlying_asset_price_usd_missing");
+  if (!mark.valuationProvenance) {
+    invalidFields.push("mark_valuation_provenance_missing");
+  } else if (!ALLOWED_VALUATION_PROVENANCE.has(mark.valuationProvenance)) {
+    invalidFields.push("mark_valuation_provenance_not_current_position");
+  }
+  const underlyingPx = finite(mark.underlyingAssetPriceUsd);
+  const assetPx = finite(mark.assetPriceUsd);
+  if (
+    lower(mark.assetSymbol) === lower(PENDLE_YT_SYMBOL) &&
+    underlyingPx !== null &&
+    underlyingPx > 0 &&
+    assetPx !== null &&
+    Math.abs(assetPx - underlyingPx) / underlyingPx < MISAPPLIED_PRICE_REL_TOLERANCE
+  ) {
+    invalidFields.push("mark_asset_price_usd_misapplies_underlying_full_price");
+  }
+}
+
+function validateQuoteInvariant(exitQuote, invalidFields) {
+  if (!exitQuote) return;
+  if (exitQuote.unit !== ALLOWED_QUOTE_UNIT) invalidFields.push("exit_quote_unit_not_asset_per_yt");
+  if (!exitQuote.quotedAt) invalidFields.push("exit_quote_quoted_at_missing");
+  if (!exitQuote.quoteIntent) {
+    invalidFields.push("exit_quote_intent_missing");
+  } else if (!ALLOWED_QUOTE_INTENTS.has(exitQuote.quoteIntent)) {
+    invalidFields.push("exit_quote_intent_not_yt_redeem_or_swap");
+  }
+}
+
+function validateDimensionalSanity(mark, exitQuote, invalidFields) {
+  const ytPx = finite(exitQuote?.ytPriceInAsset);
+  const underlyingPx = finite(mark?.underlyingAssetPriceUsd);
+  if (ytPx === null || underlyingPx === null || underlyingPx <= 0) return;
+  const perYtUsd = ytPx * underlyingPx;
+  if (perYtUsd > underlyingPx) invalidFields.push("yt_price_usd_per_token_exceeds_underlying");
+  if (ytPx < 0) invalidFields.push("yt_price_in_asset_negative");
+  if (ytPx > 1) invalidFields.push("yt_price_in_asset_exceeds_one");
+}
+
+function dimensionalInvariant(mark, exitQuote) {
+  const invalidFields = [];
+  validateMarkInvariant(mark, invalidFields);
+  validateQuoteInvariant(exitQuote, invalidFields);
+  validateDimensionalSanity(mark, exitQuote, invalidFields);
+  return invalidFields;
+}
+
+function buildIncompleteResult({ opportunityId, chain, mark, missingFields, invalidFields, now }) {
   return {
     opportunityId,
     chain: chain || mark?.chain || null,
     evidenced: false,
     missingFields,
+    invalidFields,
     producerName: "pendle_yt_exit_from_position",
     observedAt: mark?.observedAt || null,
     generatedAt: now,
@@ -129,9 +188,9 @@ function buildMissingResult({ opportunityId, chain, mark, missingFields, now }) 
 function buildEvidencedResult({ opportunityId, chain, mark, binding, exitQuote, costs, now }) {
   const ytAmount = finite(mark.assetAmount);
   const ytPriceInAsset = finite(exitQuote.ytPriceInAsset);
-  const assetPriceUsd = finite(mark.assetPriceUsd);
+  const underlyingAssetPriceUsd = finite(mark.underlyingAssetPriceUsd);
   const exitAssetUnits = ytAmount * ytPriceInAsset;
-  const exitGrossUsd = exitAssetUnits * assetPriceUsd;
+  const exitGrossUsd = exitAssetUnits * underlyingAssetPriceUsd;
   const costFloorUsd = costs.exitCostUsd + costs.gasCostUsd;
   return {
     opportunityId,
@@ -140,7 +199,14 @@ function buildEvidencedResult({ opportunityId, chain, mark, binding, exitQuote, 
     producerName: "pendle_yt_exit_from_position",
     ytAmount,
     ytPriceInAsset,
-    assetPriceUsd,
+    assetDecimals: finite(mark.assetDecimals),
+    underlyingAssetSymbol: mark.underlyingAssetSymbol,
+    underlyingAssetPriceUsd,
+    assetPriceUsd: finite(mark.assetPriceUsd),
+    valuationProvenance: mark.valuationProvenance,
+    quoteUnit: exitQuote.unit,
+    quoteIntent: exitQuote.quoteIntent,
+    quotedAt: exitQuote.quotedAt,
     impliedApyDecimal: finite(exitQuote.impliedApyDecimal),
     yearsToExpiry: finite(exitQuote.yearsToExpiry),
     ytPriceSource: exitQuote.source || null,
@@ -173,8 +239,16 @@ export function computePendleYtExitFromPosition({
 }) {
   const inputs = collectInputs({ opportunityId, chain, protocolPositionMarks, canaryQueue });
   const missingFields = validateInputs(inputs);
-  if (missingFields.length > 0) {
-    return buildMissingResult({ opportunityId, chain, mark: inputs.mark, missingFields, now });
+  const invalidFields = missingFields.length === 0 ? dimensionalInvariant(inputs.mark, inputs.exitQuote) : [];
+  if (missingFields.length > 0 || invalidFields.length > 0) {
+    return buildIncompleteResult({
+      opportunityId,
+      chain,
+      mark: inputs.mark,
+      missingFields,
+      invalidFields,
+      now,
+    });
   }
   const costs = chainCostFloor(chain || inputs.mark.chain);
   return buildEvidencedResult({ opportunityId, chain, ...inputs, costs, now });
@@ -212,6 +286,7 @@ export function buildPendleYtExitFromPositionReport({
     broadcastMode: "read_only_no_signer_dispatch",
     openPositionCount: results.length,
     evidencedCount: results.filter((r) => r.evidenced).length,
+    invalidCount: results.filter((r) => Array.isArray(r.invalidFields) && r.invalidFields.length > 0).length,
     results,
   };
 }
