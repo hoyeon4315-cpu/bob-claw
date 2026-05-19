@@ -78,6 +78,7 @@ test("statuses enumerate report-only lifecycle outcomes", () => {
     [...CANDIDATE_STATUSES],
     [
       "READY_FOR_INTENT_CANDIDATE",
+      "NO_LIVE_ROUTE",
       "BACKLOG_MISSING_EVIDENCE",
       "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
       "UNRESOLVED_STALE_READINESS_SNAPSHOT",
@@ -112,6 +113,9 @@ test("complete evidence and aligned governing surfaces produce a report-only int
   assert.equal(candidate.reportOnly, true);
   assert.equal(candidate.runtimeAuthority, "none");
   assert.equal(candidate.allowedToExecuteLive, false);
+  assert.equal(candidate.stableSourceRef, "familyCoverage[family=capital_family].firstBlockingReason");
+  assert.equal(candidate.evidenceComplete, true);
+  assert.equal(candidate.governingFieldPath, "familyCoverage[family=capital_family].firstBlockingReason");
   assert.equal(candidate.selectedMethod, "cross_chain_bridge_or_swap");
   assert.equal(candidate.executionMethod, "cross_chain_bridge_or_swap");
   assert.equal(candidate.sourceChain, "bitcoin");
@@ -161,8 +165,12 @@ test("readiness blocker on the same destination forces UNRESOLVED_GOVERNING_SYNC
 
 test("missing required fields drop the candidate into BACKLOG_MISSING_EVIDENCE", () => {
   const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].dryRunIntent.selectedMethod = null;
   handlerReport.handlerResults[0].dryRunIntent.expectedNetUsd = null;
   handlerReport.handlerResults[0].dryRunIntent.source.chain = null;
+  handlerReport.handlerResults[0].dryRunIntent.source.asset = null;
+  handlerReport.handlerResults[0].dryRunIntent.destination.asset = null;
+  handlerReport.handlerResults[0].dryRunIntent.costs.expectedExecutionRefillCostUsd = null;
   const report = buildLaneIntentCandidateReport({
     laneHandlerReport: handlerReport,
     readinessReport: { liveAutomation: { refillBlockers: [] } },
@@ -172,8 +180,12 @@ test("missing required fields drop the candidate into BACKLOG_MISSING_EVIDENCE",
   assert.equal(candidate.status, "BACKLOG_MISSING_EVIDENCE");
   assert.equal(candidate.canIntent, false);
   assert.equal(candidate.canLive, false);
+  assert.ok(candidate.missingEvidence.includes("selectedMethod"));
   assert.ok(candidate.missingEvidence.includes("sourceChain"));
+  assert.ok(candidate.missingEvidence.includes("sourceAsset"));
+  assert.ok(candidate.missingEvidence.includes("destinationAsset"));
   assert.ok(candidate.missingEvidence.includes("expectedNetUsd"));
+  assert.ok(candidate.missingEvidence.includes("expectedExecutionRefillCostUsd"));
   assert.equal(candidate.nextAutomationStep, "supply_missing_refill_intent_evidence_fields");
 });
 
@@ -240,16 +252,25 @@ test("receipt/claim/exit/producer/policy/live remain futureHandlerBacklog with r
   assert.equal(receipt.status, "FUTURE_HANDLER_BACKLOG");
   assert.equal(receipt.canIntent, false);
   assert.equal(receipt.canLive, false);
-  assert.ok(receipt.requiredEvidence.includes("receipt_target_identity_list"));
-  assert.ok(receipt.requiredEvidence.includes("non_mutating_dry_run_command"));
+  assert.ok(receipt.requiredEvidence.includes("receipt_target_identity"));
+  assert.ok(receipt.requiredEvidence.includes("tx_hash_or_stable_broadcast_id"));
+  assert.ok(receipt.requiredEvidence.includes("dry_run_reconciliation_path_or_exact_missing_producer"));
   assert.equal(receipt.handlerBacklogCount, 1);
   assert.ok(receipt.queueFamilies.includes("merkl"));
+  const claim = report.laneBacklog.find((entry) => entry.lane === "claim_harvest");
+  assert.ok(claim.requiredEvidence.includes("chain_token_distributor_or_exact_missing_field"));
+  assert.ok(claim.requiredEvidence.includes("claim_readiness"));
+  const exit = report.laneBacklog.find((entry) => entry.lane === "exit_redeem");
+  assert.ok(exit.requiredEvidence.includes("action_specific_exit_or_redeem_expected_net_usd"));
+  assert.ok(exit.requiredEvidence.includes("executor_binding_or_exact_missing_binding"));
   const live = report.futureHandlerBacklog.find((entry) => entry.lane === "live_eligibility");
   assert.equal(live.status, "FUTURE_HANDLER_BACKLOG");
   assert.equal(live.canIntent, false);
   assert.equal(live.canLive, false);
   assert.ok(live.requiredEvidence.includes("policy_proof"));
   assert.ok(live.requiredEvidence.includes("kill_switch_proof"));
+  assert.equal(report.laneHandlerCoverage.reportOnly, true);
+  assert.equal(report.laneSafetyProof.runtimeAuthority, "none");
 });
 
 test("no capital_refill pilot lane produces no candidate but keeps backlog populated", () => {
@@ -459,6 +480,103 @@ test("lifecycle exposes producer paths on candidates, backlog, and report root",
   const live = report.futureHandlerBacklog.find((entry) => entry.lane === "live_eligibility");
   assert.ok(live.owningProducer);
   assert.ok(live.owningProducer.module.includes("policy"));
+});
+
+test("precise NO_LIVE_ROUTE requires current-method blocker and direct cost evidence", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].dryRunIntent.blocker = "expected_net_below_receipt_cost_p90_floor";
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "base",
+            asset: "wBTC.OFT",
+            reason: "expected_net_below_receipt_cost_p90_floor",
+            selectedMethod: "cross_chain_bridge_or_swap",
+            stalePlannerMethod: false,
+            expectedNetUsd: -0.1,
+            requiredNetUsd: 0.5,
+            p90CostUsd: 0.6,
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "NO_LIVE_ROUTE");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.evidenceComplete, true);
+  assert.equal(candidate.noLiveRouteEvidence.method, "cross_chain_bridge_or_swap");
+  assert.equal(candidate.noLiveRouteEvidence.costEvidence[0].expectedNetUsd, -0.1);
+  assert.equal(candidate.noLiveRouteEvidence.costEvidence[0].requiredNetUsd, 0.5);
+  assert.equal(candidate.noLiveRouteEvidence.costEvidence[0].p90CostUsd, 0.6);
+});
+
+test("NO_LIVE_ROUTE requires planner and readiness blocker reason agreement", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].dryRunIntent.blocker = "expected_net_below_receipt_cost_p90_floor";
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "base",
+            asset: "wBTC.OFT",
+            reason: "routing_exhausted",
+            selectedMethod: "cross_chain_bridge_or_swap",
+            stalePlannerMethod: false,
+            expectedNetUsd: -0.1,
+            requiredNetUsd: 0.5,
+            p90CostUsd: 0.6,
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.noLiveRouteEvidence, null);
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+});
+
+test("producer backlog and waitlist expose exact common lifecycle fields", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport({
+      handlerBacklog: [
+        {
+          lane: "producer_backlog",
+          family: "arbitrary_family",
+          status: "BLOCKED_MISSING_PRODUCER",
+          missingProducer: "build_arbitrary_receipt_producer",
+          governingFieldPath: "familyActionTable[family=arbitrary_family].missingProducer",
+        },
+        {
+          lane: "waitlist",
+          family: "wait_family",
+          status: "WAITLIST",
+          reason: "negative_ev",
+          governingFieldPath: "familyActionTable[family=wait_family].reason",
+        },
+      ],
+    }),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const producer = report.laneBacklog.find((entry) => entry.family === "arbitrary_family");
+  assert.equal(producer.missingProducer, "build_arbitrary_receipt_producer");
+  assert.equal(producer.governingFieldPath, "familyActionTable[family=arbitrary_family].missingProducer");
+  assert.equal(producer.canLive, false);
+  assert.equal(producer.reportOnly, true);
+  assert.ok(producer.evidenceContract.includes("owner_or_best_owner_guess"));
+  const wait = report.laneWaitlist.find((entry) => entry.family === "wait_family");
+  assert.equal(wait.reason, "negative_ev");
+  assert.equal(wait.recheckCondition, "negative_ev");
+  assert.equal(wait.governingFieldPath, "familyActionTable[family=wait_family].reason");
+  assert.ok(wait.validWaitReasons.includes("negative_ev"));
 });
 
 test("classification works across arbitrary chain/asset/method strings (no hardcoding)", () => {

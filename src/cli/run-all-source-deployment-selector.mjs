@@ -97,33 +97,39 @@ export async function collectReportInputsSequentially({
   return out;
 }
 
-async function collectFreshInputs({ timeout }) {
-  const capitalAuditInputs = await collectCapitalAuditInputs({ dataDir: config.dataDir });
-  const capitalAudit = buildCapitalAuditReport(capitalAuditInputs);
-  const pendleDirectCanaries = await runJsonNode(
+export async function collectFreshInputBundleSequentially({
+  timeout,
+  collectCapitalAudit = collectCapitalAuditInputs,
+  buildCapitalAudit = buildCapitalAuditReport,
+  loadCapital = loadUnifiedOperatingCapital,
+  readKillSwitch = readKillSwitchStatus,
+  runJson = runJsonNode,
+  collectReports = collectReportInputsSequentially,
+} = {}) {
+  const capitalAuditInputs = await collectCapitalAudit({ dataDir: config.dataDir });
+  const capitalAudit = buildCapitalAudit(capitalAuditInputs);
+  const pendleDirectCanaries = await runJson(
     "src/cli/report-pendle-direct-canaries.mjs",
     ["--json", "--write", "--sdk-tokens"],
     { timeout },
   ).catch(() => null);
-  const pendleYtDryRun = await runJsonNode("src/cli/dry-run-pendle-yt.mjs", ["--json", "--write"], { timeout }).catch(
+  const pendleYtDryRun = await runJson("src/cli/dry-run-pendle-yt.mjs", ["--json", "--write"], { timeout }).catch(
     () => null,
   );
-  const pendleYtExitFromPosition = await runJsonNode(
+  const pendleYtExitFromPosition = await runJson(
     "src/cli/report-pendle-yt-exit-from-position.mjs",
     ["--json", "--write"],
     { timeout },
   ).catch(() => null);
-  const [unifiedCapital, killStatus, reportInputs] = await Promise.all([
-    loadUnifiedOperatingCapital({ dataDir: config.dataDir }).catch((error) => ({
-      halt: true,
-      unifiedNavUsd: null,
-      flags: ["unified_capital_live_read_failed"],
-      missingSources: [],
-      error: error.message,
-    })),
-    readKillSwitchStatus().catch((error) => ({ halted: null, error: error.message })),
-    collectReportInputsSequentially({ timeout }),
-  ]);
+  const unifiedCapital = await loadCapital({ dataDir: config.dataDir }).catch((error) => ({
+    halt: true,
+    unifiedNavUsd: null,
+    flags: ["unified_capital_live_read_failed"],
+    missingSources: [],
+    error: error.message,
+  }));
+  const killStatus = await readKillSwitch().catch((error) => ({ halted: null, error: error.message }));
+  const reportInputs = await collectReports({ timeout });
   return {
     capitalAudit,
     signerAuditRecords: capitalAuditInputs.signerAuditRecords || [],
@@ -135,6 +141,10 @@ async function collectFreshInputs({ timeout }) {
     killStatus,
     ...reportInputs,
   };
+}
+
+async function collectFreshInputs({ timeout }) {
+  return collectFreshInputBundleSequentially({ timeout });
 }
 
 async function maybeSubmitSigner({ args, report }) {

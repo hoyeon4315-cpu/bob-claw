@@ -9,6 +9,7 @@
 
 export const CANDIDATE_STATUSES = Object.freeze([
   "READY_FOR_INTENT_CANDIDATE",
+  "NO_LIVE_ROUTE",
   "BACKLOG_MISSING_EVIDENCE",
   "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
   "UNRESOLVED_STALE_READINESS_SNAPSHOT",
@@ -56,10 +57,10 @@ export const LIFECYCLE_PRODUCERS = Object.freeze({
 const BACKLOG_REQUIREMENTS = Object.freeze({
   receipt_reconciliation: {
     requiredEvidence: [
-      "receipt_target_identity_list",
+      "receipt_target_identity",
+      "tx_hash_or_stable_broadcast_id",
       "ledger_or_audit_source",
-      "non_mutating_dry_run_command",
-      "unreconciled_broadcast_proof",
+      "dry_run_reconciliation_path_or_exact_missing_producer",
     ],
     nextStep: "declare_receipt_reconciliation_evidence_contract",
     owningProducer: {
@@ -70,10 +71,10 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
   claim_harvest: {
     requiredEvidence: [
       "claimable_amount",
-      "distributor_or_producer_binding",
+      "chain_token_distributor_or_exact_missing_field",
       "cost_floor",
-      "chain_readiness",
-      "claim_dry_run_command",
+      "claim_readiness",
+      "report_only_producer_or_missing_producer",
     ],
     nextStep: "declare_claim_harvest_evidence_contract",
     owningProducer: {
@@ -84,11 +85,10 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
   exit_redeem: {
     requiredEvidence: [
       "lifecycle_evidence",
-      "action_specific_expected_net_usd",
+      "action_specific_exit_or_redeem_expected_net_usd",
       "cost_floor",
-      "receipt_truth",
-      "executor_binding",
-      "invalid_input_separation",
+      "executor_binding_or_exact_missing_binding",
+      "invalid_or_proxy_evidence_separation",
     ],
     nextStep: "declare_exit_redeem_evidence_contract",
     owningProducer: {
@@ -97,7 +97,7 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
     },
   },
   producer_backlog: {
-    requiredEvidence: ["missing_producer_name", "owning_module", "minimum_evidence_contract"],
+    requiredEvidence: ["missing_producer_name", "owner_or_best_owner_guess", "minimum_evidence_contract"],
     nextStep: "declare_producer_evidence_contract",
     owningProducer: {
       module: "src/strategy/family-action-classification.mjs",
@@ -106,10 +106,11 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
   },
   policy_review: {
     requiredEvidence: [
-      "policy_key_or_function",
-      "safety_rationale",
-      "allowed_case_regression_test",
-      "blocked_case_regression_test",
+      "policy_key",
+      "source_truth_state",
+      "semantic_defect_candidate_reason",
+      "safe_case_regression_test",
+      "unsafe_case_regression_test",
     ],
     nextStep: "policy_review_requires_allowed_and_blocked_regression_proof",
     owningProducer: {
@@ -132,6 +133,14 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
     owningProducer: {
       module: "src/executor/policy/index.mjs / src/executor/signer/daemon.mjs",
       cli: "node src/cli/check-full-automation-readiness.mjs --json",
+    },
+  },
+  waitlist: {
+    requiredEvidence: ["valid_wait_reason", "recheck_condition", "governing_field_path"],
+    nextStep: "wait_for_recheck_condition_without_live_authority",
+    owningProducer: {
+      module: "src/strategy/dry-run-remediation-planner.mjs",
+      cli: "node src/cli/run-all-source-deployment-selector.mjs --json",
     },
   },
 });
@@ -164,12 +173,67 @@ function present(value) {
   return true;
 }
 
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function firstPresent(...values) {
+  for (const value of values) {
+    if (present(value)) return value;
+  }
+  return null;
+}
+
 function listMissing(map) {
   const missing = [];
   for (const [name, value] of Object.entries(map)) {
     if (!present(value)) missing.push(name);
   }
   return missing;
+}
+
+function stableSourceRef(item = {}, lane = null) {
+  return (
+    item.stableSourceRef ||
+    item.sourceRef ||
+    item.sourceActionRef ||
+    item.governingFieldPath ||
+    [
+      item.family || "unknown_family",
+      lane || item.lane || "unknown_lane",
+      item.actionClass || item.reason || "unknown_reason",
+    ]
+      .join(":")
+      .replaceAll(/\s+/g, "_")
+  );
+}
+
+function commonLaneFields({
+  item = {},
+  lane = item.lane || null,
+  status,
+  evidenceComplete = false,
+  missingEvidence = [],
+  canDryRun = false,
+  canIntent = false,
+  nextAutomationStep = null,
+} = {}) {
+  return {
+    family: item.family || null,
+    lane,
+    status,
+    stableSourceRef: stableSourceRef(item, lane),
+    evidenceComplete: Boolean(evidenceComplete),
+    missingEvidence: [...array(missingEvidence)],
+    governingFieldPath: item.governingFieldPath || null,
+    canDryRun: Boolean(canDryRun),
+    canIntent: Boolean(canIntent),
+    canLive: false,
+    reportOnly: true,
+    runtimeAuthority: "none",
+    nextAutomationStep,
+  };
 }
 
 function readinessRefillBlockers(readinessReport) {
@@ -245,6 +309,47 @@ function evaluateGoverningAgreement({ handlerResult, readinessReport }) {
   };
 }
 
+function blockerCostEvidence(blocker = {}) {
+  return {
+    expectedNetUsd: finiteNumber(blocker.expectedNetUsd),
+    requiredNetUsd: finiteNumber(firstPresent(blocker.requiredNetUsd, blocker.requiredNetPnlUsd)),
+    p90CostUsd: finiteNumber(firstPresent(blocker.p90CostUsd, blocker.receiptCostP90Usd, blocker.receiptCostFloorUsd)),
+    effectiveFloorUsd: finiteNumber(firstPresent(blocker.effectiveFloorUsd, blocker.effectiveCostFloorUsd)),
+  };
+}
+
+function hasCostFloorEvidence(evidence) {
+  return (
+    evidence.expectedNetUsd !== null &&
+    (evidence.requiredNetUsd !== null || evidence.p90CostUsd !== null || evidence.effectiveFloorUsd !== null)
+  );
+}
+
+function preciseNoLiveRouteEvidence({ governingAgreement, dryRunIntent, destination }) {
+  const selectedMethod = dryRunIntent.selectedMethod || null;
+  if (!selectedMethod || !governingAgreement.plannerBlocker) return null;
+  const currentMethodBlockers = governingAgreement.readinessBlockers.filter(
+    (blocker) =>
+      blocker.mismatchClass === "method_collision" &&
+      blocker.selectedMethod === selectedMethod &&
+      [blocker.reason, blocker.category].includes(governingAgreement.plannerBlocker),
+  );
+  if (currentMethodBlockers.length === 0) return null;
+  const costEvidence = currentMethodBlockers.map(blockerCostEvidence);
+  if (!costEvidence.every(hasCostFloorEvidence)) return null;
+  return {
+    method: selectedMethod,
+    resource: {
+      chain: destination.chain || null,
+      asset: destination.asset || null,
+      token: destination.token || null,
+    },
+    plannerBlocker: governingAgreement.plannerBlocker,
+    readinessBlockers: currentMethodBlockers,
+    costEvidence,
+  };
+}
+
 function extractCandidateContext(handlerResult) {
   const item = handlerResult?.sourceQueueItem || handlerResult || {};
   const dryRunIntent = handlerResult?.dryRunIntent || {};
@@ -276,7 +381,7 @@ function collectMissingEvidence({ canDryRun, dryRunIntent, source, destination, 
   return missingEvidence;
 }
 
-function resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement }) {
+function resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement, noLiveRouteEvidence }) {
   if (!canDryRun) {
     return {
       status: "BACKLOG_MISSING_EVIDENCE",
@@ -298,6 +403,13 @@ function resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement
       nextAutomationStep: "await_live_eligibility_gates_after_intent_candidate",
     };
   }
+  if (noLiveRouteEvidence) {
+    return {
+      status: "NO_LIVE_ROUTE",
+      canIntent: false,
+      nextAutomationStep: "wait_for_new_route_or_cost_floor_change_without_live_authority",
+    };
+  }
   if (governingAgreement.onlyStaleSnapshot) {
     return {
       status: "UNRESOLVED_STALE_READINESS_SNAPSHOT",
@@ -316,6 +428,7 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
   const context = extractCandidateContext(handlerResult);
   const { item, dryRunIntent, source, destination, costs, safetyBlockers, canDryRun } = context;
   const governingAgreement = evaluateGoverningAgreement({ handlerResult, readinessReport });
+  const noLiveRouteEvidence = preciseNoLiveRouteEvidence({ governingAgreement, dryRunIntent, destination });
   const missingEvidence = collectMissingEvidence({
     canDryRun,
     dryRunIntent,
@@ -324,12 +437,21 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     costs,
     handlerResult,
   });
-  const lifecycle = resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement });
+  const lifecycle = resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement, noLiveRouteEvidence });
 
   // canLive remains false in every path; this lifecycle never promotes live.
   return {
+    ...commonLaneFields({
+      item,
+      lane: "capital_refill",
+      status: lifecycle.status,
+      evidenceComplete: missingEvidence.length === 0 && (lifecycle.canIntent || lifecycle.status === "NO_LIVE_ROUTE"),
+      missingEvidence,
+      canDryRun,
+      canIntent: lifecycle.canIntent,
+      nextAutomationStep: lifecycle.nextAutomationStep,
+    }),
     family: item.family || handlerResult?.family || null,
-    lane: "capital_refill",
     status: lifecycle.status,
     sourceActionItem: item,
     selectedMethod: dryRunIntent.selectedMethod || null,
@@ -346,6 +468,13 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     costs: { ...costs },
     plannerBlocker: governingAgreement.plannerBlocker,
     readinessBlockers: governingAgreement.readinessBlockers,
+    stalePlannerMethodEntries: governingAgreement.readinessBlockers.filter(
+      (entry) => entry.mismatchClass === "stale_snapshot_method",
+    ),
+    currentBlockers: governingAgreement.readinessBlockers.filter(
+      (entry) => entry.mismatchClass !== "stale_snapshot_method",
+    ),
+    noLiveRouteEvidence,
     governingAgreement,
     canDryRun,
     canIntent: lifecycle.canIntent,
@@ -373,6 +502,17 @@ function futureBacklogItem(lane, { handlerResults = [], handlerBacklog = [] } = 
     new Set([...relatedHandled, ...relatedBacklog].map((entry) => entry.family).filter(Boolean)),
   );
   return {
+    ...commonLaneFields({
+      item: {
+        family: queueFamilies[0] || null,
+        lane,
+        governingFieldPath: relatedBacklog[0]?.governingFieldPath || relatedHandled[0]?.governingFieldPath || null,
+      },
+      lane,
+      status: "FUTURE_HANDLER_BACKLOG",
+      missingEvidence: requirements.requiredEvidence,
+      nextAutomationStep: requirements.nextStep,
+    }),
     lane,
     status: "FUTURE_HANDLER_BACKLOG",
     requiredEvidence: [...requirements.requiredEvidence],
@@ -380,12 +520,72 @@ function futureBacklogItem(lane, { handlerResults = [], handlerBacklog = [] } = 
     owningProducer: requirements.owningProducer || null,
     queueFamilies,
     handlerBacklogCount: relatedBacklog.length,
-    canDryRun: false,
-    canIntent: false,
-    canLive: false,
-    reportOnly: true,
-    runtimeAuthority: "none",
     allowedToExecuteLive: false,
+  };
+}
+
+function laneBacklogItem(entry = {}) {
+  const lane = entry.lane || "producer_backlog";
+  const requirements = BACKLOG_REQUIREMENTS[lane] || BACKLOG_REQUIREMENTS.producer_backlog;
+  const missingEvidence = [...requirements.requiredEvidence];
+  if (entry.missingProducer && !missingEvidence.includes("missing_producer_name")) {
+    missingEvidence.unshift("missing_producer_name");
+  }
+  return {
+    ...commonLaneFields({
+      item: entry,
+      lane,
+      status: entry.status || "BACKLOG_MISSING_EVIDENCE",
+      missingEvidence,
+      canDryRun: entry.canDryRun === true,
+      nextAutomationStep: entry.nextAutomationStep || requirements.nextStep,
+    }),
+    reason: entry.reason || null,
+    missingProducer: entry.missingProducer || null,
+    bestOwnerGuess: entry.owner || entry.bestOwnerGuess || requirements.owningProducer?.module || null,
+    evidenceContract: [...requirements.requiredEvidence],
+    requiredEvidence: [...requirements.requiredEvidence],
+    owningProducer: requirements.owningProducer || null,
+  };
+}
+
+function waitlistItem(entry = {}) {
+  const requirements = BACKLOG_REQUIREMENTS.waitlist;
+  return {
+    ...commonLaneFields({
+      item: entry,
+      lane: "waitlist",
+      status: entry.status || "WAITLIST",
+      missingEvidence: [],
+      nextAutomationStep: entry.nextAutomationStep || requirements.nextStep,
+    }),
+    reason: entry.reason || null,
+    recheckCondition: entry.recheckCondition || entry.reason || "wait_for_governing_field_change",
+    validWaitReasons: ["dust", "negative_ev", "pending_receipt", "cooldown_cap_safety", "missing_official_route"],
+    requiredEvidence: [...requirements.requiredEvidence],
+    owningProducer: requirements.owningProducer,
+  };
+}
+
+function laneHandlerCoverage({
+  handlerResults = [],
+  handlerBacklog = [],
+  futureHandlerBacklog = [],
+  laneWaitlist = [],
+} = {}) {
+  const countByLane = {};
+  for (const entry of [...handlerResults, ...handlerBacklog, ...futureHandlerBacklog, ...laneWaitlist]) {
+    const lane = entry?.lane || "unknown";
+    countByLane[lane] = (countByLane[lane] || 0) + 1;
+  }
+  return {
+    handledCount: handlerResults.length,
+    backlogCount: handlerBacklog.length + futureHandlerBacklog.length,
+    waitlistCount: laneWaitlist.length,
+    countByLane,
+    reportOnly: true,
+    canLive: false,
+    runtimeAuthority: "none",
   };
 }
 
@@ -398,7 +598,7 @@ function summarize(candidates, backlog) {
   for (const candidate of candidates) {
     if (candidate.canIntent) intentCandidateCount += 1;
     if (candidate.canLive) canLiveCount += 1;
-    if (candidate.status !== "READY_FOR_INTENT_CANDIDATE") blockedCount += 1;
+    if (!["READY_FOR_INTENT_CANDIDATE", "NO_LIVE_ROUTE"].includes(candidate.status)) blockedCount += 1;
     if (candidate.status === "UNRESOLVED_STALE_READINESS_SNAPSHOT") staleSnapshotCount += 1;
     if (candidate.status === "UNRESOLVED_GOVERNING_SYNC_MISMATCH") governingMismatchCount += 1;
   }
@@ -440,12 +640,28 @@ export function buildLaneIntentCandidateReport({
   const futureHandlerBacklog = FUTURE_BACKLOG_LANES.map((lane) =>
     futureBacklogItem(lane, { handlerResults, handlerBacklog }),
   );
+  const laneWaitlist = handlerBacklog.filter((entry) => entry.lane === "waitlist").map(waitlistItem);
+  const laneBacklog = [
+    ...handlerBacklog.filter((entry) => entry.lane !== "waitlist").map(laneBacklogItem),
+    ...futureHandlerBacklog,
+  ];
+  const laneSafetyProof = {
+    ...REPORT_ONLY_SAFETY,
+    handlerSafety: laneHandlerReport.safety || null,
+    candidateCount: laneIntentCandidates.length,
+    liveCandidateCount: laneIntentCandidates.filter((entry) => entry.canLive).length,
+  };
+  const coverage = laneHandlerCoverage({ handlerResults, handlerBacklog, futureHandlerBacklog, laneWaitlist });
   return {
     generatedAt,
     status: reportStatus(laneIntentCandidates, pilotLane),
     pilotLane,
-    laneIntentCandidateSummary: summarize(laneIntentCandidates, futureHandlerBacklog),
+    laneIntentCandidateSummary: summarize(laneIntentCandidates, laneBacklog),
     laneIntentCandidates,
+    laneBacklog,
+    laneWaitlist,
+    laneHandlerCoverage: coverage,
+    laneSafetyProof,
     futureHandlerBacklog,
     producers: LIFECYCLE_PRODUCERS,
     safety: { ...REPORT_ONLY_SAFETY },
