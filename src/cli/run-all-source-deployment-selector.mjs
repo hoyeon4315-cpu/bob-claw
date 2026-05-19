@@ -78,6 +78,7 @@ const OPTIONAL_REPORT_INPUT_COMMANDS = Object.freeze([
   ["aggressiveStatus", "src/cli/report-aggressive-velocity-status.mjs", ["--json"]],
   ["merklUserRewards", "src/cli/report-merkl-user-rewards.mjs", ["--json"]],
   ["paybackStatus", "src/cli/report-payback-status.mjs", ["--json"]],
+  ["readiness", "src/cli/check-full-automation-readiness.mjs", ["--json"]],
 ]);
 
 export async function collectReportInputsSequentially({

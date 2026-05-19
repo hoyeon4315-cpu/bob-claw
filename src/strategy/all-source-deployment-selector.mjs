@@ -18,6 +18,7 @@ import { buildLifecycleEvidence } from "./lifecycle-evidence.mjs";
 import { buildFamilyActionTable } from "./family-action-classification.mjs";
 import { buildDryRunRemediationPlan } from "./dry-run-remediation-planner.mjs";
 import { buildLaneHandlerReport } from "./lane-handler-framework.mjs";
+import { buildLaneIntentCandidateReport } from "./remediation-lane-intent-candidate.mjs";
 
 function attachLifecycleEvidence(candidates, options, now) {
   const protocolPositionMarks = Array.isArray(options.protocolPositionMarks) ? options.protocolPositionMarks : [];
@@ -2391,8 +2392,8 @@ function capitalUtilization({ capitalAudit = {}, unifiedCapital = {} }) {
   };
 }
 
-function buildLaneHandlerPilotSummary({ now, actionLaneQueue, options }) {
-  const laneHandlerReport = buildLaneHandlerReport({
+function buildLaneHandlerPilotReport({ now, actionLaneQueue, options }) {
+  return buildLaneHandlerReport({
     selectorReport: {
       generatedAt: now,
       actionLaneQueue,
@@ -2401,6 +2402,9 @@ function buildLaneHandlerPilotSummary({ now, actionLaneQueue, options }) {
     receiptReport: options.receiptLedger || {},
     now,
   });
+}
+
+function laneHandlerPilotSummary(laneHandlerReport) {
   return {
     status: laneHandlerReport.status,
     selectedPilotLane: laneHandlerReport.selectedPilotLane,
@@ -2412,6 +2416,28 @@ function buildLaneHandlerPilotSummary({ now, actionLaneQueue, options }) {
     handlerResults: laneHandlerReport.handlerResults,
     handlerBacklog: laneHandlerReport.handlerBacklog,
     safety: laneHandlerReport.safety,
+  };
+}
+
+function buildRemediationLifecycleBundle({ now, dryRunRemediationPlan, options }) {
+  const laneHandlerReport = buildLaneHandlerPilotReport({
+    now,
+    actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    options,
+  });
+  const laneIntentCandidateReport = buildLaneIntentCandidateReport({
+    selectorReport: {
+      generatedAt: now,
+      actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    },
+    laneHandlerReport,
+    readinessReport: options.readiness || {},
+    now,
+  });
+  return {
+    laneHandlerReport,
+    laneHandlerPilot: laneHandlerPilotSummary(laneHandlerReport),
+    laneIntentCandidateReport,
   };
 }
 
@@ -2491,9 +2517,9 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       familyActionTable,
     },
   });
-  const laneHandlerPilot = buildLaneHandlerPilotSummary({
+  const { laneHandlerPilot, laneIntentCandidateReport } = buildRemediationLifecycleBundle({
     now,
-    actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    dryRunRemediationPlan,
     options,
   });
 
@@ -2513,6 +2539,10 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       safety: dryRunRemediationPlan.safety,
     },
     laneHandlerPilot,
+    laneIntentCandidateSummary: laneIntentCandidateReport.laneIntentCandidateSummary,
+    laneIntentCandidates: laneIntentCandidateReport.laneIntentCandidates,
+    futureHandlerBacklog: laneIntentCandidateReport.futureHandlerBacklog,
+    laneIntentCandidateReport,
     claimHarvestSummary,
     paybackAttributionSummary,
     capitalTruth: {
