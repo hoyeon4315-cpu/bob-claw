@@ -1,5 +1,5 @@
 // Pure deterministic classifier that maps each DEPLOYMENT_SELECTOR_FAMILIES
-// row from `buildFamilyCoverage` into one of nine action classes used by the
+// row from `buildFamilyCoverage` into one of the action classes used by the
 // strategy-universe action table. Inputs come from the selector's
 // `familyCoverage` row plus optional refill/readiness context. No live state
 // is mutated; this is a read-only join over already-built selector evidence.
@@ -9,10 +9,12 @@
 //   EXIT_OR_REDEEM_REQUIRED
 //   CLAIM_OR_HARVEST_REQUIRED
 //   REFILL_REQUIRED
+//   RECONCILE_RECEIPT_REQUIRED
 //   TRUE_HOLD_NOOP
 //   TRUE_NO_TRADE_ECONOMICS
 //   BLOCKED_BY_MISSING_PRODUCER
 //   BLOCKED_BY_POLICY_SAFETY
+//   POLICY_SEMANTIC_DEFECT_CANDIDATE
 //   BLOCKED_BY_GOVERNING_SYNC_MISMATCH
 
 export const FAMILY_ACTION_CLASSES = Object.freeze([
@@ -20,10 +22,12 @@ export const FAMILY_ACTION_CLASSES = Object.freeze([
   "EXIT_OR_REDEEM_REQUIRED",
   "CLAIM_OR_HARVEST_REQUIRED",
   "REFILL_REQUIRED",
+  "RECONCILE_RECEIPT_REQUIRED",
   "TRUE_HOLD_NOOP",
   "TRUE_NO_TRADE_ECONOMICS",
   "BLOCKED_BY_MISSING_PRODUCER",
   "BLOCKED_BY_POLICY_SAFETY",
+  "POLICY_SEMANTIC_DEFECT_CANDIDATE",
   "BLOCKED_BY_GOVERNING_SYNC_MISMATCH",
 ]);
 
@@ -73,6 +77,8 @@ const REFILL_BLOCKERS = new Set([
 ]);
 
 const SYNC_BLOCKERS = new Set(["NO_RECEIPT_RECONCILIATION"]);
+const POLICY_SEMANTIC_CANDIDATE_BLOCKERS = new Set(["executable_candidate_available"]);
+const ACTIVE_POSITION_ACTION_REQUIRED = "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED";
 
 function array(value) {
   return Array.isArray(value) ? value : [];
@@ -169,6 +175,8 @@ function governingFieldPathFor(family, actionClass, hasDecisions) {
       return `claimHarvestSummary.chains[*].status`;
     case "REFILL_REQUIRED":
       return `familyCoverage[family=${family}].firstBlockingReason`;
+    case "RECONCILE_RECEIPT_REQUIRED":
+      return `familyCoverage[family=${family}].unreconciledBroadcastCount`;
     case "TRUE_HOLD_NOOP":
       return `familyCoverage[family=${family}].activeActionEconomics.perPositionDecisions[*].executableActionPath`;
     case "TRUE_NO_TRADE_ECONOMICS":
@@ -178,6 +186,8 @@ function governingFieldPathFor(family, actionClass, hasDecisions) {
         ? `familyCoverage[family=${family}].activeActionEconomics.perPositionDecisions[*].executableActionPath.blocker`
         : `familyCoverage[family=${family}].firstBlockingReason`;
     case "BLOCKED_BY_POLICY_SAFETY":
+      return `familyCoverage[family=${family}].firstBlockingReason`;
+    case "POLICY_SEMANTIC_DEFECT_CANDIDATE":
       return `familyCoverage[family=${family}].firstBlockingReason`;
     case "BLOCKED_BY_GOVERNING_SYNC_MISMATCH":
       return `familyCoverage[family=${family}].unreconciledBroadcastCount`;
@@ -282,14 +292,30 @@ function tryMissingProducer(result, row, blocker, decisions) {
       missingProducer: `${family}::position_health_action_producer_missing`,
     });
   }
+  if (
+    finiteNumber(row.activePositionCount, 0) > 0 &&
+    !decisions.length &&
+    (blocker === ACTIVE_POSITION_ACTION_REQUIRED || econ.topActiveActionReason === ACTIVE_POSITION_ACTION_REQUIRED)
+  ) {
+    return finalize(result, "BLOCKED_BY_MISSING_PRODUCER", "active_position_action_producer_missing", {
+      missingProducer: `${family}::active_position_action_producer_missing`,
+    });
+  }
   return null;
 }
 
-function trySyncMismatch(result, row, blocker) {
+function tryReceiptReconcile(result, row, blocker) {
   if (finiteNumber(row.unreconciledBroadcastCount, 0) > 0 || blockerMatches(blocker, SYNC_BLOCKERS)) {
-    return finalize(result, "BLOCKED_BY_GOVERNING_SYNC_MISMATCH", blocker || "NO_RECEIPT_RECONCILIATION", {
+    return finalize(result, "RECONCILE_RECEIPT_REQUIRED", blocker || "NO_RECEIPT_RECONCILIATION", {
       missingProducer: `${row.family}::receipt_reconciliation_producer`,
     });
+  }
+  return null;
+}
+
+function tryPolicySemanticCandidate(result, blocker) {
+  if (blockerMatches(blocker, POLICY_SEMANTIC_CANDIDATE_BLOCKERS)) {
+    return finalize(result, "POLICY_SEMANTIC_DEFECT_CANDIDATE", blocker);
   }
   return null;
 }
@@ -346,11 +372,12 @@ const CLASSIFIERS = Object.freeze([
   (result, row, blocker, decisions, ctx, econ) => tryClaimReady(result, econ),
   (result, row, blocker, decisions) => tryExit(result, decisions),
   (result, row, blocker, decisions) => tryMissingProducer(result, row, blocker, decisions),
-  (result, row, blocker) => trySyncMismatch(result, row, blocker),
+  (result, row, blocker) => tryReceiptReconcile(result, row, blocker),
   (result, row, blocker, decisions, ctx) => tryRefill(result, row, blocker, ctx),
   (result, row, blocker, decisions, ctx, econ) => tryClaimEconomicsBelowFloor(result, econ),
   (result, row, blocker, decisions) => tryHoldNoop(result, row, decisions),
   (result, row, blocker) => tryNoTradeEconomics(result, row, blocker),
+  (result, row, blocker) => tryPolicySemanticCandidate(result, blocker),
 ]);
 
 export function classifyFamilyActionRow(row = {}, ctx = {}) {

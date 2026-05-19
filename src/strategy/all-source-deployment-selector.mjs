@@ -16,6 +16,7 @@ import { evaluatePendleYtEv } from "./pendle-yt-ev.mjs";
 import { nextLegalCapitalAction } from "./next-legal-capital-action.mjs";
 import { buildLifecycleEvidence } from "./lifecycle-evidence.mjs";
 import { buildFamilyActionTable } from "./family-action-classification.mjs";
+import { buildDryRunRemediationPlan } from "./dry-run-remediation-planner.mjs";
 
 function attachLifecycleEvidence(candidates, options, now) {
   const protocolPositionMarks = Array.isArray(options.protocolPositionMarks) ? options.protocolPositionMarks : [];
@@ -2459,6 +2460,12 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
   const claimHarvestSummary = buildClaimHarvestSummary(options);
   const paybackAttributionSummary = buildPaybackAttributionSummary(options);
   const familyActionTable = computeFamilyActionTable(familyCoverage, candidates, options);
+  const dryRunRemediationPlan = buildDryRunRemediationPlan({
+    selectorReport: {
+      generatedAt: now,
+      familyActionTable,
+    },
+  });
 
   return {
     generatedAt: now,
@@ -2466,6 +2473,15 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
     sourceCoverage: sourceCoverage(candidates),
     familyCoverage,
     familyActionTable,
+    actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    actionLaneSummary: {
+      status: dryRunRemediationPlan.status,
+      laneCounts: dryRunRemediationPlan.laneCounts,
+      familyCount: dryRunRemediationPlan.familyCount,
+      actionItemCount: dryRunRemediationPlan.actionItemCount,
+      familiesAssignedExactlyOnce: dryRunRemediationPlan.familiesAssignedExactlyOnce,
+      safety: dryRunRemediationPlan.safety,
+    },
     claimHarvestSummary,
     paybackAttributionSummary,
     capitalTruth: {

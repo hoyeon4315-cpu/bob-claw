@@ -43,7 +43,7 @@ function emptyRow(family, overrides = {}) {
   };
 }
 
-test("nine action classes enumerated", () => {
+test("canonical action classes enumerated", () => {
   assert.deepEqual(
     [...FAMILY_ACTION_CLASSES],
     [
@@ -51,10 +51,12 @@ test("nine action classes enumerated", () => {
       "EXIT_OR_REDEEM_REQUIRED",
       "CLAIM_OR_HARVEST_REQUIRED",
       "REFILL_REQUIRED",
+      "RECONCILE_RECEIPT_REQUIRED",
       "TRUE_HOLD_NOOP",
       "TRUE_NO_TRADE_ECONOMICS",
       "BLOCKED_BY_MISSING_PRODUCER",
       "BLOCKED_BY_POLICY_SAFETY",
+      "POLICY_SEMANTIC_DEFECT_CANDIDATE",
       "BLOCKED_BY_GOVERNING_SYNC_MISMATCH",
     ],
   );
@@ -162,14 +164,15 @@ test("refill blocker classifies as REFILL_REQUIRED with refill plan join", () =>
   assert.equal(out.refillNeed.executionMethod, "cross_chain_swap_via_btc_intermediate");
 });
 
-test("unreconciled receipts classify as BLOCKED_BY_GOVERNING_SYNC_MISMATCH", () => {
+test("unreconciled receipts classify as RECONCILE_RECEIPT_REQUIRED", () => {
   const row = emptyRow("btc_wrapper_lending", {
     unreconciledBroadcastCount: 188,
     firstBlockingReason: "NO_RECEIPT_RECONCILIATION",
   });
   const out = classifyFamilyActionRow(row);
-  assert.equal(out.actionClass, "BLOCKED_BY_GOVERNING_SYNC_MISMATCH");
+  assert.equal(out.actionClass, "RECONCILE_RECEIPT_REQUIRED");
   assert.equal(out.missingProducer, "btc_wrapper_lending::receipt_reconciliation_producer");
+  assert.equal(out.governingFieldPath, "familyCoverage[family=btc_wrapper_lending].unreconciledBroadcastCount");
 });
 
 test("claim economics below floor classify as TRUE_NO_TRADE_ECONOMICS", () => {
@@ -234,6 +237,37 @@ test("no positive EV with no active positions classifies as TRUE_NO_TRADE_ECONOM
   });
   const out = classifyFamilyActionRow(row);
   assert.equal(out.actionClass, "TRUE_NO_TRADE_ECONOMICS");
+});
+
+test("active position action required without producer does not masquerade as sync mismatch", () => {
+  const row = emptyRow("stable_carry", {
+    discoveredCandidateCount: 20,
+    evPositiveCandidateCount: 3,
+    activePositionCount: 1,
+    unreconciledBroadcastCount: 0,
+    selectedAction: "hold_or_health_action",
+    firstBlockingReason: "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED",
+    activeActionEconomics: emptyEcon({
+      topActiveActionReason: "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED",
+    }),
+  });
+  const out = classifyFamilyActionRow(row);
+  assert.equal(out.actionClass, "BLOCKED_BY_MISSING_PRODUCER");
+  assert.equal(out.reason, "active_position_action_producer_missing");
+  assert.equal(out.missingProducer, "stable_carry::active_position_action_producer_missing");
+  assert.equal(out.governingFieldPath, "familyCoverage[family=stable_carry].firstBlockingReason");
+});
+
+test("policy-looking semantics without proof classify as candidate instead of safety fix", () => {
+  const row = emptyRow("merkl", {
+    discoveredCandidateCount: 39,
+    evPositiveCandidateCount: 1,
+    policyEligibleCandidateCount: 0,
+    firstBlockingReason: "executable_candidate_available",
+  });
+  const out = classifyFamilyActionRow(row);
+  assert.equal(out.actionClass, "POLICY_SEMANTIC_DEFECT_CANDIDATE");
+  assert.equal(out.reason, "executable_candidate_available");
 });
 
 test("buildFamilyActionTable emits one row per family with required fields", () => {
