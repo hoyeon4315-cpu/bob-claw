@@ -15,6 +15,7 @@ import {
 import { evaluatePendleYtEv } from "./pendle-yt-ev.mjs";
 import { nextLegalCapitalAction } from "./next-legal-capital-action.mjs";
 import { buildLifecycleEvidence } from "./lifecycle-evidence.mjs";
+import { buildFamilyActionTable } from "./family-action-classification.mjs";
 
 function attachLifecycleEvidence(candidates, options, now) {
   const protocolPositionMarks = Array.isArray(options.protocolPositionMarks) ? options.protocolPositionMarks : [];
@@ -1655,6 +1656,31 @@ function buildNoTradeTable(candidates) {
   return rows;
 }
 
+function refillJobsFromOptions(options) {
+  return array(options?.refillPlan?.jobs);
+}
+
+function computeFamilyActionTable(familyCoverage, candidates, options) {
+  return buildFamilyActionTable(familyCoverage, {
+    nextLegalDistByFamily: nextLegalActionsByFamily(candidates),
+    refillJobs: refillJobsFromOptions(options),
+  });
+}
+
+function nextLegalActionsByFamily(candidates) {
+  const counts = {};
+  for (const candidate of array(candidates)) {
+    const action = candidate?.nextLegalCapitalAction?.action;
+    if (!action) continue;
+    const families = familySetForSurface(candidate);
+    for (const family of families) {
+      if (!counts[family]) counts[family] = {};
+      counts[family][action] = (counts[family][action] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
 function sourceCoverage(candidates) {
   return ALL_SOURCE_DEPLOYMENT_SOURCES.map((source) => {
     const rows = candidates.filter((candidate) => candidate.source === source);
@@ -2432,12 +2458,14 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
   const familyCoverage = buildFamilyCoverage(candidates, options, selectedCandidate);
   const claimHarvestSummary = buildClaimHarvestSummary(options);
   const paybackAttributionSummary = buildPaybackAttributionSummary(options);
+  const familyActionTable = computeFamilyActionTable(familyCoverage, candidates, options);
 
   return {
     generatedAt: now,
     status: policyAttempted ? "POLICY_ATTEMPTED" : "NO_TRADE",
     sourceCoverage: sourceCoverage(candidates),
     familyCoverage,
+    familyActionTable,
     claimHarvestSummary,
     paybackAttributionSummary,
     capitalTruth: {
