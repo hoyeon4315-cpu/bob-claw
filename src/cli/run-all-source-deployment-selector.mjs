@@ -81,6 +81,9 @@ async function collectFreshInputs({ timeout }) {
     allocatorCore,
     radarBoard,
     defiLlamaPools,
+    aggressiveStatus,
+    merklUserRewards,
+    paybackStatus,
   ] = await Promise.all([
     loadUnifiedOperatingCapital({ dataDir: config.dataDir }).catch((error) => ({
       halt: true,
@@ -99,6 +102,9 @@ async function collectFreshInputs({ timeout }) {
     runJsonNode("src/cli/report-allocator-core.mjs", ["--json"], { timeout }),
     runJsonNode("src/cli/report-radar-board.mjs", ["--json"], { timeout }),
     fetchDefiLlamaPools().catch(() => []),
+    runJsonNode("src/cli/report-aggressive-velocity-status.mjs", ["--json"], { timeout }).catch(() => null),
+    runJsonNode("src/cli/report-merkl-user-rewards.mjs", ["--json"], { timeout }).catch(() => null),
+    runJsonNode("src/cli/report-payback-status.mjs", ["--json"], { timeout }).catch(() => null),
   ]);
   return {
     capitalAudit,
@@ -116,6 +122,9 @@ async function collectFreshInputs({ timeout }) {
     allocatorCore,
     radarBoard,
     defiLlamaPools,
+    aggressiveStatus,
+    merklUserRewards,
+    paybackStatus,
   };
 }
 

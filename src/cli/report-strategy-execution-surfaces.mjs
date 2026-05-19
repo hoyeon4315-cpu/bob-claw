@@ -33,10 +33,44 @@ function compact(values = []) {
   return [...new Set((values || []).filter(Boolean))];
 }
 
+function buildAggressiveVelocitySurfaceFromStatus(aggressiveStatus) {
+  const blocker =
+    aggressiveStatus.liveAdmissionBlockers?.[0] || aggressiveStatus.reason || "no_high_yield_candidates_selected";
+  return {
+    id: aggressiveStatus.strategyId,
+    label: "Aggressive velocity sleeve v1",
+    lane: "btc_family",
+    status: aggressiveStatus.status || "analysis_only",
+    reason: aggressiveStatus.reason || blocker,
+    capabilityBucket: aggressiveStatus.currentLiveEligible === true ? "live_candidate" : "dry_run_or_shadow_only",
+    runnerKind: "strategy_diagnostics",
+    liveCapable: aggressiveStatus.liveCapable === true,
+    currentLiveEligible: aggressiveStatus.currentLiveEligible === true,
+    selectedMode: aggressiveStatus.currentLiveEligible === true ? "live" : "analysis",
+    fallbackReason: aggressiveStatus.currentLiveEligible === true ? null : blocker,
+    missingCapabilities:
+      aggressiveStatus.currentLiveEligible === true ? [] : compact(aggressiveStatus.liveAdmissionBlockers || [blocker]),
+    liveAdmissionBlockers:
+      aggressiveStatus.currentLiveEligible === true ? [] : compact(aggressiveStatus.liveAdmissionBlockers || [blocker]),
+    adviceCode: aggressiveStatus.currentLiveEligible === true ? "live_candidate" : blocker,
+    evidence: {
+      candidateLadder: aggressiveStatus.candidateLadder || null,
+      selectionDiagnostics: aggressiveStatus.selectionDiagnostics || null,
+      rejectionEvidence: aggressiveStatus.rejectionEvidence || null,
+      inventoryReadiness: aggressiveStatus.inventoryReadiness || null,
+      policyPreview: aggressiveStatus.policyPreview || null,
+      executableCandidate: aggressiveStatus.executableCandidate || null,
+    },
+    selectedCommands: [],
+  };
+}
+
 export function overlayAggressiveVelocityExecutionSurface(report, aggressiveStatus) {
   if (!report || !aggressiveStatus?.strategyId) return report;
+  let sawAggressiveVelocity = false;
   const strategies = (report.strategies || []).map((strategy) => {
     if (strategy.id !== aggressiveStatus.strategyId) return strategy;
+    sawAggressiveVelocity = true;
     const blocker = aggressiveStatus.liveAdmissionBlockers?.[0] || aggressiveStatus.reason || strategy.fallbackReason;
     return {
       ...strategy,
@@ -57,6 +91,9 @@ export function overlayAggressiveVelocityExecutionSurface(report, aggressiveStat
       },
     };
   });
+  if (!sawAggressiveVelocity) {
+    strategies.push(buildAggressiveVelocitySurfaceFromStatus(aggressiveStatus));
+  }
 
   return {
     ...report,

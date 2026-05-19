@@ -130,7 +130,7 @@ function baseInputs(overrides = {}) {
 test("all-source selector normalizes every required source and selects the EV-positive policy-attempted candidate", async () => {
   const report = await buildAllSourceDeploymentSelectorReport(baseInputs());
 
-  assert.equal(report.sourceCoverage.length, 8);
+  assert.equal(report.sourceCoverage.length, 9);
   assert.deepEqual(
     report.sourceCoverage.map((row) => row.source),
     [
@@ -141,6 +141,7 @@ test("all-source selector normalizes every required source and selects the EV-po
       "stable_carry",
       "btc_wrapper_lending",
       "radar_campaign",
+      "aggressive_velocity",
       "strategy_catalog",
     ],
   );
@@ -585,7 +586,16 @@ test("family surface report keeps Pendle visible when pendle-yt-canary has queue
   const pendle = report.familyCoverage.find((row) => row.family === "pendle");
   assert.ok(pendle);
   assert.ok(pendle.discoveredCandidateCount >= 13);
-  assert.equal(pendle.unreconciledBroadcastCount, 2);
+  // The capitalAudit issue carrying `result: "no_receipt"` is the only authoritative
+  // reconciliation signal here. The signerAuditRecord has a txHash but no `result` or
+  // `reconciliationStatus` field, so it must not be double-counted as unreconciled:
+  // the prior `broadcast.txHash && !receipt` heuristic created a join bug because
+  // signer-audit records by schema never carry inline receipts.
+  assert.equal(pendle.unreconciledBroadcastCount, 1);
+  assert.equal(pendle.unreconciledBySource.issueRecord, 1);
+  assert.equal(pendle.unreconciledBySource.signerAuditRecord, 0);
+  assert.equal(pendle.unreconciledBySource.transactionNoReceipt, 0);
+  assert.equal(pendle.unreconciledBySource.broadcastBucketNoReceipt, 0);
   assert.equal(pendle.policyEligibleCandidateCount, 0);
   assert.equal(pendle.selectedAction, "reconcile_receipt");
   assert.equal(pendle.firstBlockingReason, "NO_RECEIPT_RECONCILIATION");
@@ -969,4 +979,551 @@ test("selector uses vault underlying whitelist and exact live inventory blocker 
   assert.equal(candidate.routeRefillBinding.sameTickRefill.selectedMethod, "same_chain_native_to_token_swap");
   assert.ok(candidate.routeRefillBinding.sameTickRefill.expectedExecutionRefillCostUsd > 0.04);
   assert.equal(candidate.signerIntentAvailability.reason, "same_tick_refill_expected_net_non_positive");
+});
+
+test("selector covers aggressive_velocity family with canonical NO_TRADE evidence", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      aggressiveStatus: {
+        schemaVersion: 1,
+        strategyId: "aggressive-velocity-v1",
+        status: "analysis_only",
+        reason: "no_high_yield_candidates_selected",
+        liveCapable: true,
+        currentLiveEligible: false,
+        autoExecute: true,
+        executorBound: true,
+        liveAdmissionBlockers: ["no_high_yield_candidates_selected"],
+        selectedCount: 0,
+        candidateLadder: {
+          rawCandidateCount: 400,
+          credibleExitCount: 7,
+          velocityCandidateCount: 0,
+          selectedCount: 0,
+          bottleneckStage: "velocity",
+        },
+        bottleneckStage: "velocity",
+        totalQualified: 0,
+        totalExpectedNetBtcProfit: 0,
+        projectedNetUsd: null,
+      },
+      policyEvaluator: async () => ({
+        decision: "BLOCK",
+        blockers: ["aggressive_no_executable_candidate"],
+        effectiveIntent: {},
+        results: [],
+      }),
+    }),
+  );
+
+  const family = report.familyCoverage.find((row) => row.family === "aggressive");
+  assert.ok(family, "aggressive family row must exist");
+  assert.equal(family.discoveredCandidateCount, 1);
+  assert.equal(family.policyEligibleCandidateCount, 0);
+  assert.equal(family.evPositiveCandidateCount, 0);
+  assert.ok(family.firstBlockingReason);
+
+  const candidate = report.candidates.find((row) => row.source === "aggressive_velocity");
+  assert.ok(candidate);
+  assert.equal(candidate.strategyId, "aggressive-velocity-v1");
+  assert.equal(candidate.metadata.bottleneckStage, "velocity");
+  assert.equal(candidate.metadata.rawCandidateCount, 400);
+  assert.equal(candidate.metadata.credibleExitCount, 7);
+  assert.ok(candidate.blockers.includes("no_high_yield_candidates_selected"));
+});
+
+test("selector aggressive_velocity family promotes executable candidate when live eligible", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      aggressiveStatus: {
+        schemaVersion: 1,
+        strategyId: "aggressive-velocity-v1",
+        status: "candidate_for_validation",
+        reason: "executable_candidate_available",
+        liveCapable: true,
+        currentLiveEligible: true,
+        autoExecute: true,
+        executorBound: true,
+        liveAdmissionBlockers: [],
+        selectedCount: 1,
+        candidateLadder: {
+          rawCandidateCount: 400,
+          credibleExitCount: 20,
+          velocityCandidateCount: 5,
+          selectedCount: 1,
+          bottleneckStage: null,
+        },
+        totalQualified: 1,
+        totalExpectedNetBtcProfit: 0.00012,
+        projectedNetUsd: 10,
+        executableCandidate: {
+          opportunityId: "aggressive:base:morpho:1",
+          chain: "base",
+          protocol: "morpho",
+          assetSymbol: "USDC",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          amountUsd: 25,
+          expectedNetBtcProfit: 0.00012,
+        },
+      },
+    }),
+  );
+
+  const family = report.familyCoverage.find((row) => row.family === "aggressive");
+  assert.ok(family);
+  assert.equal(family.discoveredCandidateCount, 1);
+
+  const candidate = report.candidates.find((row) => row.source === "aggressive_velocity");
+  assert.ok(candidate);
+  assert.equal(candidate.executorBinding.status, "ready");
+  assert.equal(candidate.routeRefillBinding.status, "ready");
+  assert.equal(candidate.notionalUsd, 25);
+  assert.equal(candidate.expectedRealizedNetUsd, 10);
+});
+
+test("selector surfaces claim/harvest summary from merkl user rewards", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklUserRewards: {
+        observedAt: NOW,
+        totalClaimableUsd: 0.33,
+        totalPendingUsd: 0.0002,
+        claimPlan: {
+          status: "blocked",
+          readyChainCount: 0,
+          blockedChainCount: 3,
+          totalReadyClaimableUsd: 0,
+          chains: [
+            {
+              chainId: 8453,
+              chainName: "Base",
+              status: "blocked",
+              claimableUsd: 0.28,
+              pendingUsd: 0.0002,
+              rewardCount: 2,
+              blockers: ["claimable_below_min_usd", "distributor_address_missing"],
+            },
+            {
+              chainId: 1,
+              chainName: "Ethereum",
+              status: "blocked",
+              claimableUsd: 0.05,
+              pendingUsd: 0,
+              rewardCount: 3,
+              blockers: ["claim_cost_exceeds_claimable"],
+            },
+          ],
+        },
+      },
+    }),
+  );
+
+  assert.ok(report.claimHarvestSummary);
+  assert.equal(report.claimHarvestSummary.status, "blocked");
+  assert.equal(report.claimHarvestSummary.readyChainCount, 0);
+  assert.equal(report.claimHarvestSummary.blockedChainCount, 3);
+  assert.equal(report.claimHarvestSummary.chains.length, 2);
+  assert.ok(report.claimHarvestSummary.topBlocker);
+  assert.ok(report.claimHarvestSummary.blockers.includes("claimable_below_min_usd"));
+});
+
+test("selector surfaces payback attribution summary from payback status", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      paybackStatus: {
+        observedAt: NOW,
+        decision: {
+          status: "carry",
+          reason: "planned_payback_below_minimum",
+          snapshot: {
+            grossProfitSats_period: 595,
+            paidBackSats_lifetime: 0,
+            profitSatsProvenance: {
+              period: { directSats: 320, projectedSats: 275, totalSats: 595 },
+            },
+          },
+        },
+        payback: {
+          accumulatorPendingSats: 595,
+        },
+        runway: {
+          status: "profit_creation_required",
+          current: {
+            minPaybackSats: 5000,
+            satsToMinimumPayback: 4881,
+            progressToMinimumRatio: 0.0238,
+          },
+        },
+      },
+    }),
+  );
+
+  assert.ok(report.paybackAttributionSummary);
+  assert.equal(report.paybackAttributionSummary.decisionStatus, "carry");
+  assert.equal(report.paybackAttributionSummary.decisionReason, "planned_payback_below_minimum");
+  assert.equal(report.paybackAttributionSummary.grossProfitSatsPeriod, 595);
+  assert.equal(report.paybackAttributionSummary.accumulatorPendingSats, 595);
+  assert.equal(report.paybackAttributionSummary.minPaybackSats, 5000);
+  assert.equal(report.paybackAttributionSummary.runwayStatus, "profit_creation_required");
+  assert.ok(report.paybackAttributionSummary.profitSatsProvenance);
+});
+
+// Position-mark classifier safety tests. These guard against the regex-over-JSON
+// pollution that previously bled YO/Morpho NAV-sleeve marks into merkl claim economics,
+// USDC vault marks into stable_carry, and inflated pendle YT valueUsd by poll count.
+
+test("position marks with merkl: positionId prefix but gateway/YO strategyId do not pollute merkl family", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      merklUserRewards: null,
+      protocolPositionMarks: [
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId:
+            "merkl:base:13747891056392346282:0xa50505dd06e52687bd20e1eea350553cdea24f72f62ff3787080254ab0ddbc33",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "morpho",
+          status: "open",
+          assetSymbol: "USDC",
+          valueUsd: 45.78,
+        },
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId:
+            "merkl:base:13747891056392346282:0x1e16bb07abe93231403b105f37ae1231bc48ad12458389942b3b7644ddd2807d",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "yo",
+          status: "open",
+          assetSymbol: "yoUSD",
+          valueUsd: 0,
+        },
+      ],
+    }),
+  );
+
+  const merkl = report.familyCoverage.find((row) => row.family === "merkl");
+  assert.ok(merkl);
+  // YO/Morpho NAV-sleeve marks must NOT inflate merkl active count or value, even
+  // though their positionId carries a "merkl:" prefix (Merkl is only the discovery
+  // surface; the underlying bound position is a Morpho/YO vault share).
+  assert.equal(merkl.activePositionCount, 0);
+  assert.equal(merkl.activeActionEconomics.totalActiveValueUsd, 0);
+  assert.equal(merkl.activeActionEconomics.markedHealthyCount, 0);
+
+  const ambiguous = report.familyCoverage.find((row) => row.family === "ambiguous_position_family");
+  assert.ok(ambiguous, "ambiguous_position_family row must exist");
+  assert.equal(ambiguous.activePositionCount, 2);
+  assert.equal(ambiguous.activeActionEconomics.markedHealthyCount, 2);
+});
+
+test("USDC vault position marks under gateway sleeve do not bleed into stable_carry or pendle", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      protocolPositionMarks: [
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId:
+            "protocol:base:morpho:9836065204209028807:erc4626_vault_supply_withdraw:0xc1256ae5ff1cf2719d4937adb3bbccab2e00a2ca",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "morpho",
+          status: "open",
+          assetSymbol: "USDC",
+          valueUsd: 80.01,
+        },
+      ],
+    }),
+  );
+
+  const stable = report.familyCoverage.find((row) => row.family === "stable_carry");
+  const pendle = report.familyCoverage.find((row) => row.family === "pendle");
+  const ambiguous = report.familyCoverage.find((row) => row.family === "ambiguous_position_family");
+
+  // Asset-symbol regex like /usdc|usdt|dai/ used to bleed every USDC mark into
+  // stable_carry; the strict strategyId-driven classifier must keep stable_carry clean.
+  assert.equal(stable.activePositionCount, 0);
+  assert.equal(stable.activeActionEconomics.totalActiveValueUsd, 0);
+  assert.equal(pendle.activePositionCount, 0);
+  assert.equal(ambiguous.activePositionCount, 1);
+  assert.equal(ambiguous.activeActionEconomics.totalActiveValueUsd, 80.01);
+});
+
+test("repeated pendle YT marks for the same positionId dedup to one active position", async () => {
+  const pendlePositionId =
+    "protocol:base:pendle:pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e:pendle_market_swap:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e";
+  const repeatedMarks = Array.from({ length: 100 }, (_, index) => ({
+    event: "position_marked",
+    observedAt: `2026-05-19T0${index < 10 ? "0" : "1"}:00:00.000Z`,
+    positionId: pendlePositionId,
+    strategyId: "pendle-yt-canary",
+    protocolId: "pendle",
+    status: "open",
+    assetSymbol: "YT",
+    // valueUsd identical for the same position; the dedup must keep just one, not sum to 26.8M * 100.
+    valueUsd: 26876245.42,
+  }));
+
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      protocolPositionMarks: repeatedMarks,
+    }),
+  );
+
+  const pendle = report.familyCoverage.find((row) => row.family === "pendle");
+  assert.ok(pendle);
+  // Without dedup the raw stream would sum 100 × 26.8M ≈ $2.7B; latest-mark-per-positionId
+  // pins the row to exactly one healthy position at its latest valueUsd.
+  assert.equal(pendle.activePositionCount, 1);
+  assert.equal(pendle.activeActionEconomics.markedHealthyCount, 1);
+  assert.equal(pendle.activeActionEconomics.totalActiveValueUsd, 26876245.42);
+});
+
+test("merkl claim economics from merklUserRewards do not attach to YO/Morpho NAV-sleeve mark", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      merklUserRewards: {
+        claimPlan: {
+          chains: [
+            {
+              chain: "base",
+              readyClaimableUsd: 12.5,
+              pendingUsd: 0,
+              blockingReason: null,
+              distributorAddress: "0xMerklDistributor",
+              minThresholdUsd: 1,
+            },
+          ],
+          readyChainCount: 1,
+          blockedChainCount: 0,
+          totalReadyClaimableUsd: 12.5,
+          totalPendingUsd: 0,
+        },
+      },
+      protocolPositionMarks: [
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId:
+            "merkl:base:13747891056392346282:0xa50505dd06e52687bd20e1eea350553cdea24f72f62ff3787080254ab0ddbc33",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "morpho",
+          status: "open",
+          assetSymbol: "USDC",
+          valueUsd: 45.78,
+        },
+      ],
+    }),
+  );
+
+  const merkl = report.familyCoverage.find((row) => row.family === "merkl");
+  const ambiguous = report.familyCoverage.find((row) => row.family === "ambiguous_position_family");
+
+  // The merkl row carries the claim economics (because the claimPlan is the authoritative
+  // merkl-reward signal), but its activePositionCount must NOT have been inflated by the
+  // YO/Morpho mark that happens to share the "merkl:" prefix.
+  assert.equal(merkl.activeActionEconomics.claimReadyUsd, 12.5);
+  assert.equal(merkl.activeActionEconomics.claimChainReadyCount, 1);
+  assert.equal(merkl.activePositionCount, 0);
+  assert.equal(merkl.activeActionEconomics.totalActiveValueUsd, 0);
+
+  // Conversely, the ambiguous family must NOT receive claim economics — those belong to
+  // the merkl reward producer alone.
+  assert.equal(ambiguous.activePositionCount, 1);
+  assert.equal(ambiguous.activeActionEconomics.claimReadyUsd, 0);
+});
+
+test("healthy mark with registered bindingKind emits HOLD_NOOP per-position decision", async () => {
+  // erc4626_vault_supply_withdraw is registered in protocol-binding-registry; an active
+  // healthy mark with that binding gets the concrete HOLD_NOOP verdict instead of the
+  // legacy POSITION_HEALTHY_NO_ACTION_PRODUCER catch-all.
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      protocolPositionMarks: [
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId:
+            "protocol:base:morpho:9836065204209028807:erc4626_vault_supply_withdraw:0xc1256ae5ff1cf2719d4937adb3bbccab2e00a2ca",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "morpho",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          status: "open",
+          assetSymbol: "USDC",
+          valueUsd: 80.01,
+        },
+      ],
+    }),
+  );
+
+  const ambiguous = report.familyCoverage.find((row) => row.family === "ambiguous_position_family");
+  assert.ok(ambiguous);
+  assert.equal(ambiguous.activeActionEconomics.markedHealthyCount, 1);
+  assert.equal(ambiguous.activeActionEconomics.perPositionDecisions.length, 1);
+  const decision = ambiguous.activeActionEconomics.perPositionDecisions[0];
+  assert.equal(decision.actionDecision, "HOLD_NOOP");
+  assert.equal(decision.actionReason, "no_claim_harvest_exit_producer_joined");
+  assert.equal(decision.bindingKind, "erc4626_vault_supply_withdraw");
+  assert.equal(decision.missingBindingKey, null);
+  // executableActionPath: supported binding has a resolvable exit producer; legal next
+  // action is `hold` with no current dispatch required.
+  assert.ok(decision.executableActionPath);
+  assert.equal(decision.executableActionPath.action, "hold");
+  assert.equal(decision.executableActionPath.bindingKey, "morpho:erc4626_vault_supply_withdraw");
+  assert.equal(decision.executableActionPath.producer, "executeErc4626PortfolioExit");
+  assert.equal(decision.executableActionPath.dispatchEligibility, "hold_no_action_required");
+  assert.equal(decision.executableActionPath.blocker, null);
+  assert.equal(ambiguous.activeActionEconomics.topActiveActionReason, "HOLD_NOOP");
+  assert.equal(ambiguous.firstBlockingReason, "HOLD_NOOP");
+  assert.equal(ambiguous.selectedAction, "hold_or_health_action");
+});
+
+test("healthy mark with unregistered bindingKind emits UNSUPPORTED_BINDING with missingBindingKey", async () => {
+  // pendle_market_swap is what the live pendle YT mark records, but the registry only
+  // registers pendle_yt_buy_sell_redeem. The unsupported binding must be surfaced — never
+  // silently folded into HOLD_NOOP or POSITION_HEALTHY_NO_ACTION_PRODUCER.
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      protocolPositionMarks: [
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId:
+            "protocol:base:pendle:pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e:pendle_market_swap:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+          strategyId: "pendle-yt-canary",
+          protocolId: "pendle",
+          bindingKind: "pendle_market_swap",
+          status: "open",
+          assetSymbol: "YT",
+          valueUsd: 26898210.97,
+        },
+      ],
+    }),
+  );
+
+  const pendle = report.familyCoverage.find((row) => row.family === "pendle");
+  assert.ok(pendle);
+  const decision = pendle.activeActionEconomics.perPositionDecisions.find(
+    (entry) => entry.actionDecision === "UNSUPPORTED_BINDING",
+  );
+  assert.ok(decision, "expected UNSUPPORTED_BINDING decision for unregistered bindingKind");
+  assert.equal(decision.bindingKind, "pendle_market_swap");
+  assert.equal(decision.missingBindingKey, "pendle:pendle_market_swap");
+  // executableActionPath: unsupported binding has no producer; blocker is the exact
+  // missing-registration key, action defaults to `exit` (the legal next on dust).
+  assert.ok(decision.executableActionPath);
+  assert.equal(decision.executableActionPath.action, "exit");
+  assert.equal(decision.executableActionPath.bindingKey, "pendle:pendle_market_swap");
+  assert.equal(decision.executableActionPath.producer, null);
+  assert.equal(decision.executableActionPath.dispatchEligibility, "unsupported_binding");
+  assert.equal(decision.executableActionPath.blocker, "binding_kind_not_registered");
+  assert.equal(pendle.activeActionEconomics.topActiveActionReason, "UNSUPPORTED_BINDING");
+  assert.equal(pendle.firstBlockingReason, "UNSUPPORTED_BINDING");
+});
+
+test("failed position mark emits HEALTH_CHECK_REQUIRED carrying exact failureKind", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      protocolPositionMarks: [
+        {
+          event: "position_mark_failed",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId:
+            "merkl:base:13747891056392346282:0x1e16bb07abe93231403b105f37ae1231bc48ad12458389942b3b7644ddd2807d",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "yo",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          failureKind: "adapter_error",
+          status: "open",
+          valueUsd: null,
+        },
+      ],
+    }),
+  );
+
+  const ambiguous = report.familyCoverage.find((row) => row.family === "ambiguous_position_family");
+  assert.ok(ambiguous);
+  assert.equal(ambiguous.activeActionEconomics.markFailedCount, 1);
+  const decision = ambiguous.activeActionEconomics.perPositionDecisions[0];
+  assert.equal(decision.actionDecision, "HEALTH_CHECK_REQUIRED");
+  assert.equal(decision.actionReason, "position_mark_failed:adapter_error");
+  // executableActionPath: failed mark routes to health_check producer-less path; blocker
+  // carries the exact failureKind so consumers can dispatch a recovery probe.
+  assert.ok(decision.executableActionPath);
+  assert.equal(decision.executableActionPath.action, "health_check");
+  assert.equal(decision.executableActionPath.bindingKey, "yo:erc4626_vault_supply_withdraw");
+  assert.equal(decision.executableActionPath.producer, null);
+  assert.equal(decision.executableActionPath.dispatchEligibility, "position_unhealthy");
+  assert.equal(decision.executableActionPath.blocker, "position_mark_failed:adapter_error");
+  // HEALTH_CHECK_REQUIRED has the highest priority in POSITION_ACTION_PRIORITY: even
+  // if other decisions co-exist on the same row, this one wins as topActiveActionReason.
+  assert.equal(ambiguous.activeActionEconomics.topActiveActionReason, "HEALTH_CHECK_REQUIRED");
+  assert.equal(ambiguous.firstBlockingReason, "HEALTH_CHECK_REQUIRED");
+});
+
+test("topActiveActionReason precedence: HEALTH_CHECK_REQUIRED > UNSUPPORTED_BINDING > HOLD_NOOP", async () => {
+  // Mixed-row case: ambiguous family receives one failed mark, one unsupported-binding
+  // healthy mark, and one supported-binding healthy mark. The highest-priority code wins.
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      protocolPositionMarks: [
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId: "protocol:base:custom:1:custom_binding:0xaaa",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "custom",
+          bindingKind: "made_up_unregistered_binding",
+          status: "open",
+          valueUsd: 5,
+        },
+        {
+          event: "position_marked",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId: "protocol:base:morpho:2:erc4626_vault_supply_withdraw:0xbbb",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "morpho",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          status: "open",
+          valueUsd: 5,
+        },
+        {
+          event: "position_mark_failed",
+          observedAt: "2026-05-19T05:00:00.000Z",
+          positionId: "protocol:base:yo:3:erc4626_vault_supply_withdraw:0xccc",
+          strategyId: "gateway_native_asset_conversion_sleeve",
+          protocolId: "yo",
+          bindingKind: "erc4626_vault_supply_withdraw",
+          failureKind: "zero_position_observed",
+          status: "open",
+          valueUsd: null,
+        },
+      ],
+    }),
+  );
+
+  const ambiguous = report.familyCoverage.find((row) => row.family === "ambiguous_position_family");
+  assert.ok(ambiguous);
+  const codes = ambiguous.activeActionEconomics.perPositionDecisions.map((entry) => entry.actionDecision).sort();
+  assert.deepEqual(codes, ["HEALTH_CHECK_REQUIRED", "HOLD_NOOP", "UNSUPPORTED_BINDING"]);
+  // HEALTH_CHECK_REQUIRED wins precedence over UNSUPPORTED_BINDING and HOLD_NOOP.
+  assert.equal(ambiguous.activeActionEconomics.topActiveActionReason, "HEALTH_CHECK_REQUIRED");
+  assert.equal(ambiguous.firstBlockingReason, "HEALTH_CHECK_REQUIRED");
 });
