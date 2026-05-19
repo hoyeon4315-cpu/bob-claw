@@ -11,6 +11,7 @@ export const CANDIDATE_STATUSES = Object.freeze([
   "READY_FOR_INTENT_CANDIDATE",
   "NO_LIVE_ROUTE",
   "BACKLOG_MISSING_EVIDENCE",
+  "TYPED_MISSING_EVIDENCE",
   "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
   "UNRESOLVED_STALE_READINESS_SNAPSHOT",
 ]);
@@ -174,6 +175,7 @@ function present(value) {
 }
 
 function finiteNumber(value) {
+  if (value === null || value === undefined) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -276,11 +278,25 @@ function classifyReadinessBlocker(blocker, plannerCandidateMethods) {
 const STALE_CLASSES = new Set(["stale_snapshot_method"]);
 const COLLISION_CLASSES = new Set(["method_collision", "destination_collision", "method_unspecified_collision"]);
 
+// Normalized tuple match between the planner's selected source/method and a
+// readiness blocker. When the readiness blocker exposes a source tuple via the
+// producer-side projection (`refillBlockerDetails`), require all present source
+// fields to match; otherwise fall back to method-only match. No protocol/chain
+// literals are introduced — only structural key equality.
+function blockerMatchesPlannerTuple(blocker, { sourceChain, sourceAsset, selectedMethod }) {
+  if (selectedMethod && blocker.selectedMethod && blocker.selectedMethod !== selectedMethod) return false;
+  if (sourceChain && blocker.sourceChain && blocker.sourceChain !== sourceChain) return false;
+  if (sourceAsset && blocker.sourceAsset && blocker.sourceAsset !== sourceAsset) return false;
+  return true;
+}
+
 function evaluateGoverningAgreement({ handlerResult, readinessReport }) {
   const dryRunIntent = handlerResult?.dryRunIntent || {};
   const destination = dryRunIntent.destination || {};
+  const source = dryRunIntent.source || {};
   const handlerAgreement = dryRunIntent.governingAgreement || {};
   const plannerBlocker = dryRunIntent.blocker || null;
+  const selectedMethod = dryRunIntent.selectedMethod || null;
   const plannerCandidateMethods = array(dryRunIntent.plannerCandidateMethods);
   const rawBlockers = readinessBlockersForDestination({
     readinessReport,
@@ -294,13 +310,31 @@ function evaluateGoverningAgreement({ handlerResult, readinessReport }) {
   const readinessAgrees = classifiedBlockers.length === 0;
   const onlyStaleSnapshot =
     !readinessAgrees && liveCollisions.length === 0 && staleBlockers.length === classifiedBlockers.length;
+  // Tuple-matched live collisions: current-method blockers whose normalized
+  // source tuple matches the planner intent. When source fields are absent on
+  // either side, the match falls back to method-only (existing behavior). The
+  // tuple match is the join key used by the typed-missing-evidence path so the
+  // lifecycle can recognize a precise structural disagreement instead of a
+  // generic destination-only mismatch.
+  const tupleMatchedCollisions = liveCollisions.filter((entry) =>
+    blockerMatchesPlannerTuple(entry, {
+      sourceChain: source.chain || null,
+      sourceAsset: source.asset || null,
+      selectedMethod,
+    }),
+  );
   return {
     handlerAgreement,
     plannerBlocker,
     plannerCandidateMethods,
+    plannerSelectedMethod: selectedMethod,
+    plannerSourceChain: source.chain || null,
+    plannerSourceAsset: source.asset || null,
     readinessBlockers: classifiedBlockers,
     readinessBlockerCount: classifiedBlockers.length,
     liveCollisionCount: liveCollisions.length,
+    tupleMatchedCollisions,
+    tupleMatchedCollisionCount: tupleMatchedCollisions.length,
     staleSnapshotCount: staleBlockers.length,
     handlerAgrees,
     readinessAgrees,
@@ -350,6 +384,66 @@ function preciseNoLiveRouteEvidence({ governingAgreement, dryRunIntent, destinat
   };
 }
 
+// Typed missing evidence path. Activates only when the planner has a fresh
+// ready job (blocker:null) but readiness reports an authoritative current-method
+// blocker for the SAME normalized tuple (chain + asset + sourceChain +
+// sourceAsset + selectedMethod). This is the producer-gap shape: the planner is
+// structurally blind to live route observation and the readiness blocker
+// describes a route-absence/EV-rejected taxonomy whose required numeric cost
+// floor is not propagated by the upstream projection. Emits explicit typed
+// missing evidence labels so the consumer knows exactly what to supply before
+// the lifecycle can advance to NO_LIVE_ROUTE or READY_FOR_INTENT_CANDIDATE.
+// canIntent stays false; no policy/EV/cap/cooldown/kill-switch gate is relaxed.
+function typedMissingEvidenceForTupleMatch({ governingAgreement, dryRunIntent, destination, source }) {
+  if (governingAgreement.plannerBlocker !== null) return null;
+  if (governingAgreement.tupleMatchedCollisionCount === 0) return null;
+  const selectedMethod = dryRunIntent.selectedMethod || null;
+  if (!selectedMethod) return null;
+  // Require that the matched blocker carries enough structural source/method
+  // metadata to prove the join is real (not a destination-only collision). When
+  // no blocker exposes the source tuple, fall through to the existing
+  // UNRESOLVED_GOVERNING_SYNC_MISMATCH verdict.
+  const sourceSpecificBlockers = governingAgreement.tupleMatchedCollisions.filter(
+    (blocker) => blocker.sourceChain || blocker.sourceAsset,
+  );
+  if (sourceSpecificBlockers.length === 0) return null;
+  const costEvidence = sourceSpecificBlockers.map(blockerCostEvidence);
+  const typed = [];
+  // Planner emitted no blocker for a tuple readiness flagged as exhausted/locked.
+  typed.push("planner_blocker_absent_for_normalized_tuple_with_active_readiness_blocker");
+  // Cost-floor evidence is structurally absent for route-absence taxonomy or
+  // because the producer projection drops the numeric fields. Flag whichever
+  // applies so downstream surfaces can request the right producer field.
+  const allCostFloorMissing = costEvidence.every((evidence) => !hasCostFloorEvidence(evidence));
+  if (allCostFloorMissing) {
+    const routeAbsence = sourceSpecificBlockers.some(
+      (blocker) =>
+        String(blocker.category || "") === "routing_exhausted" ||
+        String(blocker.taxonomy || "") === "route_specific_failure_lock" ||
+        String(blocker.reason || "") === "routing_exhausted",
+    );
+    if (routeAbsence) {
+      typed.push("readiness_cost_floor_unavailable_for_route_absence_taxonomy");
+    } else {
+      typed.push("readiness_cost_floor_numeric_fields_missing_from_producer_projection");
+    }
+  }
+  return {
+    method: selectedMethod,
+    resource: {
+      chain: destination.chain || null,
+      asset: destination.asset || null,
+      token: destination.token || null,
+      sourceChain: source.chain || null,
+      sourceAsset: source.asset || null,
+    },
+    plannerBlocker: governingAgreement.plannerBlocker,
+    readinessBlockers: sourceSpecificBlockers,
+    costEvidence,
+    typedMissingEvidence: typed,
+  };
+}
+
 function extractCandidateContext(handlerResult) {
   const item = handlerResult?.sourceQueueItem || handlerResult || {};
   const dryRunIntent = handlerResult?.dryRunIntent || {};
@@ -381,7 +475,13 @@ function collectMissingEvidence({ canDryRun, dryRunIntent, source, destination, 
   return missingEvidence;
 }
 
-function resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement, noLiveRouteEvidence }) {
+function resolveLifecycleStatus({
+  canDryRun,
+  missingEvidence,
+  governingAgreement,
+  noLiveRouteEvidence,
+  typedMissingEvidence,
+}) {
   if (!canDryRun) {
     return {
       status: "BACKLOG_MISSING_EVIDENCE",
@@ -410,6 +510,13 @@ function resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement
       nextAutomationStep: "wait_for_new_route_or_cost_floor_change_without_live_authority",
     };
   }
+  if (typedMissingEvidence) {
+    return {
+      status: "TYPED_MISSING_EVIDENCE",
+      canIntent: false,
+      nextAutomationStep: "supply_typed_missing_evidence_fields_for_governing_alignment",
+    };
+  }
   if (governingAgreement.onlyStaleSnapshot) {
     return {
       status: "UNRESOLVED_STALE_READINESS_SNAPSHOT",
@@ -429,6 +536,12 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
   const { item, dryRunIntent, source, destination, costs, safetyBlockers, canDryRun } = context;
   const governingAgreement = evaluateGoverningAgreement({ handlerResult, readinessReport });
   const noLiveRouteEvidence = preciseNoLiveRouteEvidence({ governingAgreement, dryRunIntent, destination });
+  const typedMissingEvidence = typedMissingEvidenceForTupleMatch({
+    governingAgreement,
+    dryRunIntent,
+    destination,
+    source,
+  });
   const missingEvidence = collectMissingEvidence({
     canDryRun,
     dryRunIntent,
@@ -437,7 +550,13 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     costs,
     handlerResult,
   });
-  const lifecycle = resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement, noLiveRouteEvidence });
+  const lifecycle = resolveLifecycleStatus({
+    canDryRun,
+    missingEvidence,
+    governingAgreement,
+    noLiveRouteEvidence,
+    typedMissingEvidence,
+  });
 
   // canLive remains false in every path; this lifecycle never promotes live.
   return {
@@ -475,6 +594,8 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
       (entry) => entry.mismatchClass !== "stale_snapshot_method",
     ),
     noLiveRouteEvidence,
+    typedMissingEvidenceDetail: typedMissingEvidence,
+    typedMissingEvidence: typedMissingEvidence ? [...typedMissingEvidence.typedMissingEvidence] : [],
     governingAgreement,
     canDryRun,
     canIntent: lifecycle.canIntent,
@@ -595,12 +716,14 @@ function summarize(candidates, backlog) {
   let blockedCount = 0;
   let staleSnapshotCount = 0;
   let governingMismatchCount = 0;
+  let typedMissingEvidenceCount = 0;
   for (const candidate of candidates) {
     if (candidate.canIntent) intentCandidateCount += 1;
     if (candidate.canLive) canLiveCount += 1;
     if (!["READY_FOR_INTENT_CANDIDATE", "NO_LIVE_ROUTE"].includes(candidate.status)) blockedCount += 1;
     if (candidate.status === "UNRESOLVED_STALE_READINESS_SNAPSHOT") staleSnapshotCount += 1;
     if (candidate.status === "UNRESOLVED_GOVERNING_SYNC_MISMATCH") governingMismatchCount += 1;
+    if (candidate.status === "TYPED_MISSING_EVIDENCE") typedMissingEvidenceCount += 1;
   }
   return {
     intentCandidateCount,
@@ -609,6 +732,7 @@ function summarize(candidates, backlog) {
     backlogCount: backlog.length,
     staleSnapshotCount,
     governingMismatchCount,
+    typedMissingEvidenceCount,
   };
 }
 

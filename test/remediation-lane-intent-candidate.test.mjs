@@ -80,6 +80,7 @@ test("statuses enumerate report-only lifecycle outcomes", () => {
       "READY_FOR_INTENT_CANDIDATE",
       "NO_LIVE_ROUTE",
       "BACKLOG_MISSING_EVIDENCE",
+      "TYPED_MISSING_EVIDENCE",
       "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
       "UNRESOLVED_STALE_READINESS_SNAPSHOT",
     ],
@@ -624,4 +625,206 @@ test("classification works across arbitrary chain/asset/method strings (no hardc
       `expected ${fixture.expected} for ${JSON.stringify(fixture)}`,
     );
   }
+});
+
+test("normalized tuple match with route-absence taxonomy emits TYPED_MISSING_EVIDENCE", () => {
+  // planner has fresh ready job (blocker:null); readiness blocker matches the
+  // full normalized tuple (chain + asset + sourceChain + sourceAsset +
+  // selectedMethod) AND carries a route-absence taxonomy whose cost-floor is
+  // structurally unavailable. Synthetic chain/asset/method strings prove no
+  // target literal is required.
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_cross_chain_method_a",
+      plannerCandidateMethods: ["synthetic_cross_chain_method_a", "synthetic_cross_chain_method_b"],
+      source: { chain: "syntheticSrcChain", asset: "SYN_SRC_ASSET", token: "0xsrc", estimatedUsd: 50 },
+      destination: {
+        chain: "syntheticDstChain",
+        asset: "SYN_DST_ASSET",
+        token: "0xdst",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "syntheticDstChain",
+            asset: "SYN_DST_ASSET",
+            sourceChain: "syntheticSrcChain",
+            sourceAsset: "SYN_SRC_ASSET",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "synthetic_cross_chain_method_a",
+            stalePlannerMethod: false,
+            taxonomy: "route_specific_failure_lock",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "TYPED_MISSING_EVIDENCE");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TYPED_MISSING_EVIDENCE");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.ok(
+    candidate.typedMissingEvidence.includes(
+      "planner_blocker_absent_for_normalized_tuple_with_active_readiness_blocker",
+    ),
+  );
+  assert.ok(candidate.typedMissingEvidence.includes("readiness_cost_floor_unavailable_for_route_absence_taxonomy"));
+  assert.equal(candidate.typedMissingEvidenceDetail.method, "synthetic_cross_chain_method_a");
+  assert.equal(candidate.typedMissingEvidenceDetail.resource.sourceChain, "syntheticSrcChain");
+  assert.equal(candidate.typedMissingEvidenceDetail.resource.sourceAsset, "SYN_SRC_ASSET");
+  assert.equal(report.laneIntentCandidateSummary.typedMissingEvidenceCount, 1);
+  assert.equal(candidate.nextAutomationStep, "supply_typed_missing_evidence_fields_for_governing_alignment");
+});
+
+test("EV-style current-method blocker without cost-floor numbers emits TYPED_MISSING_EVIDENCE", () => {
+  // Same shape but blocker reflects an EV-rejected category. Cost-floor numeric
+  // fields are absent from the producer projection so the lifecycle requests
+  // them explicitly instead of collapsing into UNRESOLVED. Synthetic strings.
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_swap_via_intermediate",
+      plannerCandidateMethods: ["synthetic_swap_via_intermediate"],
+      source: { chain: "synthSrc", asset: "SYNX", token: "0xsx", estimatedUsd: 25 },
+      destination: {
+        chain: "synthDst",
+        asset: "SYNY",
+        token: "0xdy",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "synthDst",
+            asset: "SYNY",
+            sourceChain: "synthSrc",
+            sourceAsset: "SYNX",
+            reason: "expected_net_below_receipt_cost_p90_floor",
+            category: "execution_unresolved",
+            selectedMethod: "synthetic_swap_via_intermediate",
+            stalePlannerMethod: false,
+            taxonomy: "real_negative_ev",
+            // Cost-floor numeric fields intentionally absent — producer
+            // projection has not propagated them yet.
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TYPED_MISSING_EVIDENCE");
+  assert.ok(
+    candidate.typedMissingEvidence.includes("readiness_cost_floor_numeric_fields_missing_from_producer_projection"),
+  );
+});
+
+test("source-tuple mismatch falls back to UNRESOLVED_GOVERNING_SYNC_MISMATCH", () => {
+  // Planner source tuple does not match readiness blocker source tuple — the
+  // typed-missing-evidence path requires structural tuple agreement, so the
+  // verdict stays UNRESOLVED rather than over-aggregating.
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_method_alpha",
+      plannerCandidateMethods: ["synthetic_method_alpha"],
+      source: { chain: "srcAlpha", asset: "ALPHA", token: "0xa", estimatedUsd: 30 },
+      destination: {
+        chain: "dstAlpha",
+        asset: "DALPHA",
+        token: "0xda",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "dstAlpha",
+            asset: "DALPHA",
+            sourceChain: "srcBeta", // different source chain
+            sourceAsset: "BETA",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "synthetic_method_alpha",
+            stalePlannerMethod: false,
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  assert.equal(candidate.typedMissingEvidence.length, 0);
+});
+
+test("TYPED_MISSING_EVIDENCE never implies canIntent or canLive", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_method_gamma",
+      plannerCandidateMethods: ["synthetic_method_gamma"],
+      source: { chain: "srcG", asset: "GAM", token: "0xg", estimatedUsd: 12 },
+      destination: {
+        chain: "dstG",
+        asset: "DG",
+        token: "0xdg",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "dstG",
+            asset: "DG",
+            sourceChain: "srcG",
+            sourceAsset: "GAM",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "synthetic_method_gamma",
+            stalePlannerMethod: false,
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TYPED_MISSING_EVIDENCE");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.allowedToExecuteLive, false);
+  assert.equal(report.safety.canLive, false);
+  assert.equal(report.safety.signerCalled, false);
+  assert.equal(report.safety.liveQueueEnqueued, false);
 });

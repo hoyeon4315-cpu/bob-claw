@@ -224,21 +224,58 @@ function classifyRefillIssue(reason = null) {
   return "execution_unresolved";
 }
 
-function refillBlockerDetails(blockers = []) {
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function refillBlockerCostEvidence(item) {
+  return {
+    expectedNetUsd: finiteNumberOrNull(item.expectedNetUsd),
+    requiredNetUsd: finiteNumberOrNull(item.requiredNetUsd ?? item.requiredNetPnlUsd),
+    p90CostUsd: finiteNumberOrNull(item.p90CostUsd ?? item.receiptCostP90Usd ?? item.receiptCostFloorUsd),
+    effectiveFloorUsd: finiteNumberOrNull(item.effectiveFloorUsd ?? item.effectiveCostFloorUsd),
+  };
+}
+
+function normalizeStalePlannerMethod(value) {
+  return value === true || value === false ? value : null;
+}
+
+function normalizeRefillBlocker(item = {}) {
+  const reason = item.reason || null;
+  // Additive normalization: surface the upstream source/route/cost-floor fields
+  // emitted by `src/status/all-chain-autopilot-slice.mjs#refillBlockers`. The
+  // downstream lifecycle (`src/strategy/remediation-lane-intent-candidate.mjs`)
+  // needs the full normalized tuple (destination + source + method) plus
+  // taxonomy + cost-floor evidence to distinguish stale snapshots, structural
+  // route-absence (no cost-floor available), and EV-rejected (cost-floor
+  // numeric) classes without re-deriving from stale signals. No new policy,
+  // EV, or cost gate is introduced; this only widens the projection.
+  return {
+    chain: item.chain || null,
+    asset: item.asset || null,
+    targetAsset: item.targetAsset || item.asset || null,
+    sourceChain: item.sourceChain || null,
+    sourceAsset: item.sourceAsset || null,
+    reason,
+    category: classifyRefillIssue(reason),
+    selectedMethod: item.selectedMethod || null,
+    executorFamily: item.executorFamily || null,
+    routeFamily: item.routeFamily || null,
+    taxonomy: item.taxonomy || null,
+    routeDeferralReason: item.routeDeferralReason || null,
+    routeDeferralAction: item.routeDeferralAction || null,
+    ...refillBlockerCostEvidence(item),
+    stalePlannerMethod: normalizeStalePlannerMethod(item.stalePlannerMethod),
+  };
+}
+
+export function refillBlockerDetails(blockers = []) {
   if (!Array.isArray(blockers)) return [];
   return blockers
-    .map((item = {}) => {
-      const reason = item.reason || null;
-      return {
-        chain: item.chain || null,
-        asset: item.asset || null,
-        reason,
-        category: classifyRefillIssue(reason),
-        selectedMethod: item.selectedMethod || null,
-        stalePlannerMethod:
-          item.stalePlannerMethod === true || item.stalePlannerMethod === false ? item.stalePlannerMethod : null,
-      };
-    })
+    .map(normalizeRefillBlocker)
     .filter((item) => item.reason)
     .slice(0, 8);
 }
