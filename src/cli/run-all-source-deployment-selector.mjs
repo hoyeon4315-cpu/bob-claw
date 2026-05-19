@@ -81,19 +81,55 @@ const OPTIONAL_REPORT_INPUT_COMMANDS = Object.freeze([
   ["readiness", "src/cli/check-full-automation-readiness.mjs", ["--json"]],
 ]);
 
+function describeChildSpawnError(error) {
+  if (!error) return { name: "Unknown", message: "Unknown child spawn failure" };
+  return {
+    name: error.name || "Error",
+    message: error.message || String(error),
+    code: error.code || null,
+    syscall: error.syscall || null,
+    errno: error.errno ?? null,
+    signal: error.signal || null,
+  };
+}
+
 export async function collectReportInputsSequentially({
   timeout,
   runJson = runJsonNode,
   fetchPools = fetchDefiLlamaPools,
 } = {}) {
   const out = {};
+  const inputCollectionFailures = [];
   for (const [field, script, args] of REPORT_INPUT_COMMANDS) {
-    out[field] = await runJson(script, args, { timeout });
+    try {
+      out[field] = await runJson(script, args, { timeout });
+    } catch (error) {
+      out[field] = null;
+      inputCollectionFailures.push({
+        field,
+        script,
+        args,
+        required: true,
+        error: describeChildSpawnError(error),
+      });
+    }
   }
   out.defiLlamaPools = await fetchPools().catch(() => []);
   for (const [field, script, args] of OPTIONAL_REPORT_INPUT_COMMANDS) {
-    out[field] = await runJson(script, args, { timeout }).catch(() => null);
+    try {
+      out[field] = await runJson(script, args, { timeout });
+    } catch (error) {
+      out[field] = null;
+      inputCollectionFailures.push({
+        field,
+        script,
+        args,
+        required: false,
+        error: describeChildSpawnError(error),
+      });
+    }
   }
+  out.inputCollectionFailures = inputCollectionFailures;
   return out;
 }
 
@@ -130,7 +166,10 @@ export async function collectFreshInputBundleSequentially({
   }));
   const killStatus = await readKillSwitch().catch((error) => ({ halted: null, error: error.message }));
   const reportInputs = await collectReports({ timeout });
-  return {
+  const inputCollectionFailures = Array.isArray(reportInputs.inputCollectionFailures)
+    ? reportInputs.inputCollectionFailures
+    : [];
+  const merged = {
     capitalAudit,
     signerAuditRecords: capitalAuditInputs.signerAuditRecords || [],
     protocolPositionMarks: capitalAuditInputs.protocolPositionMarks || [],
@@ -141,6 +180,8 @@ export async function collectFreshInputBundleSequentially({
     killStatus,
     ...reportInputs,
   };
+  merged.inputCollectionFailures = inputCollectionFailures;
+  return merged;
 }
 
 async function collectFreshInputs({ timeout }) {
@@ -212,8 +253,10 @@ async function main() {
     policyEvaluator,
   });
   const signerResult = await maybeSubmitSigner({ args, report });
+  const inputCollectionFailures = Array.isArray(inputs.inputCollectionFailures) ? inputs.inputCollectionFailures : [];
   const output = {
     ...report,
+    inputCollectionFailures,
     executionMode: {
       executePolicy: args.execute,
       submitSigner: args.submitSigner,
