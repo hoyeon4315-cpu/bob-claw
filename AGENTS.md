@@ -203,6 +203,12 @@ Subagents and skills are useful tools that can be actively used to improve focus
   newly allowed case and the previously blocked case. If a policy relaxation
   causes an existing blocker-path test to fail, treat that as a regression, not
   a workaround.
+- Policy-layer semantic defects may be investigated and narrowly corrected when
+  fresh diagnostics prove that the current policy key, lifecycle taxonomy, or
+  producer join is over-broad, stale, or inconsistent with source-of-truth state.
+  Such changes must preserve hard safety gates and require targeted tests proving
+  both the newly allowed safe case and the still-blocked unsafe case, plus
+  same-bundle governing-field proof.
 - Treat narrow cost caps, per-key EV overrides, broadened bypass detection, and
   similar one-off policy suppressions as policy relaxation too. They are not
   acceptable blocker fixes unless the changed semantics are intentional,

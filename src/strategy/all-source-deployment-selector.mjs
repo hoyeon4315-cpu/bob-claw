@@ -13,6 +13,42 @@ import {
   resolveIntentType,
 } from "../executor/protocol-binding-registry.mjs";
 import { evaluatePendleYtEv } from "./pendle-yt-ev.mjs";
+import { nextLegalCapitalAction } from "./next-legal-capital-action.mjs";
+import { buildLifecycleEvidence } from "./lifecycle-evidence.mjs";
+
+function attachLifecycleEvidence(candidates, options, now) {
+  const protocolPositionMarks = Array.isArray(options.protocolPositionMarks) ? options.protocolPositionMarks : [];
+  for (const candidate of candidates) {
+    const { evidence: lifecycleEvidence } = buildLifecycleEvidence({
+      candidate,
+      protocolPositionMarks,
+      pendleYtDryRun: options.pendleYtDryRun || null,
+      pendleYtExitFromPosition: options.pendleYtExitFromPosition || null,
+      merklUserRewards: options.merklUserRewards || null,
+      walletAddress: options.walletAddress || null,
+      now,
+    });
+    candidate.lifecycleEvidence = lifecycleEvidence;
+  }
+}
+
+function attachNextLegalCapitalAction(candidates) {
+  for (const candidate of candidates) {
+    const mergedBlockers = [
+      ...new Set([
+        ...(Array.isArray(candidate.blockers) ? candidate.blockers : []),
+        ...(Array.isArray(candidate.capResult?.blockers) ? candidate.capResult.blockers : []),
+        ...(Array.isArray(candidate.policyResult?.blockers) ? candidate.policyResult.blockers : []),
+      ]),
+    ];
+    candidate.nextLegalCapitalAction = nextLegalCapitalAction({
+      blockers: mergedBlockers,
+      capResult: candidate.capResult,
+      expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
+      lifecycleEvidence: candidate.lifecycleEvidence,
+    });
+  }
+}
 
 export const ALL_SOURCE_DEPLOYMENT_SOURCES = Object.freeze([
   "pendle",
@@ -1565,28 +1601,39 @@ function candidateRank(left, right) {
 }
 
 function buildNoTradeTable(candidates) {
-  const rows = candidates.map((candidate) => ({
-    source: candidate.source,
-    strategyId: candidate.strategyId,
-    chain: candidate.chain,
-    asset: candidate.asset,
-    protocol: candidate.protocol,
-    opportunityId: candidate.opportunityId,
-    notionalUsd: candidate.notionalUsd,
-    expectedGrossUsd: candidate.expectedGrossYieldUsd,
-    totalCostUsd: candidate.p90CostFloorUsd,
-    expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
-    capStatus: candidate.capResult?.status || null,
-    policyDecision: candidate.policyResult?.decision || null,
-    blockers: unique([
+  const rows = candidates.map((candidate) => {
+    const blockers = unique([
       ...array(candidate.blockers),
       ...array(candidate.capResult?.blockers),
       ...array(candidate.policyResult?.blockers),
-    ]),
-  }));
+    ]);
+    return {
+      source: candidate.source,
+      strategyId: candidate.strategyId,
+      chain: candidate.chain,
+      asset: candidate.asset,
+      protocol: candidate.protocol,
+      opportunityId: candidate.opportunityId,
+      notionalUsd: candidate.notionalUsd,
+      expectedGrossUsd: candidate.expectedGrossYieldUsd,
+      totalCostUsd: candidate.p90CostFloorUsd,
+      expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
+      capStatus: candidate.capResult?.status || null,
+      policyDecision: candidate.policyResult?.decision || null,
+      blockers,
+      lifecycleEvidence: candidate.lifecycleEvidence || null,
+      nextLegalCapitalAction: nextLegalCapitalAction({
+        blockers,
+        capResult: candidate.capResult,
+        expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
+        lifecycleEvidence: candidate.lifecycleEvidence,
+      }),
+    };
+  });
   const seenSources = new Set(rows.map((row) => row.source));
   for (const source of ALL_SOURCE_DEPLOYMENT_SOURCES) {
     if (!seenSources.has(source)) {
+      const blockers = [`${source}_candidate_missing`];
       rows.push({
         source,
         strategyId: null,
@@ -1600,7 +1647,8 @@ function buildNoTradeTable(candidates) {
         expectedRealizedNetUsd: null,
         capStatus: null,
         policyDecision: null,
-        blockers: [`${source}_candidate_missing`],
+        blockers,
+        nextLegalCapitalAction: nextLegalCapitalAction({ blockers }),
       });
     }
   }
@@ -1610,12 +1658,20 @@ function buildNoTradeTable(candidates) {
 function sourceCoverage(candidates) {
   return ALL_SOURCE_DEPLOYMENT_SOURCES.map((source) => {
     const rows = candidates.filter((candidate) => candidate.source === source);
+    const actions = rows.map((candidate) => candidate.nextLegalCapitalAction?.action).filter(Boolean);
+    const actionCounts = {};
+    for (const action of actions) actionCounts[action] = (actionCounts[action] || 0) + 1;
+    const topAction =
+      Object.entries(actionCounts).sort((left, right) => right[1] - left[1])[0]?.[0] ||
+      (rows.length === 0 ? "no_trade_safety" : null);
     return {
       source,
       candidateCount: rows.length,
       evPositiveCount: rows.filter((candidate) => finiteNumber(candidate.expectedRealizedNetUsd, -1) > 0).length,
       policyAttemptedCount: rows.filter((candidate) => candidate.policyResult).length,
       topBlockers: unique(rows.flatMap((candidate) => candidate.blockers)).slice(0, 8),
+      nextLegalCapitalActionCounts: actionCounts,
+      topNextLegalCapitalAction: topAction,
     };
   });
 }
@@ -2364,7 +2420,9 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
     if (index >= 0) candidates[index] = selectedCandidate;
   }
 
+  attachLifecycleEvidence(candidates, options, now);
   const noTradeTable = buildNoTradeTable(candidates);
+  attachNextLegalCapitalAction(candidates);
   const policyAttempted = selectedCandidate !== null;
   const noBroadcastReason = policyAttempted
     ? selectedCandidate.policyResult?.decision === "ALLOW"

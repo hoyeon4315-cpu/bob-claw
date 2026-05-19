@@ -69,6 +69,14 @@ async function collectFreshInputs({ timeout }) {
     ["--json", "--write", "--sdk-tokens"],
     { timeout },
   ).catch(() => null);
+  const pendleYtDryRun = await runJsonNode("src/cli/dry-run-pendle-yt.mjs", ["--json", "--write"], { timeout }).catch(
+    () => null,
+  );
+  const pendleYtExitFromPosition = await runJsonNode(
+    "src/cli/report-pendle-yt-exit-from-position.mjs",
+    ["--json", "--write"],
+    { timeout },
+  ).catch(() => null);
   const [
     unifiedCapital,
     killStatus,
@@ -111,6 +119,8 @@ async function collectFreshInputs({ timeout }) {
     signerAuditRecords: capitalAuditInputs.signerAuditRecords || [],
     protocolPositionMarks: capitalAuditInputs.protocolPositionMarks || [],
     pendleDirectCanaries,
+    pendleYtDryRun,
+    pendleYtExitFromPosition,
     unifiedCapital,
     killStatus,
     merklOpportunities,
