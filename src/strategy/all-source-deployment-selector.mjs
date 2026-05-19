@@ -17,6 +17,7 @@ import { nextLegalCapitalAction } from "./next-legal-capital-action.mjs";
 import { buildLifecycleEvidence } from "./lifecycle-evidence.mjs";
 import { buildFamilyActionTable } from "./family-action-classification.mjs";
 import { buildDryRunRemediationPlan } from "./dry-run-remediation-planner.mjs";
+import { buildLaneHandlerReport } from "./lane-handler-framework.mjs";
 
 function attachLifecycleEvidence(candidates, options, now) {
   const protocolPositionMarks = Array.isArray(options.protocolPositionMarks) ? options.protocolPositionMarks : [];
@@ -2390,6 +2391,30 @@ function capitalUtilization({ capitalAudit = {}, unifiedCapital = {} }) {
   };
 }
 
+function buildLaneHandlerPilotSummary({ now, actionLaneQueue, options }) {
+  const laneHandlerReport = buildLaneHandlerReport({
+    selectorReport: {
+      generatedAt: now,
+      actionLaneQueue,
+    },
+    refillPlannerReport: options.capitalManagerRefill || {},
+    receiptReport: options.receiptLedger || {},
+    now,
+  });
+  return {
+    status: laneHandlerReport.status,
+    selectedPilotLane: laneHandlerReport.selectedPilotLane,
+    reportOnly: laneHandlerReport.reportOnly,
+    canLive: laneHandlerReport.canLive,
+    runtimeAuthority: laneHandlerReport.runtimeAuthority,
+    allowedToExecuteLive: laneHandlerReport.allowedToExecuteLive,
+    liveExecutionAuthority: laneHandlerReport.liveExecutionAuthority,
+    handlerResults: laneHandlerReport.handlerResults,
+    handlerBacklog: laneHandlerReport.handlerBacklog,
+    safety: laneHandlerReport.safety,
+  };
+}
+
 export async function buildAllSourceDeploymentSelectorReport(options = {}) {
   const now = options.now || new Date().toISOString();
   const activeCapitalUsd = finiteNumber(
@@ -2466,6 +2491,11 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       familyActionTable,
     },
   });
+  const laneHandlerPilot = buildLaneHandlerPilotSummary({
+    now,
+    actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    options,
+  });
 
   return {
     generatedAt: now,
@@ -2482,6 +2512,7 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       familiesAssignedExactlyOnce: dryRunRemediationPlan.familiesAssignedExactlyOnce,
       safety: dryRunRemediationPlan.safety,
     },
+    laneHandlerPilot,
     claimHarvestSummary,
     paybackAttributionSummary,
     capitalTruth: {
