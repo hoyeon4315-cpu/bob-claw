@@ -6,6 +6,7 @@ const NUMERIC_FIELDS = [
   "assetAmount",
   "assetDecimals",
   "assetPriceUsd",
+  "underlyingAssetPriceUsd",
   "btcPriceUsd",
   "valueUsd",
   "valueBtc",
@@ -18,6 +19,8 @@ const NUMERIC_FIELDS = [
   "externalReferenceUsd",
   "externalReferenceGapUsd",
 ];
+
+const UNPRICED_VALUATION_KINDS = new Set(["unpriced", "proxy"]);
 
 const RAW_BALANCE_FIELDS = ["shareBalance", "assetBalance", "debtBalance", "rewardBalance"];
 
@@ -47,9 +50,7 @@ function sanitizeJsonValue(value) {
   if (Array.isArray(value)) return value.map((item) => sanitizeJsonValue(item));
   if (value && Object.getPrototypeOf(value) === Object.prototype) {
     return cleanUndefinedEntries(
-      Object.fromEntries(
-        Object.entries(value).map(([key, nestedValue]) => [key, sanitizeJsonValue(nestedValue)]),
-      ),
+      Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => [key, sanitizeJsonValue(nestedValue)])),
     );
   }
   return value;
@@ -73,6 +74,59 @@ export function protocolMarkKey(mark = {}) {
   return [mark.chain, mark.opportunityId, mark.shareTokenAddress || mark.assetAddress].join(":");
 }
 
+function coerceFieldTypes(normalized) {
+  for (const field of NUMERIC_FIELDS) {
+    if (field in normalized) normalized[field] = finiteNumberOrNull(normalized[field]);
+  }
+  for (const field of RAW_BALANCE_FIELDS) {
+    if (field in normalized) normalized[field] = rawBalanceStringOrNull(normalized[field]);
+  }
+}
+
+function deriveValueUsd(normalized) {
+  if ("valueUsd" in normalized && normalized.valueUsd !== null) return;
+  const assetAmount = finiteNumberOrNull(normalized.assetAmount);
+  const assetPriceUsd = finiteNumberOrNull(normalized.assetPriceUsd);
+  normalized.valueUsd = assetAmount !== null && assetPriceUsd !== null ? assetAmount * assetPriceUsd : null;
+}
+
+function deriveValueBtc(normalized) {
+  if ("valueBtc" in normalized && normalized.valueBtc !== null) return;
+  const valueUsd = finiteNumberOrNull(normalized.valueUsd);
+  const btcPriceUsd = finiteNumberOrNull(normalized.btcPriceUsd);
+  normalized.valueBtc = valueUsd !== null && btcPriceUsd !== null && btcPriceUsd > 0 ? valueUsd / btcPriceUsd : null;
+}
+
+function applyFreshnessAndConfidence(normalized, observedAt, now, { unpriced = false } = {}) {
+  normalized.freshness = freshnessForObservedAt(observedAt, now);
+  if (normalized.freshness === "failed") {
+    normalized.confidence = "adapter_missing";
+    return;
+  }
+  if (unpriced) {
+    normalized.confidence = "unpriced_observation";
+    return;
+  }
+  normalized.confidence =
+    normalized.freshness === "fresh" || normalized.freshness === "recent" ? "verified_current" : "verified_minimum";
+}
+
+function finalizeUnpricedMark(normalized, observedAt, now) {
+  normalized.assetPriceUsd = null;
+  normalized.valueUsd = null;
+  normalized.valueBtc = null;
+  applyFreshnessAndConfidence(normalized, observedAt, now, { unpriced: true });
+  return sanitizeJsonValue(cleanUndefinedEntries(normalized));
+}
+
+function finalizeFailedMark(normalized) {
+  normalized.freshness = "failed";
+  normalized.confidence = "adapter_missing";
+  normalized.valueUsd = null;
+  normalized.valueBtc = null;
+  return sanitizeJsonValue(cleanUndefinedEntries(normalized));
+}
+
 export function normalizeProtocolPositionMark(input = {}, { now = new Date() } = {}) {
   const nowMillis = parseTime(now);
   const nowIso = nowMillis === null ? new Date().toISOString() : new Date(nowMillis).toISOString();
@@ -86,47 +140,19 @@ export function normalizeProtocolPositionMark(input = {}, { now = new Date() } =
     observedAt,
   };
 
-  for (const field of NUMERIC_FIELDS) {
-    if (field in normalized) normalized[field] = finiteNumberOrNull(normalized[field]);
+  coerceFieldTypes(normalized);
+
+  if (UNPRICED_VALUATION_KINDS.has(normalized.valuationKind || null)) {
+    return finalizeUnpricedMark(normalized, observedAt, now);
   }
 
-  for (const field of RAW_BALANCE_FIELDS) {
-    if (field in normalized) normalized[field] = rawBalanceStringOrNull(normalized[field]);
-  }
-
-  if (!("valueUsd" in normalized) || normalized.valueUsd === null) {
-    const assetAmount = finiteNumberOrNull(normalized.assetAmount);
-    const assetPriceUsd = finiteNumberOrNull(normalized.assetPriceUsd);
-    normalized.valueUsd =
-      assetAmount !== null && assetPriceUsd !== null ? assetAmount * assetPriceUsd : null;
-  }
-
-  if (!("valueBtc" in normalized) || normalized.valueBtc === null) {
-    const valueUsd = finiteNumberOrNull(normalized.valueUsd);
-    const btcPriceUsd = finiteNumberOrNull(normalized.btcPriceUsd);
-    normalized.valueBtc =
-      valueUsd !== null && btcPriceUsd !== null && btcPriceUsd > 0
-        ? valueUsd / btcPriceUsd
-        : null;
-  }
+  deriveValueUsd(normalized);
+  deriveValueBtc(normalized);
 
   if (event === "position_mark_failed") {
-    normalized.freshness = "failed";
-    normalized.confidence = "adapter_missing";
-    normalized.valueUsd = null;
-    normalized.valueBtc = null;
-    return sanitizeJsonValue(cleanUndefinedEntries(normalized));
+    return finalizeFailedMark(normalized);
   }
 
-  normalized.freshness = freshnessForObservedAt(observedAt, now);
-  if (normalized.freshness === "failed") {
-    normalized.confidence = "adapter_missing";
-  } else {
-    normalized.confidence =
-      normalized.freshness === "fresh" || normalized.freshness === "recent"
-        ? "verified_current"
-        : "verified_minimum";
-  }
-
+  applyFreshnessAndConfidence(normalized, observedAt, now);
   return sanitizeJsonValue(cleanUndefinedEntries(normalized));
 }

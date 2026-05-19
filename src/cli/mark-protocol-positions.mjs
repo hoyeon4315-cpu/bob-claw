@@ -170,12 +170,16 @@ function inferPriceKey({ token, symbol, chain } = {}) {
   if (asset?.priceKey) return asset.priceKey;
   if (token === ZERO_TOKEN) return tokenAsset(chain, ZERO_TOKEN).priceKey;
   const sym = normalizeSymbolKey(symbol);
-  if (sym === "yt" || sym === "pt") {
-    // Pendle PT/YT positions (e.g. pendle-yt-canary) - resolve to underlying price family
-    // until dedicated PT/YT price feeds are wired. Current canaries are BTC-correlated.
-    return "btc";
-  }
+  // Pendle PT/YT tokens have no coherent per-token USD price feed available.
+  // Marks must declare them unpriced rather than substitute a full-underlying
+  // price; downstream EV producers refuse to evidence on unpriced marks.
+  if (sym === "yt" || sym === "pt") return null;
   return SYMBOL_PRICE_KEYS.get(sym) || null;
+}
+
+function symbolRequiresUnpricedMark(symbol) {
+  const sym = normalizeSymbolKey(symbol);
+  return sym === "yt" || sym === "pt";
 }
 
 function hasFinitePriceCoverage(prices = {}) {
@@ -277,6 +281,59 @@ function readerMarkPositionId(position, observed, { index = 0, total = 1 } = {})
   return observed.positionId || `${position.positionId || "reader"}:${index}`;
 }
 
+function resolveReaderAssetAddress(position, observed) {
+  return (
+    observed.assetAddress ||
+    observed.underlyingTokenAddress ||
+    position.assetAddress ||
+    position.underlyingTokenAddress ||
+    null
+  );
+}
+
+function resolveReaderAssetAmount(assetBalance, assetDecimals) {
+  if (assetBalance === null) return null;
+  if (!Number.isInteger(assetDecimals) || assetDecimals < 0) return null;
+  return unitsToDecimal(assetBalance, assetDecimals);
+}
+
+function resolveDebtAmount(debtBalance, assetDecimals) {
+  if (debtBalance == null) return null;
+  if (!Number.isInteger(assetDecimals) || assetDecimals < 0) return null;
+  return unitsToDecimal(debtBalance, assetDecimals);
+}
+
+async function resolveReaderValuation({ chain, assetAddress, assetSymbol, priceReader }) {
+  if (symbolRequiresUnpricedMark(assetSymbol)) {
+    return {
+      assetPriceUsd: null,
+      valuationKind: "unpriced",
+      valuationProvenance: "unpriced_per_share_price_unavailable",
+      priceUnavailableReason: "pendle_yt_pt_no_per_share_usd_price",
+    };
+  }
+  const assetPriceUsd = await priceReader({
+    chain,
+    token: assetAddress,
+    symbol: assetSymbol,
+  });
+  return {
+    assetPriceUsd,
+    valuationKind: "priced",
+    valuationProvenance: "current_position_onchain",
+    priceUnavailableReason: null,
+  };
+}
+
+function defaultValuation() {
+  return {
+    assetPriceUsd: null,
+    valuationKind: "priced",
+    valuationProvenance: null,
+    priceUnavailableReason: null,
+  };
+}
+
 async function buildReaderBackedMark({
   position,
   observed,
@@ -287,27 +344,16 @@ async function buildReaderBackedMark({
   total = 1,
 }) {
   const chain = position.chain || observed.chain;
-  const assetAddress =
-    observed.assetAddress ||
-    observed.underlyingTokenAddress ||
-    position.assetAddress ||
-    position.underlyingTokenAddress ||
-    null;
+  const assetAddress = resolveReaderAssetAddress(position, observed);
   const assetDecimals = finiteNumber(observed.assetDecimals ?? position.assetDecimals);
   const assetBalance = observed.assetBalance ?? null;
-  const assetAmount =
-    assetBalance !== null && Number.isInteger(assetDecimals) && assetDecimals >= 0
-      ? unitsToDecimal(assetBalance, assetDecimals)
-      : null;
-  let assetPriceUsd = null;
-  if (assetBalance !== null && BigInt(assetBalance || 0) > 0n) {
-    const assetSymbol = inferObservedAssetSymbol({ position, observed });
+  const assetAmount = resolveReaderAssetAmount(assetBalance, assetDecimals);
+  const assetSymbol = inferObservedAssetSymbol({ position, observed });
+  const hasNonZeroBalance = assetBalance !== null && BigInt(assetBalance || 0) > 0n;
+  let valuation = defaultValuation();
+  if (hasNonZeroBalance) {
     try {
-      assetPriceUsd = await priceReader({
-        chain,
-        token: assetAddress,
-        symbol: assetSymbol,
-      });
+      valuation = await resolveReaderValuation({ chain, assetAddress, assetSymbol, priceReader });
     } catch (error) {
       return defaultReaderMarkFailure(position, {
         observedAt,
@@ -334,16 +380,16 @@ async function buildReaderBackedMark({
       shareTokenAddress: observed.shareTokenAddress || position.shareTokenAddress || position.vaultAddress || null,
       shareBalance: observed.shareBalance ?? null,
       assetAddress,
-      assetSymbol: inferObservedAssetSymbol({ position, observed }),
+      assetSymbol,
       assetDecimals,
       assetBalance,
       assetAmount,
-      assetPriceUsd,
+      assetPriceUsd: valuation.assetPriceUsd,
+      valuationKind: valuation.valuationKind,
+      valuationProvenance: valuation.valuationProvenance,
+      priceUnavailableReason: valuation.priceUnavailableReason,
       debtBalance: observed.debtBalance ?? null,
-      debtAmount:
-        observed.debtBalance != null && Number.isInteger(assetDecimals) && assetDecimals >= 0
-          ? unitsToDecimal(observed.debtBalance, assetDecimals)
-          : null,
+      debtAmount: resolveDebtAmount(observed.debtBalance, assetDecimals),
       healthFactor: finiteNumber(observed.healthFactor),
       markSource: "protocol_reader",
       btcPriceUsd,

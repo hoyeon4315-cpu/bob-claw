@@ -220,6 +220,98 @@ test("uses adapter_missing confidence for successful marks with invalid observed
   assert.equal(mark.confidence, "adapter_missing");
 });
 
+test("unpriced valuationKind forces assetPriceUsd and valueUsd to null", () => {
+  const mark = normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      observedAt: "2026-05-03T12:00:00.000Z",
+      chain: "base",
+      opportunityId: "pendle-direct:8453:0xmarket",
+      assetSymbol: "YT",
+      assetAmount: 349.24,
+      // A defective writer may still pass a number here (e.g. full underlying
+      // BTC price). The schema must drop it when the mark is marked unpriced.
+      assetPriceUsd: 77053,
+      valuationKind: "unpriced",
+      valuationProvenance: "unpriced_per_share_price_unavailable",
+      btcPriceUsd: 77053,
+    },
+    { now: "2026-05-03T12:00:00.000Z" },
+  );
+
+  assert.equal(mark.assetPriceUsd, null);
+  assert.equal(mark.valueUsd, null);
+  assert.equal(mark.valueBtc, null);
+  assert.equal(mark.confidence, "unpriced_observation");
+  assert.equal(mark.valuationProvenance, "unpriced_per_share_price_unavailable");
+});
+
+test("proxy valuationKind forces assetPriceUsd and valueUsd to null", () => {
+  const mark = normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      observedAt: "2026-05-03T12:00:00.000Z",
+      chain: "base",
+      opportunityId: "op",
+      assetAmount: 1.5,
+      assetPriceUsd: 42,
+      valuationKind: "proxy",
+      valuationProvenance: "proxy_family_correlated",
+    },
+    { now: "2026-05-03T12:00:00.000Z" },
+  );
+
+  assert.equal(mark.assetPriceUsd, null);
+  assert.equal(mark.valueUsd, null);
+  assert.equal(mark.valuationKind, "proxy");
+  assert.equal(mark.confidence, "unpriced_observation");
+});
+
+test("priced valuationKind preserves assetPriceUsd and computes valueUsd", () => {
+  const mark = normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      observedAt: "2026-05-03T12:00:00.000Z",
+      chain: "base",
+      opportunityId: "op",
+      assetSymbol: "USDC",
+      assetAmount: 5.015801,
+      assetPriceUsd: 1,
+      btcPriceUsd: 103000,
+      valuationKind: "priced",
+      valuationProvenance: "current_position_onchain",
+    },
+    { now: "2026-05-03T12:00:00.000Z" },
+  );
+
+  assert.equal(mark.assetPriceUsd, 1);
+  assert.equal(mark.valueUsd, 5.015801);
+  assert.equal(mark.confidence, "verified_current");
+  assert.equal(mark.valuationProvenance, "current_position_onchain");
+});
+
+test("normalizes underlyingAssetPriceUsd as a numeric field for downstream EV producers", () => {
+  const mark = normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      observedAt: "2026-05-03T12:00:00.000Z",
+      chain: "base",
+      opportunityId: "op",
+      assetSymbol: "YT",
+      assetAmount: 0.5,
+      valuationKind: "unpriced",
+      valuationProvenance: "unpriced_per_share_price_unavailable",
+      underlyingAssetSymbol: "cbBTC",
+      underlyingAssetPriceUsd: "77000",
+    },
+    { now: "2026-05-03T12:00:00.000Z" },
+  );
+
+  assert.equal(mark.underlyingAssetPriceUsd, 77000);
+  assert.equal(mark.underlyingAssetSymbol, "cbBTC");
+  assert.equal(mark.valueUsd, null);
+});
+
 test("normalizes unknown bigint fields into JSON-safe strings", () => {
   const mark = normalizeProtocolPositionMark(
     {

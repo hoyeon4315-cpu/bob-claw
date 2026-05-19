@@ -26,12 +26,14 @@ function decimalAmount(raw, decimals) {
 
 async function readTokenBalance({ readContract, chain, address, walletAddress }) {
   if (!address) return 0n;
-  return BigInt(await readContract({
-    chain,
-    address,
-    functionName: "balanceOf",
-    args: [walletAddress],
-  }) || 0);
+  return BigInt(
+    (await readContract({
+      chain,
+      address,
+      functionName: "balanceOf",
+      args: [walletAddress],
+    })) || 0,
+  );
 }
 
 export async function markAaveV3Position({
@@ -73,38 +75,47 @@ export async function markAaveV3Position({
   const debtRaw = variableDebtRaw + stableDebtRaw;
   const netRaw = suppliedRaw > debtRaw ? suppliedRaw - debtRaw : 0n;
   const assetAmount = decimalAmount(netRaw, assetDecimals);
-  const assetPriceUsd = netRaw === 0n
-    ? null
-    : await requiredFunction(priceReader, "priceReader")({
-      chain,
-      token: assetAddress,
-      symbol: assetSymbol,
-    });
+  const assetPriceUsd =
+    netRaw === 0n
+      ? null
+      : await requiredFunction(
+          priceReader,
+          "priceReader",
+        )({
+          chain,
+          token: assetAddress,
+          symbol: assetSymbol,
+        });
 
-  return normalizeProtocolPositionMark({
-    event: "position_marked",
-    observedAt,
-    positionId: position.positionId,
-    opportunityId: position.opportunityId,
-    strategyId: position.strategyId,
-    chain,
-    protocolId: position.protocolId,
-    bindingKind: position.bindingKind,
-    adapterId: "aave-v3",
-    walletAddress,
-    assetAddress,
-    assetSymbol,
-    assetDecimals,
-    shareTokenAddress: aTokenAddress,
-    shareBalance: String(suppliedRaw),
-    assetBalance: String(netRaw),
-    assetAmount,
-    assetPriceUsd,
-    debtBalance: String(debtRaw),
-    debtAmount: decimalAmount(debtRaw, assetDecimals),
-    valueUsd: netRaw === 0n ? 0 : undefined,
-    btcPriceUsd,
-    markSource: "onchain_aave_token_balances",
-    rpcUrl: position.rpcUrl || null,
-  }, { now: observedAt });
+  return normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      observedAt,
+      positionId: position.positionId,
+      opportunityId: position.opportunityId,
+      strategyId: position.strategyId,
+      chain,
+      protocolId: position.protocolId,
+      bindingKind: position.bindingKind,
+      adapterId: "aave-v3",
+      walletAddress,
+      assetAddress,
+      assetSymbol,
+      assetDecimals,
+      shareTokenAddress: aTokenAddress,
+      shareBalance: String(suppliedRaw),
+      assetBalance: String(netRaw),
+      assetAmount,
+      assetPriceUsd,
+      valuationKind: "priced",
+      valuationProvenance: "current_position_onchain",
+      debtBalance: String(debtRaw),
+      debtAmount: decimalAmount(debtRaw, assetDecimals),
+      valueUsd: netRaw === 0n ? 0 : undefined,
+      btcPriceUsd,
+      markSource: "onchain_aave_token_balances",
+      rpcUrl: position.rpcUrl || null,
+    },
+    { now: observedAt },
+  );
 }
