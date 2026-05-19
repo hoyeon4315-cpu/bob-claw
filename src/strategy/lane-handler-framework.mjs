@@ -155,12 +155,26 @@ function governingAgreement({ item, job, refillPlannerReport, fundingSource }) {
   };
 }
 
+function plannerCandidateMethods(job, refillPlannerReport) {
+  if (!job?.chain || !job?.asset) return [];
+  const methods = new Set();
+  for (const entry of refillJobs(refillPlannerReport)) {
+    if (!entry) continue;
+    if (entry.chain !== job.chain) continue;
+    if (entry.asset !== job.asset) continue;
+    const method = entry.executionMethod || entry.fundingSource?.method || null;
+    if (method) methods.add(method);
+  }
+  return [...methods];
+}
+
 function capitalRefillDryRunIntent({ item, job, refillPlannerReport }) {
   const fundingSource = job.fundingSource || {};
   return {
     intentType: "capital_refill_dry_run",
     jobId: job.jobId || null,
     selectedMethod: job.executionMethod || fundingSource.method || null,
+    plannerCandidateMethods: plannerCandidateMethods(job, refillPlannerReport),
     source: refillSource(fundingSource.source),
     destination: refillDestination(job),
     expectedNetUsd: finiteNumber(job.systemEconomics?.effectiveSystemNetPnlUsd),

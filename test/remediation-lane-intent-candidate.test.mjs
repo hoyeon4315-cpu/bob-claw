@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import {
   CANDIDATE_STATUSES,
   FUTURE_BACKLOG_LANES,
+  LIFECYCLE_PRODUCERS,
+  READINESS_BLOCKER_CLASSES,
   buildLaneIntentCandidateReport,
 } from "../src/strategy/remediation-lane-intent-candidate.mjs";
 
-function readyHandlerReport(overrides = {}) {
+function readyHandlerReport(overrides = {}, intentOverrides = {}) {
   const handlerResult = {
     lane: "capital_refill",
     family: "capital_family",
@@ -22,9 +24,13 @@ function readyHandlerReport(overrides = {}) {
     canDryRun: true,
     dryRunIntent: {
       intentType: "capital_refill_dry_run",
-      selectedMethod: "cross_chain_bridge_or_swap",
-      source: { chain: "bitcoin", asset: "BTC", token: "0x0", estimatedUsd: 91.1 },
-      destination: {
+      selectedMethod: intentOverrides.selectedMethod || "cross_chain_bridge_or_swap",
+      plannerCandidateMethods: intentOverrides.plannerCandidateMethods || [
+        "cross_chain_bridge_or_swap",
+        "cross_chain_swap_via_btc_intermediate",
+      ],
+      source: intentOverrides.source || { chain: "bitcoin", asset: "BTC", token: "0x0", estimatedUsd: 91.1 },
+      destination: intentOverrides.destination || {
         chain: "base",
         asset: "wBTC.OFT",
         token: "0xdest",
@@ -70,11 +76,20 @@ function readyHandlerReport(overrides = {}) {
 test("statuses enumerate report-only lifecycle outcomes", () => {
   assert.deepEqual(
     [...CANDIDATE_STATUSES],
-    ["READY_FOR_INTENT_CANDIDATE", "BACKLOG_MISSING_EVIDENCE", "UNRESOLVED_GOVERNING_SYNC_MISMATCH"],
+    [
+      "READY_FOR_INTENT_CANDIDATE",
+      "BACKLOG_MISSING_EVIDENCE",
+      "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
+      "UNRESOLVED_STALE_READINESS_SNAPSHOT",
+    ],
   );
   assert.deepEqual(
     [...FUTURE_BACKLOG_LANES],
     ["receipt_reconciliation", "claim_harvest", "exit_redeem", "producer_backlog", "policy_review", "live_eligibility"],
+  );
+  assert.deepEqual(
+    [...READINESS_BLOCKER_CLASSES],
+    ["method_collision", "destination_collision", "method_unspecified_collision", "stale_snapshot_method"],
   );
 });
 
@@ -264,4 +279,231 @@ test("no family-specific or protocol-specific special casing is required", () =>
   assert.equal(candidate.family, "any_other_family");
   assert.equal(candidate.status, "READY_FOR_INTENT_CANDIDATE");
   assert.equal(candidate.canIntent, true);
+});
+
+test("readiness blocker whose method left planner candidate set marks UNRESOLVED_STALE_READINESS_SNAPSHOT", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: ["method_alpha", "method_beta"],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "synthchain",
+        asset: "SYNTH",
+        token: "0xsynth",
+        targetAmount: "1000",
+        targetAmountDecimal: 0.001,
+        estimatedAssetValueUsd: 50,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "method_obsolete_gamma",
+          },
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "expected_net_below_receipt_cost_p90_floor",
+            category: "execution_unresolved",
+            selectedMethod: "method_obsolete_delta",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "UNRESOLVED_STALE_READINESS_SNAPSHOT");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "UNRESOLVED_STALE_READINESS_SNAPSHOT");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.governingAgreement.onlyStaleSnapshot, true);
+  assert.equal(candidate.governingAgreement.staleSnapshotCount, 2);
+  assert.equal(candidate.governingAgreement.liveCollisionCount, 0);
+  assert.equal(candidate.nextAutomationStep, "rerun_autopilot_to_refresh_governing_refill_blockers");
+  for (const blocker of candidate.readinessBlockers) {
+    assert.equal(blocker.mismatchClass, "stale_snapshot_method");
+  }
+  assert.equal(report.laneIntentCandidateSummary.staleSnapshotCount, 1);
+  assert.equal(report.laneIntentCandidateSummary.governingMismatchCount, 0);
+});
+
+test("mixed stale and current-method blockers keep UNRESOLVED_GOVERNING_SYNC_MISMATCH", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: ["method_alpha", "method_beta"],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "synthchain",
+        asset: "SYNTH",
+        token: "0xsynth",
+        targetAmount: "1000",
+        targetAmountDecimal: 0.001,
+        estimatedAssetValueUsd: 50,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "routing_exhausted",
+            selectedMethod: "method_obsolete_gamma",
+          },
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "routing_exhausted",
+            selectedMethod: "method_alpha",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.governingAgreement.staleSnapshotCount, 1);
+  assert.equal(candidate.governingAgreement.liveCollisionCount, 1);
+  const classes = candidate.readinessBlockers.map((entry) => entry.mismatchClass);
+  assert.deepEqual(classes.sort(), ["method_collision", "stale_snapshot_method"]);
+  assert.equal(candidate.nextAutomationStep, "reconcile_refill_planner_and_readiness_governing_fields");
+});
+
+test("readiness blocker without selectedMethod is destination_collision and blocks intent", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: ["method_alpha"],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "altchain",
+        asset: "ALT",
+        token: "0xalt",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 5,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [{ chain: "altchain", asset: "ALT", reason: "routing_exhausted", selectedMethod: null }],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  assert.equal(candidate.readinessBlockers[0].mismatchClass, "destination_collision");
+});
+
+test("absent plannerCandidateMethods falls back to method_unspecified_collision", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: [],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "altchain",
+        asset: "ALT",
+        token: "0xalt",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 5,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          { chain: "altchain", asset: "ALT", reason: "routing_exhausted", selectedMethod: "method_anything" },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.readinessBlockers[0].mismatchClass, "method_unspecified_collision");
+  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+});
+
+test("lifecycle exposes producer paths on candidates, backlog, and report root", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  assert.equal(report.producers, LIFECYCLE_PRODUCERS);
+  assert.equal(report.producers.refillPlanner.cli, "node src/cli/plan-capital-manager-refill-jobs.mjs --json");
+  assert.equal(report.producers.readinessRefillBlockers.cli, "node src/cli/check-full-automation-readiness.mjs --json");
+  assert.equal(report.producers.readinessRefillBlockers.upstreamModule, "src/status/all-chain-autopilot-slice.mjs");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.producers, LIFECYCLE_PRODUCERS);
+  const receipt = report.futureHandlerBacklog.find((entry) => entry.lane === "receipt_reconciliation");
+  assert.ok(receipt.owningProducer);
+  assert.ok(receipt.owningProducer.cli.includes("report:receipt-ledger"));
+  const live = report.futureHandlerBacklog.find((entry) => entry.lane === "live_eligibility");
+  assert.ok(live.owningProducer);
+  assert.ok(live.owningProducer.module.includes("policy"));
+});
+
+test("classification works across arbitrary chain/asset/method strings (no hardcoding)", () => {
+  const cases = [
+    { chain: "zzz", asset: "QQQ", planner: ["m1", "m2"], blockerMethod: "m1", expected: "method_collision" },
+    { chain: "alpha", asset: "BETA", planner: ["m1", "m2"], blockerMethod: "m_old", expected: "stale_snapshot_method" },
+    { chain: "x", asset: "Y", planner: ["only_one"], blockerMethod: "only_one", expected: "method_collision" },
+    { chain: "n", asset: "N", planner: ["fresh"], blockerMethod: "obsolete", expected: "stale_snapshot_method" },
+  ];
+  for (const fixture of cases) {
+    const handlerReport = readyHandlerReport(
+      {},
+      {
+        plannerCandidateMethods: fixture.planner,
+        selectedMethod: fixture.planner[0],
+        destination: {
+          chain: fixture.chain,
+          asset: fixture.asset,
+          token: "0x0",
+          targetAmount: "1",
+          targetAmountDecimal: 1,
+          estimatedAssetValueUsd: 1,
+        },
+      },
+    );
+    const report = buildLaneIntentCandidateReport({
+      laneHandlerReport: handlerReport,
+      readinessReport: {
+        liveAutomation: {
+          refillBlockers: [
+            {
+              chain: fixture.chain,
+              asset: fixture.asset,
+              reason: "routing_exhausted",
+              selectedMethod: fixture.blockerMethod,
+            },
+          ],
+        },
+      },
+    });
+    const candidate = report.laneIntentCandidates[0];
+    assert.equal(
+      candidate.readinessBlockers[0].mismatchClass,
+      fixture.expected,
+      `expected ${fixture.expected} for ${JSON.stringify(fixture)}`,
+    );
+  }
 });

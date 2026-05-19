@@ -11,6 +11,7 @@ export const CANDIDATE_STATUSES = Object.freeze([
   "READY_FOR_INTENT_CANDIDATE",
   "BACKLOG_MISSING_EVIDENCE",
   "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
+  "UNRESOLVED_STALE_READINESS_SNAPSHOT",
 ]);
 
 export const FUTURE_BACKLOG_LANES = Object.freeze([
@@ -22,6 +23,36 @@ export const FUTURE_BACKLOG_LANES = Object.freeze([
   "live_eligibility",
 ]);
 
+export const READINESS_BLOCKER_CLASSES = Object.freeze([
+  "method_collision",
+  "destination_collision",
+  "method_unspecified_collision",
+  "stale_snapshot_method",
+]);
+
+export const LIFECYCLE_PRODUCERS = Object.freeze({
+  refillPlanner: Object.freeze({
+    module: "src/treasury/refill-job.mjs",
+    function: "buildCapitalRefillJobs / computeRefillSelectedMethod",
+    cli: "node src/cli/plan-capital-manager-refill-jobs.mjs --json",
+  }),
+  readinessRefillBlockers: Object.freeze({
+    module: "src/cli/check-full-automation-readiness.mjs",
+    function: "buildFullAutomationReadiness / refillBlockerDetails",
+    upstreamModule: "src/status/all-chain-autopilot-slice.mjs",
+    upstreamFunction: "refillBlockers",
+    cli: "node src/cli/check-full-automation-readiness.mjs --json",
+  }),
+  laneHandler: Object.freeze({
+    module: "src/strategy/lane-handler-framework.mjs",
+    function: "buildLaneHandlerReport / capitalRefillDryRunIntent",
+  }),
+  selectorActionLaneQueue: Object.freeze({
+    module: "src/strategy/all-source-deployment-selector.mjs",
+    function: "buildAllSourceDeploymentSelectorReport",
+  }),
+});
+
 const BACKLOG_REQUIREMENTS = Object.freeze({
   receipt_reconciliation: {
     requiredEvidence: [
@@ -31,6 +62,10 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
       "unreconciled_broadcast_proof",
     ],
     nextStep: "declare_receipt_reconciliation_evidence_contract",
+    owningProducer: {
+      module: "src/executor/ingestor/*",
+      cli: "npm run report:receipt-ledger -- --json",
+    },
   },
   claim_harvest: {
     requiredEvidence: [
@@ -41,6 +76,10 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
       "claim_dry_run_command",
     ],
     nextStep: "declare_claim_harvest_evidence_contract",
+    owningProducer: {
+      module: "src/strategy/merkl-* / src/strategy/radar/*",
+      cli: "npm run report:merkl-user-rewards -- --json",
+    },
   },
   exit_redeem: {
     requiredEvidence: [
@@ -52,10 +91,18 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
       "invalid_input_separation",
     ],
     nextStep: "declare_exit_redeem_evidence_contract",
+    owningProducer: {
+      module: "src/executor/merkl-portfolio-exit.mjs / src/executor/health/*",
+      cli: "npm run report:strategy-execution-surfaces -- --json",
+    },
   },
   producer_backlog: {
     requiredEvidence: ["missing_producer_name", "owning_module", "minimum_evidence_contract"],
     nextStep: "declare_producer_evidence_contract",
+    owningProducer: {
+      module: "src/strategy/family-action-classification.mjs",
+      cli: "node src/cli/run-all-source-deployment-selector.mjs --json",
+    },
   },
   policy_review: {
     requiredEvidence: [
@@ -65,6 +112,10 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
       "blocked_case_regression_test",
     ],
     nextStep: "policy_review_requires_allowed_and_blocked_regression_proof",
+    owningProducer: {
+      module: "src/executor/policy/* / src/risk/*",
+      cli: "node --test test/executor-policy-index.test.mjs",
+    },
   },
   live_eligibility: {
     requiredEvidence: [
@@ -78,6 +129,10 @@ const BACKLOG_REQUIREMENTS = Object.freeze({
       "payback_proof",
     ],
     nextStep: "live_eligibility_blocked_until_intent_candidate_exists_and_gates_pass",
+    owningProducer: {
+      module: "src/executor/policy/index.mjs / src/executor/signer/daemon.mjs",
+      cli: "node src/cli/check-full-automation-readiness.mjs --json",
+    },
   },
 });
 
@@ -131,25 +186,52 @@ function readinessBlockersForDestination({ readinessReport, chain, asset }) {
   });
 }
 
+function classifyReadinessBlocker(blocker, plannerCandidateMethods) {
+  const method = blocker.selectedMethod || null;
+  if (!method) {
+    return { ...blocker, mismatchClass: "destination_collision" };
+  }
+  if (!Array.isArray(plannerCandidateMethods) || plannerCandidateMethods.length === 0) {
+    return { ...blocker, mismatchClass: "method_unspecified_collision" };
+  }
+  if (plannerCandidateMethods.includes(method)) {
+    return { ...blocker, mismatchClass: "method_collision" };
+  }
+  return { ...blocker, mismatchClass: "stale_snapshot_method" };
+}
+
+const STALE_CLASSES = new Set(["stale_snapshot_method"]);
+const COLLISION_CLASSES = new Set(["method_collision", "destination_collision", "method_unspecified_collision"]);
+
 function evaluateGoverningAgreement({ handlerResult, readinessReport }) {
   const dryRunIntent = handlerResult?.dryRunIntent || {};
   const destination = dryRunIntent.destination || {};
   const handlerAgreement = dryRunIntent.governingAgreement || {};
   const plannerBlocker = dryRunIntent.blocker || null;
-  const readinessBlockers = readinessBlockersForDestination({
+  const plannerCandidateMethods = array(dryRunIntent.plannerCandidateMethods);
+  const rawBlockers = readinessBlockersForDestination({
     readinessReport,
     chain: destination.chain,
     asset: destination.asset,
   });
+  const classifiedBlockers = rawBlockers.map((blocker) => classifyReadinessBlocker(blocker, plannerCandidateMethods));
+  const liveCollisions = classifiedBlockers.filter((entry) => COLLISION_CLASSES.has(entry.mismatchClass));
+  const staleBlockers = classifiedBlockers.filter((entry) => STALE_CLASSES.has(entry.mismatchClass));
   const handlerAgrees = handlerAgreement.agrees === true;
-  const readinessAgrees = readinessBlockers.length === 0;
+  const readinessAgrees = classifiedBlockers.length === 0;
+  const onlyStaleSnapshot =
+    !readinessAgrees && liveCollisions.length === 0 && staleBlockers.length === classifiedBlockers.length;
   return {
     handlerAgreement,
     plannerBlocker,
-    readinessBlockers,
-    readinessBlockerCount: readinessBlockers.length,
+    plannerCandidateMethods,
+    readinessBlockers: classifiedBlockers,
+    readinessBlockerCount: classifiedBlockers.length,
+    liveCollisionCount: liveCollisions.length,
+    staleSnapshotCount: staleBlockers.length,
     handlerAgrees,
     readinessAgrees,
+    onlyStaleSnapshot,
     agrees: handlerAgrees && readinessAgrees && plannerBlocker === null,
   };
 }
@@ -200,17 +282,24 @@ function resolveLifecycleStatus({ canDryRun, missingEvidence, governingAgreement
       nextAutomationStep: "supply_missing_refill_intent_evidence_fields",
     };
   }
-  if (!governingAgreement.agrees) {
+  if (governingAgreement.agrees) {
     return {
-      status: "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
+      status: "READY_FOR_INTENT_CANDIDATE",
+      canIntent: true,
+      nextAutomationStep: "await_live_eligibility_gates_after_intent_candidate",
+    };
+  }
+  if (governingAgreement.onlyStaleSnapshot) {
+    return {
+      status: "UNRESOLVED_STALE_READINESS_SNAPSHOT",
       canIntent: false,
-      nextAutomationStep: "reconcile_refill_planner_and_readiness_governing_fields",
+      nextAutomationStep: "rerun_autopilot_to_refresh_governing_refill_blockers",
     };
   }
   return {
-    status: "READY_FOR_INTENT_CANDIDATE",
-    canIntent: true,
-    nextAutomationStep: "await_live_eligibility_gates_after_intent_candidate",
+    status: "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
+    canIntent: false,
+    nextAutomationStep: "reconcile_refill_planner_and_readiness_governing_fields",
   };
 }
 
@@ -236,6 +325,7 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     sourceActionItem: item,
     selectedMethod: dryRunIntent.selectedMethod || null,
     executionMethod: dryRunIntent.selectedMethod || null,
+    plannerCandidateMethods: [...array(dryRunIntent.plannerCandidateMethods)],
     sourceChain: source.chain || null,
     sourceAsset: source.asset || null,
     destinationChain: destination.chain || null,
@@ -258,6 +348,7 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     safetyBlockers,
     missingEvidence,
     nextAutomationStep: lifecycle.nextAutomationStep,
+    producers: LIFECYCLE_PRODUCERS,
   };
 }
 
@@ -265,6 +356,7 @@ function futureBacklogItem(lane, { handlerResults = [], handlerBacklog = [] } = 
   const requirements = BACKLOG_REQUIREMENTS[lane] || {
     requiredEvidence: ["lane_specific_evidence_contract"],
     nextStep: "declare_evidence_contract_for_lane",
+    owningProducer: null,
   };
   const relatedHandled = array(handlerResults).filter((entry) => entry.lane === lane);
   const relatedBacklog = array(handlerBacklog).filter((entry) => entry.lane === lane);
@@ -276,6 +368,7 @@ function futureBacklogItem(lane, { handlerResults = [], handlerBacklog = [] } = 
     status: "FUTURE_HANDLER_BACKLOG",
     requiredEvidence: [...requirements.requiredEvidence],
     nextStep: requirements.nextStep,
+    owningProducer: requirements.owningProducer || null,
     queueFamilies,
     handlerBacklogCount: relatedBacklog.length,
     canDryRun: false,
@@ -291,16 +384,22 @@ function summarize(candidates, backlog) {
   let intentCandidateCount = 0;
   let canLiveCount = 0;
   let blockedCount = 0;
+  let staleSnapshotCount = 0;
+  let governingMismatchCount = 0;
   for (const candidate of candidates) {
     if (candidate.canIntent) intentCandidateCount += 1;
     if (candidate.canLive) canLiveCount += 1;
     if (candidate.status !== "READY_FOR_INTENT_CANDIDATE") blockedCount += 1;
+    if (candidate.status === "UNRESOLVED_STALE_READINESS_SNAPSHOT") staleSnapshotCount += 1;
+    if (candidate.status === "UNRESOLVED_GOVERNING_SYNC_MISMATCH") governingMismatchCount += 1;
   }
   return {
     intentCandidateCount,
     canLiveCount,
     blockedCount,
     backlogCount: backlog.length,
+    staleSnapshotCount,
+    governingMismatchCount,
   };
 }
 
@@ -339,6 +438,7 @@ export function buildLaneIntentCandidateReport({
     laneIntentCandidateSummary: summarize(laneIntentCandidates, futureHandlerBacklog),
     laneIntentCandidates,
     futureHandlerBacklog,
+    producers: LIFECYCLE_PRODUCERS,
     safety: { ...REPORT_ONLY_SAFETY },
   };
 }
