@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
+import { resolve } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readKillSwitchStatus } from "../executor/policy/kill-switch.mjs";
 import { loadUnifiedOperatingCapital } from "../lib/unified-nav-reader.mjs";
@@ -61,6 +63,39 @@ async function runJsonNode(script, args = [], { timeout = 180_000 } = {}) {
   return parseJson(stdout, script);
 }
 
+const REPORT_INPUT_COMMANDS = Object.freeze([
+  ["merklOpportunities", "src/cli/report-merkl-opportunities.mjs", ["--json", "--write"]],
+  ["merklQueue", "src/cli/report-merkl-canary-queue.mjs", ["--json", "--write"]],
+  ["campaignAware", "src/cli/report-campaign-aware-opportunities.mjs", ["--json"]],
+  ["capitalManagerRefill", "src/cli/plan-capital-manager-refill-jobs.mjs", ["--json"]],
+  ["strategyCatalog", "src/cli/report-strategy-catalog.mjs", ["--json"]],
+  ["executionSurfaces", "src/cli/report-strategy-execution-surfaces.mjs", ["--json"]],
+  ["allocatorCore", "src/cli/report-allocator-core.mjs", ["--json"]],
+  ["radarBoard", "src/cli/report-radar-board.mjs", ["--json"]],
+]);
+
+const OPTIONAL_REPORT_INPUT_COMMANDS = Object.freeze([
+  ["aggressiveStatus", "src/cli/report-aggressive-velocity-status.mjs", ["--json"]],
+  ["merklUserRewards", "src/cli/report-merkl-user-rewards.mjs", ["--json"]],
+  ["paybackStatus", "src/cli/report-payback-status.mjs", ["--json"]],
+]);
+
+export async function collectReportInputsSequentially({
+  timeout,
+  runJson = runJsonNode,
+  fetchPools = fetchDefiLlamaPools,
+} = {}) {
+  const out = {};
+  for (const [field, script, args] of REPORT_INPUT_COMMANDS) {
+    out[field] = await runJson(script, args, { timeout });
+  }
+  out.defiLlamaPools = await fetchPools().catch(() => []);
+  for (const [field, script, args] of OPTIONAL_REPORT_INPUT_COMMANDS) {
+    out[field] = await runJson(script, args, { timeout }).catch(() => null);
+  }
+  return out;
+}
+
 async function collectFreshInputs({ timeout }) {
   const capitalAuditInputs = await collectCapitalAuditInputs({ dataDir: config.dataDir });
   const capitalAudit = buildCapitalAuditReport(capitalAuditInputs);
@@ -77,22 +112,7 @@ async function collectFreshInputs({ timeout }) {
     ["--json", "--write"],
     { timeout },
   ).catch(() => null);
-  const [
-    unifiedCapital,
-    killStatus,
-    merklOpportunities,
-    merklQueue,
-    campaignAware,
-    capitalManagerRefill,
-    strategyCatalog,
-    executionSurfaces,
-    allocatorCore,
-    radarBoard,
-    defiLlamaPools,
-    aggressiveStatus,
-    merklUserRewards,
-    paybackStatus,
-  ] = await Promise.all([
+  const [unifiedCapital, killStatus, reportInputs] = await Promise.all([
     loadUnifiedOperatingCapital({ dataDir: config.dataDir }).catch((error) => ({
       halt: true,
       unifiedNavUsd: null,
@@ -101,18 +121,7 @@ async function collectFreshInputs({ timeout }) {
       error: error.message,
     })),
     readKillSwitchStatus().catch((error) => ({ halted: null, error: error.message })),
-    runJsonNode("src/cli/report-merkl-opportunities.mjs", ["--json", "--write"], { timeout }),
-    runJsonNode("src/cli/report-merkl-canary-queue.mjs", ["--json", "--write"], { timeout }),
-    runJsonNode("src/cli/report-campaign-aware-opportunities.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/plan-capital-manager-refill-jobs.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-strategy-catalog.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-strategy-execution-surfaces.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-allocator-core.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-radar-board.mjs", ["--json"], { timeout }),
-    fetchDefiLlamaPools().catch(() => []),
-    runJsonNode("src/cli/report-aggressive-velocity-status.mjs", ["--json"], { timeout }).catch(() => null),
-    runJsonNode("src/cli/report-merkl-user-rewards.mjs", ["--json"], { timeout }).catch(() => null),
-    runJsonNode("src/cli/report-payback-status.mjs", ["--json"], { timeout }).catch(() => null),
+    collectReportInputsSequentially({ timeout }),
   ]);
   return {
     capitalAudit,
@@ -123,18 +132,7 @@ async function collectFreshInputs({ timeout }) {
     pendleYtExitFromPosition,
     unifiedCapital,
     killStatus,
-    merklOpportunities,
-    merklQueue,
-    campaignAware,
-    capitalManagerRefill,
-    strategyCatalog,
-    executionSurfaces,
-    allocatorCore,
-    radarBoard,
-    defiLlamaPools,
-    aggressiveStatus,
-    merklUserRewards,
-    paybackStatus,
+    ...reportInputs,
   };
 }
 
@@ -233,7 +231,11 @@ async function main() {
   console.log(`noBroadcastReason=${output.broadcast.noBroadcastReason || "n/a"}`);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
