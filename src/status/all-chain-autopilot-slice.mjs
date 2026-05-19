@@ -109,7 +109,19 @@ function signerPolicyBlockerMapFromSteps(steps = []) {
   return map;
 }
 
-function refillBlockers(refillExecutions = [], { policyBlockerByJobId = new Map() } = {}) {
+function refillBlockerStalePlannerMethod(item, plannerMethodsByResource) {
+  return classifyStalePlannerMethod({
+    chain: item.chain || null,
+    asset: item.asset || item.targetAsset || null,
+    selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
+    plannerMethodsByResource,
+  });
+}
+
+function refillBlockers(
+  refillExecutions = [],
+  { policyBlockerByJobId = new Map(), plannerMethodsByResource = null } = {},
+) {
   return refillExecutions
     .filter((item) => !item.executed)
     .map((item) => ({
@@ -133,9 +145,80 @@ function refillBlockers(refillExecutions = [], { policyBlockerByJobId = new Map(
       nextOperatorAction: item.nextOperatorAction || null,
       routeDeferralReason: item.routeDeferralReason || null,
       routeDeferralAction: item.routeDeferralAction || null,
+      stalePlannerMethod: refillBlockerStalePlannerMethod(item, plannerMethodsByResource),
     }))
     .filter((item) => item.reason)
     .slice(0, 8);
+}
+
+function resourceKey(chain, asset) {
+  if (!chain && !asset) return null;
+  return `${chain || ""}:${asset || ""}`;
+}
+
+function resolveCapitalManagerRefillJobsLatest(provided = null) {
+  if (provided) return provided;
+  try {
+    const capitalPath = path.join(config.dataDir || "data", "capital-manager-refill-jobs-latest.json");
+    return JSON.parse(readFileSync(capitalPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function unwrapCapitalJobs(capitalLatest) {
+  if (!capitalLatest || typeof capitalLatest !== "object") return [];
+  const wrapped = capitalLatest.jobs && typeof capitalLatest.jobs === "object" ? capitalLatest.jobs : capitalLatest;
+  return Array.isArray(wrapped?.jobs) ? wrapped.jobs : [];
+}
+
+function plannerJobIsReady(job) {
+  if (job.decision !== "REFILL_REQUIRED") return false;
+  if (job.blocker !== null && job.blocker !== undefined) return false;
+  const fs = job.fundingSource;
+  if (!fs) return true;
+  return fs.selectionStatus === "ready" || fs.selectionStatus === null || fs.selectionStatus === undefined;
+}
+
+// Generic source-of-truth join: when the live capital planner has fresh ready
+// jobs for a (chain, asset) resource, any historical readiness blocker whose
+// `selectedMethod` is not among the current planner candidate methods for that
+// resource is stale w.r.t. the planner. No family/protocol/chain/token/method
+// is named; only the structural overlap between the two governing surfaces is
+// used.
+function plannerCandidateMethodsByResource(capitalLatest = null) {
+  const map = new Map();
+  for (const job of unwrapCapitalJobs(capitalLatest)) {
+    if (!job || typeof job !== "object") continue;
+    const key = resourceKey(job.chain || null, job.asset || job.targetAsset || null);
+    if (!key) continue;
+    const method = job.executionMethod || job.fundingSource?.method || null;
+    if (!method) continue;
+    if (!plannerJobIsReady(job)) continue;
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(method);
+  }
+  return map;
+}
+
+function countStalePlannerMethod(refill = []) {
+  let stale = 0;
+  let current = 0;
+  for (const entry of refill) {
+    if (entry.stalePlannerMethod === true) stale += 1;
+    else if (entry.stalePlannerMethod === false) current += 1;
+  }
+  return { stale, current };
+}
+
+function classifyStalePlannerMethod({ chain, asset, selectedMethod, plannerMethodsByResource }) {
+  if (!plannerMethodsByResource || plannerMethodsByResource.size === 0) return null;
+  const key = resourceKey(chain, asset);
+  if (!key) return null;
+  const methods = plannerMethodsByResource.get(key);
+  if (!methods || methods.size === 0) return null;
+  if (!selectedMethod) return false;
+  return methods.has(selectedMethod) ? false : true;
 }
 
 function refillScopeKey(item = {}) {
@@ -346,7 +429,7 @@ function nextActionFor(slice) {
   return "continue_live_watch";
 }
 
-export function buildAllChainAutopilotDashboardSlice(report = null) {
+export function buildAllChainAutopilotDashboardSlice(report = null, options = {}) {
   if (!report) {
     const empty = {
       schemaVersion: 1,
@@ -409,10 +492,13 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
   }
 
   const summary = report.summary || {};
+  const capitalLatest = resolveCapitalManagerRefillJobsLatest(options.capitalManagerRefillJobsLatest);
+  const plannerMethodsByResource = plannerCandidateMethodsByResource(capitalLatest);
   let refill = refillBlockers(report.refillExecutions || [], {
     policyBlockerByJobId: signerPolicyBlockerMapFromSteps(report.steps || []),
+    plannerMethodsByResource,
   });
-  let currentCapitalJobs = [];
+  let currentCapitalJobs = capitalLatest ? unwrapCapitalJobs(capitalLatest) : [];
 
   // Narrow legitimate sync fix for the "stale persisted failed record not superseded" /
   // "governing surface choosing obsolete refillExecution entry" bug (the root cause of
@@ -424,10 +510,6 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
   // no longer surfaces the obsolete record. This makes planner and governing agree that the
   // old jobId/EV/same_chain is no longer the active one for the resource.
   try {
-    const capitalPath = path.join(config.dataDir || "data", "capital-manager-refill-jobs-latest.json");
-    const capitalRaw = readFileSync(capitalPath, "utf8");
-    const capitalLatest = JSON.parse(capitalRaw);
-    currentCapitalJobs = (capitalLatest.jobs && capitalLatest.jobs.jobs) || [];
     const currentJobs = currentCapitalJobs;
     if (currentJobs.length > 0) {
       // Only apply supersede drop in environments where a real capital plan was loaded
@@ -481,6 +563,7 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
     refill.filter((item) => REFILL_MANUAL_DEFERRAL_REASONS.has(item.reason)).length,
     finiteCount(report?.jobs?.summary?.manualReviewJobCount),
   );
+  const stalePlannerMethodCounts = countStalePlannerMethod(refill);
   const slice = {
     schemaVersion: 1,
     present: true,
@@ -507,6 +590,8 @@ export function buildAllChainAutopilotDashboardSlice(report = null) {
       blockedCount: refill.length,
       unresolvedCount: refill.filter(refillNeedsLiveRemediation).length,
       manualBacklogCount,
+      staleSnapshotMethodCount: stalePlannerMethodCounts.stale,
+      currentMethodBlockedCount: stalePlannerMethodCounts.current,
       blockers: refill,
       affectedScopes: refillScopes.affectedScopes,
       unaffectedJobCount: Math.max(0, finiteCount(summary.refillJobCount) - refill.length),

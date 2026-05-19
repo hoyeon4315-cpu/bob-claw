@@ -1974,3 +1974,154 @@ test("flow dashboard asset metric does not treat refill shortfall as wallet asse
 
   assert.equal(slice.metrics.assetValueUsd, 219.49);
 });
+
+function syntheticAutopilotReport({ blockerMethods = [], chain = "synthchain", asset = "SYNTH" } = {}) {
+  return {
+    observedAt: "2026-05-19T00:00:00.000Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    blockedReason: null,
+    summary: {
+      officialChainCount: 1,
+      refillJobCount: 1,
+      autoRefillJobCount: 1,
+      refillAttemptedCount: 0,
+      refillExecutedCount: 0,
+      canarySweep: { status: "completed", executedCount: 0, deliveredCount: 0, blockedCount: 0, chainsTouched: [] },
+      strategyDispatch: { batchStatus: "succeeded", selectedCount: 0, successCount: 0, failedCount: 0 },
+      payback: { status: "carry" },
+      portfolio: { status: "blocked", allocator: { deployments: [] } },
+    },
+    refillExecutions: blockerMethods.map((method) => ({
+      chain,
+      asset,
+      selectedExecutionMethod: method,
+      executionBlockedReason: "routing_exhausted",
+      attempted: true,
+      executed: false,
+    })),
+  };
+}
+
+function syntheticCapitalLatest({ methods, chain = "synthchain", asset = "SYNTH" }) {
+  return {
+    jobs: {
+      jobs: methods.map((method, index) => ({
+        jobId: `current-${index}`,
+        chain,
+        asset,
+        executionMethod: method,
+        decision: "REFILL_REQUIRED",
+        blocker: null,
+        fundingSource: { method, selectionStatus: "ready" },
+      })),
+    },
+  };
+}
+
+test("refillBlockers marks blocker methods absent from planner candidates as stalePlannerMethod=true", () => {
+  const slice = buildAllChainAutopilotDashboardSlice(
+    syntheticAutopilotReport({ blockerMethods: ["method_obsolete_one", "method_obsolete_two"] }),
+    {
+      capitalManagerRefillJobsLatest: syntheticCapitalLatest({ methods: ["method_fresh_a", "method_fresh_b"] }),
+    },
+  );
+  assert.equal(slice.refill.blockedCount, 2);
+  assert.equal(slice.refill.staleSnapshotMethodCount, 2);
+  assert.equal(slice.refill.currentMethodBlockedCount, 0);
+  for (const blocker of slice.refill.blockers) {
+    assert.equal(blocker.stalePlannerMethod, true);
+  }
+});
+
+test("refillBlockers marks overlapping methods as stalePlannerMethod=false (current method collision)", () => {
+  const slice = buildAllChainAutopilotDashboardSlice(syntheticAutopilotReport({ blockerMethods: ["method_fresh_a"] }), {
+    capitalManagerRefillJobsLatest: syntheticCapitalLatest({ methods: ["method_fresh_a", "method_fresh_b"] }),
+  });
+  assert.equal(slice.refill.blockedCount, 1);
+  assert.equal(slice.refill.staleSnapshotMethodCount, 0);
+  assert.equal(slice.refill.currentMethodBlockedCount, 1);
+  assert.equal(slice.refill.blockers[0].stalePlannerMethod, false);
+});
+
+test("refillBlockers leaves stalePlannerMethod null when no planner data is available", () => {
+  const slice = buildAllChainAutopilotDashboardSlice(syntheticAutopilotReport({ blockerMethods: ["method_x"] }), {
+    capitalManagerRefillJobsLatest: null,
+  });
+  assert.equal(slice.refill.blockers[0].stalePlannerMethod, null);
+  assert.equal(slice.refill.staleSnapshotMethodCount, 0);
+  assert.equal(slice.refill.currentMethodBlockedCount, 0);
+});
+
+test("refillBlockers does not consult planner methods for unrelated (chain, asset) resources", () => {
+  const slice = buildAllChainAutopilotDashboardSlice(
+    syntheticAutopilotReport({ blockerMethods: ["any_method"], chain: "chain_one", asset: "ASSET_ONE" }),
+    {
+      capitalManagerRefillJobsLatest: syntheticCapitalLatest({
+        methods: ["any_method"],
+        chain: "chain_two",
+        asset: "ASSET_TWO",
+      }),
+    },
+  );
+  assert.equal(slice.refill.blockers[0].stalePlannerMethod, null);
+});
+
+test("refillBlockers ignores planner jobs that do not present a ready fresh refill candidate", () => {
+  const slice = buildAllChainAutopilotDashboardSlice(syntheticAutopilotReport({ blockerMethods: ["method_a"] }), {
+    capitalManagerRefillJobsLatest: {
+      jobs: {
+        jobs: [
+          {
+            jobId: "blocked-current",
+            chain: "synthchain",
+            asset: "SYNTH",
+            executionMethod: "method_b",
+            decision: "REFILL_REQUIRED",
+            blocker: "some_blocker",
+            fundingSource: { method: "method_b", selectionStatus: "ready" },
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(slice.refill.blockers[0].stalePlannerMethod, null);
+});
+
+test("stalePlannerMethod classification works across arbitrary chain/asset/method strings (no hardcoding)", () => {
+  const cases = [
+    { chain: "alpha_chain", asset: "ALPHA", current: ["x", "y"], blocker: "x", expectedStale: false },
+    { chain: "alpha_chain", asset: "ALPHA", current: ["x", "y"], blocker: "z", expectedStale: true },
+    {
+      chain: "beta-chain-2",
+      asset: "BETA.OFT",
+      current: ["only_method"],
+      blocker: "only_method",
+      expectedStale: false,
+    },
+    {
+      chain: "beta-chain-2",
+      asset: "BETA.OFT",
+      current: ["only_method"],
+      blocker: "different_method",
+      expectedStale: true,
+    },
+  ];
+  for (const fixture of cases) {
+    const slice = buildAllChainAutopilotDashboardSlice(
+      syntheticAutopilotReport({ blockerMethods: [fixture.blocker], chain: fixture.chain, asset: fixture.asset }),
+      {
+        capitalManagerRefillJobsLatest: syntheticCapitalLatest({
+          methods: fixture.current,
+          chain: fixture.chain,
+          asset: fixture.asset,
+        }),
+      },
+    );
+    assert.equal(
+      slice.refill.blockers[0].stalePlannerMethod,
+      fixture.expectedStale,
+      `unexpected staleness for ${JSON.stringify(fixture)}`,
+    );
+  }
+});

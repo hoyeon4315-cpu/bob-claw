@@ -235,10 +235,25 @@ function refillBlockerDetails(blockers = []) {
         reason,
         category: classifyRefillIssue(reason),
         selectedMethod: item.selectedMethod || null,
+        stalePlannerMethod:
+          item.stalePlannerMethod === true || item.stalePlannerMethod === false ? item.stalePlannerMethod : null,
       };
     })
     .filter((item) => item.reason)
     .slice(0, 8);
+}
+
+function liveAutomationRefillCounts(autopilot = null) {
+  const refill = autopilot?.refill || {};
+  return {
+    refillBlockedCount: refill.blockedCount ?? null,
+    refillUnresolvedCount: refill.unresolvedCount ?? null,
+    refillManualBacklogCount: refill.manualBacklogCount ?? null,
+    refillStaleSnapshotMethodCount: refill.staleSnapshotMethodCount ?? null,
+    refillCurrentMethodBlockedCount: refill.currentMethodBlockedCount ?? null,
+    refillAttemptedCount: refill.attemptedCount ?? null,
+    refillExecutedCount: refill.executedCount ?? null,
+  };
 }
 
 function countByCategory(items = []) {
@@ -406,11 +421,7 @@ export function buildFullAutomationReadiness({
       status: autopilot?.status || null,
       phase: autopilot?.phase || null,
       nextAction: autopilot?.nextAction || null,
-      refillBlockedCount: autopilot?.refill?.blockedCount ?? null,
-      refillUnresolvedCount: autopilot?.refill?.unresolvedCount ?? null,
-      refillManualBacklogCount: autopilot?.refill?.manualBacklogCount ?? null,
-      refillAttemptedCount: autopilot?.refill?.attemptedCount ?? null,
-      refillExecutedCount: autopilot?.refill?.executedCount ?? null,
+      ...liveAutomationRefillCounts(autopilot),
       refillIssueCounts,
       refillBlockers,
       ready: !activeLiveAutomationRun && !unresolvedRefillRoutes,

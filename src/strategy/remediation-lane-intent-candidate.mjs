@@ -188,8 +188,17 @@ function readinessBlockersForDestination({ readinessReport, chain, asset }) {
 
 function classifyReadinessBlocker(blocker, plannerCandidateMethods) {
   const method = blocker.selectedMethod || null;
+  // Producer-emitted authoritative staleness (src/status/all-chain-autopilot-slice.mjs#refillBlockers)
+  // wins when present: it cross-references the live capital planner's current candidate
+  // methods for the same (chain, asset) resource and is the canonical join surface.
+  if (blocker.stalePlannerMethod === true) {
+    return { ...blocker, mismatchClass: "stale_snapshot_method" };
+  }
   if (!method) {
     return { ...blocker, mismatchClass: "destination_collision" };
+  }
+  if (blocker.stalePlannerMethod === false) {
+    return { ...blocker, mismatchClass: "method_collision" };
   }
   if (!Array.isArray(plannerCandidateMethods) || plannerCandidateMethods.length === 0) {
     return { ...blocker, mismatchClass: "method_unspecified_collision" };
