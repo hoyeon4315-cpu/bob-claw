@@ -129,8 +129,14 @@ function runChecks(files) {
     return namingStatus;
   }
 
+  // Delta-mode against HEAD: a staged change must not add new cyclomatic-complexity
+  // violations, but pre-existing violations in code untouched by the commit do not
+  // block. The validator extracts each target file at the HEAD ref, lints both
+  // versions, and reports only issues that are new or worsened relative to baseline.
   const complexityStatus = runCommand(process.execPath, [
     "scripts/validate-cyclomatic-complexity.mjs",
+    "--delta-base",
+    "HEAD",
     ...plan.includedFiles,
   ]);
   if (complexityStatus !== 0) {

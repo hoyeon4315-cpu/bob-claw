@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { extname, relative, resolve } from "node:path";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, extname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
@@ -94,6 +96,7 @@ function parseArgs(argv) {
   let json = false;
   let staged = false;
   let baseRef = null;
+  let deltaBase = null;
   let threshold = DEFAULT_COMPLEXITY_THRESHOLD;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -114,6 +117,11 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--delta-base") {
+      deltaBase = argv[index + 1] ?? null;
+      index += 1;
+      continue;
+    }
     if (arg === "--threshold") {
       const rawValue = argv[index + 1] ?? "";
       const parsed = Number.parseInt(rawValue, 10);
@@ -129,6 +137,7 @@ function parseArgs(argv) {
 
   return {
     baseRef,
+    deltaBase,
     files,
     json,
     staged,
@@ -166,6 +175,155 @@ function toIssue(result, message) {
     message: message.message,
     complexity: extractComplexityValue(message.message),
     ruleId: message.ruleId ?? null,
+  };
+}
+
+function extractFunctionName(message) {
+  const named = message.match(
+    /^(?:Function|Async function|Generator function|Method|Static method|Async method) '([^']+)'/u,
+  );
+  return named ? named[1] : null;
+}
+
+function readFileAtRef(ref, repoRelativePath) {
+  const result = spawnSync("git", ["show", `${ref}:${repoRelativePath}`], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return null;
+  return result.stdout;
+}
+
+async function lintFileContentForComplexity(filePath, content, threshold) {
+  // Baseline lint must run with a config that matches files outside the repo's
+  // src/scripts/test globs, so we use a standalone ESLint instance with an
+  // inline flat config keyed on **/*.mjs. The complexity rule is purely AST-based
+  // and produces identical counts regardless of project config inheritance.
+  const tempDirectory = mkdtempSync(join(tmpdir(), "complexity-baseline-"));
+  try {
+    const repoRelative = normalizePath(relative(ROOT, filePath));
+    const stagedPath = join(tempDirectory, repoRelative);
+    mkdirSync(dirname(stagedPath), { recursive: true });
+    writeFileSync(stagedPath, content, "utf8");
+    const eslint = new ESLint({
+      cwd: tempDirectory,
+      errorOnUnmatchedPattern: false,
+      overrideConfigFile: true,
+      overrideConfig: [
+        {
+          files: ["**/*.mjs"],
+          languageOptions: { ecmaVersion: "latest", sourceType: "module" },
+          rules: { complexity: ["error", threshold] },
+        },
+      ],
+    });
+    const results = await eslint.lintFiles([stagedPath]);
+    const errors = [];
+    for (const result of results) {
+      for (const message of result.messages) {
+        if (message.ruleId !== "complexity") continue;
+        errors.push({
+          filePath: repoRelative,
+          line: message.line ?? 0,
+          column: message.column ?? 0,
+          message: message.message,
+          complexity: extractComplexityValue(message.message),
+          ruleId: message.ruleId ?? null,
+        });
+      }
+    }
+    return errors;
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+async function baselineIssuesForFile(filePath, deltaBase, threshold) {
+  const repoRelative = normalizePath(relative(ROOT, filePath));
+  const content = readFileAtRef(deltaBase, repoRelative);
+  if (content === null) return [];
+  return lintFileContentForComplexity(filePath, content, threshold);
+}
+
+function partitionByFile(issues) {
+  const byFile = new Map();
+  for (const issue of issues) {
+    const key = normalizePath(issue.filePath);
+    if (!byFile.has(key)) byFile.set(key, []);
+    byFile.get(key).push(issue);
+  }
+  return byFile;
+}
+
+export function classifyDeltaIssues(stagedIssues, baselineIssues) {
+  // Named functions match by identifier. An identical or improved baseline
+  // complexity for the same name is treated as unchanged; a higher staged
+  // complexity for an existing name is treated as worsened and reported.
+  //
+  // Anonymous arrows have no durable identity across line shifts, so we use
+  // a tightest-fit matching: sort baseline ascending and for each staged
+  // arrow pick the smallest unconsumed baseline arrow with complexity >=
+  // the staged complexity. This guarantees a higher complexity than every
+  // baseline arrow surfaces as a new violation, while preserving baseline
+  // arrows of comparable or higher complexity as unchanged.
+  const baselineByName = new Map();
+  const baselineAnonymous = [];
+  for (const issue of baselineIssues) {
+    const name = extractFunctionName(issue.message);
+    if (name) {
+      const previous = baselineByName.get(name);
+      if (previous === undefined || (issue.complexity ?? 0) > previous) {
+        baselineByName.set(name, issue.complexity ?? 0);
+      }
+      continue;
+    }
+    baselineAnonymous.push(issue.complexity ?? 0);
+  }
+  baselineAnonymous.sort((left, right) => left - right);
+  const consumed = new Array(baselineAnonymous.length).fill(false);
+  const deltaIssues = [];
+  for (const issue of stagedIssues) {
+    const stagedComplexity = issue.complexity ?? 0;
+    const name = extractFunctionName(issue.message);
+    if (name) {
+      const baselineValue = baselineByName.get(name);
+      if (baselineValue !== undefined && baselineValue >= stagedComplexity) continue;
+      deltaIssues.push(issue);
+      continue;
+    }
+    let matchIndex = -1;
+    for (let index = 0; index < baselineAnonymous.length; index += 1) {
+      if (consumed[index]) continue;
+      if (baselineAnonymous[index] >= stagedComplexity) {
+        matchIndex = index;
+        break;
+      }
+    }
+    if (matchIndex >= 0) {
+      consumed[matchIndex] = true;
+      continue;
+    }
+    deltaIssues.push(issue);
+  }
+  return deltaIssues;
+}
+
+async function applyDeltaFilter(report, targetFiles, deltaBase, threshold) {
+  if (!deltaBase || report.errors.length === 0) return report;
+  const stagedByFile = partitionByFile(report.errors);
+  const remaining = [];
+  for (const targetFile of targetFiles) {
+    const displayKey = normalizePath(displayPath(targetFile));
+    const stagedIssues = stagedByFile.get(displayKey) || [];
+    if (stagedIssues.length === 0) continue;
+    const baselineIssues = await baselineIssuesForFile(targetFile, deltaBase, threshold);
+    const deltaIssues = classifyDeltaIssues(stagedIssues, baselineIssues);
+    remaining.push(...deltaIssues);
+  }
+  return {
+    ...report,
+    errors: remaining,
+    errorCount: remaining.length,
   };
 }
 
@@ -214,11 +372,13 @@ export async function lintCyclomaticComplexity(targetFiles, threshold = DEFAULT_
 export async function validateCyclomaticComplexity(argv = []) {
   const options = parseArgs(argv);
   const targetFiles = buildTargetFiles(options);
-  const report = await lintCyclomaticComplexity(targetFiles, options.threshold);
+  const fullReport = await lintCyclomaticComplexity(targetFiles, options.threshold);
+  const report = await applyDeltaFilter(fullReport, targetFiles, options.deltaBase, options.threshold);
   return {
     ...report,
     mode: options.files.length > 0 ? "explicit" : options.staged ? "staged" : options.baseRef ? "base-diff" : "empty",
     baseRef: options.baseRef,
+    deltaBase: options.deltaBase,
     staged: options.staged,
   };
 }
