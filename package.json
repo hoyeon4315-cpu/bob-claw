@@ -88,6 +88,7 @@
     "error-to-issue:dry-run": "node src/cli/error-to-issue.mjs --input test/fixtures/error-to-issue-report.json --dry-run=true",
     "check:error-to-issue": "node --test test/error-to-issue.test.mjs && npm run error-to-issue:dry-run",
     "report:git-ops-automation": "node src/cli/report-git-ops-automation.mjs",
+    "report:operational-artifact-retention": "node src/cli/report-operational-artifact-retention.mjs",
     "report:gateway-update-autopilot": "node src/cli/report-gateway-update-autopilot.mjs",
     "report:multicall3-gateway-matrix": "node src/cli/report-multicall3-gateway-matrix.mjs",
     "run:autonomous-discovery-board": "node src/cli/run-autonomous-discovery-board.mjs",
