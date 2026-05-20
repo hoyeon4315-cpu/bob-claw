@@ -14,6 +14,8 @@ import {
   refillNeedsLiveRemediation,
   resolveAllChainAutopilotReport,
 } from "../status/all-chain-autopilot-slice.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
+import { tokensForTicker, tokenAsset } from "../assets/tokens.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 const DEFAULT_CHILD_TIMEOUT_MS = 45_000;
@@ -233,6 +235,129 @@ function normalizeQuoteAmountFloor(value) {
   return { minimum, actual };
 }
 
+function tokenFamilyForChainToken(chain, token) {
+  if (!chain || !token) return null;
+  const asset = tokenAsset(chain, token);
+  return asset?.family || null;
+}
+
+function familyKeyForRoute(route) {
+  if (!route?.srcChain || !route?.dstChain) return null;
+  const srcFamily = tokenFamilyForChainToken(route.srcChain, route.srcToken);
+  const dstFamily = tokenFamilyForChainToken(route.dstChain, route.dstToken);
+  if (!srcFamily || !dstFamily) return null;
+  return `${String(route.srcChain).toLowerCase()}|${srcFamily}->${String(route.dstChain).toLowerCase()}|${dstFamily}`;
+}
+
+function extractAmountFloorBody(body) {
+  if (!body || body.code !== "QUOTE_AMOUNT_TOO_LOW") return null;
+  const details = body.details;
+  const minimum = details?.minimum != null ? String(details.minimum) : null;
+  const actual = details?.actual != null ? String(details.actual) : null;
+  if (!minimum && !actual) return null;
+  return { minimum, actual };
+}
+
+function selectFreshestAmountFloor(prior, candidate) {
+  if (!prior) return candidate;
+  if (!candidate.observedAt) return prior;
+  return candidate.observedAt > prior.observedAt ? candidate : prior;
+}
+
+// Build a (srcChain, srcFamily) → (dstChain, dstFamily) → { minimum, actual,
+// observedAt } map from gateway quote failure records. Family-keyed because
+// the persisted refill blocker tuple references the destination *asset* (e.g.
+// wrapped_btc family) while Gateway's `dstToken` may be a registry-equivalent
+// settlement token within the same family. Compatibility is therefore checked
+// via the asset registry (`tokenAsset(chain, token).family`), not via any
+// chain/token literal.
+export function indexGatewayAmountFloorEvidence(records = []) {
+  const byKey = new Map();
+  const list = Array.isArray(records) ? records : [];
+  for (const record of list) {
+    const floor = extractAmountFloorBody(record?.error?.details?.body);
+    if (!floor) continue;
+    const key = familyKeyForRoute(record?.route);
+    if (!key) continue;
+    const observedAt = record?.observedAt ? String(record.observedAt) : "";
+    const candidate = { ...floor, observedAt };
+    byKey.set(key, selectFreshestAmountFloor(byKey.get(key), candidate));
+  }
+  return byKey;
+}
+
+const BTC_FAMILY_COMPATIBILITY = Object.freeze({
+  btc: ["btc", "native_or_wrapped", "wrapped_btc"],
+  native_or_wrapped: ["btc", "native_or_wrapped", "wrapped_btc"],
+  wrapped_btc: ["btc", "native_or_wrapped", "wrapped_btc"],
+});
+
+function blockerFamilyCandidates(blocker = {}) {
+  const sourceChain = blocker.sourceChain;
+  const destChain = blocker.chain;
+  if (!sourceChain || !destChain) return [];
+  const srcTokens = tokensForTicker(blocker.sourceAsset || "");
+  const dstTokens = tokensForTicker(blocker.targetAsset || blocker.asset || "");
+  const srcFamilies = new Set();
+  for (const token of srcTokens) {
+    const family = tokenFamilyForChainToken(sourceChain, token);
+    if (family) srcFamilies.add(family);
+  }
+  const dstFamilies = new Set();
+  for (const token of dstTokens) {
+    const family = tokenFamilyForChainToken(destChain, token);
+    if (family) dstFamilies.add(family);
+  }
+  if (srcFamilies.size === 0 || dstFamilies.size === 0) return [];
+  const candidates = [];
+  const srcChainLower = String(sourceChain).toLowerCase();
+  const dstChainLower = String(destChain).toLowerCase();
+  for (const srcFamily of srcFamilies) {
+    const compatibleSrcFamilies = BTC_FAMILY_COMPATIBILITY[srcFamily] || [srcFamily];
+    for (const dstFamily of dstFamilies) {
+      const compatibleDstFamilies = BTC_FAMILY_COMPATIBILITY[dstFamily] || [dstFamily];
+      for (const sFamily of compatibleSrcFamilies) {
+        for (const dFamily of compatibleDstFamilies) {
+          candidates.push(`${srcChainLower}|${sFamily}->${dstChainLower}|${dFamily}`);
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
+// Reconcile a stale autopilot refill blocker against fresh Gateway quote
+// failure evidence. When the persisted snapshot reports a routing/no-route
+// taxonomy for a (sourceChain/sourceFamily → chain/family) tuple that the
+// live Gateway observably treats as QUOTE_AMOUNT_TOO_LOW (route exists for a
+// registry-equivalent settlement token in the same family, input below
+// minimum), overlay the amount-floor evidence so downstream lifecycles can
+// advance to a precise NO_LIVE_ROUTE verdict without waiting for the next
+// autopilot rerun. No live policy/EV/cap/cooldown/kill-switch gate is
+// relaxed. Family equivalence is derived from the asset registry; no
+// chain/asset literal is hardcoded.
+export function reconcileBlockerWithAmountFloorEvidence(blocker = {}, amountFloorByRoute = new Map()) {
+  if (!amountFloorByRoute || amountFloorByRoute.size === 0) return blocker;
+  const reason = String(blocker.reason || "").trim();
+  const eligibleReason = reason === "routing_exhausted" || reason === "no_route";
+  if (!eligibleReason) return blocker;
+  if (blocker.quoteAmountFloor) return blocker;
+  const candidates = blockerFamilyCandidates(blocker);
+  for (const key of candidates) {
+    const evidence = amountFloorByRoute.get(key);
+    if (!evidence) continue;
+    return {
+      ...blocker,
+      reason: "quote_amount_too_low",
+      routeDeferralReason: "bridge_quote_amount_below_minimum",
+      routeDeferralAction: "defer_until_input_amount_meets_route_minimum_or_consolidate_inventory",
+      quoteAmountFloor: { minimum: evidence.minimum, actual: evidence.actual },
+      reconciledFromFreshGatewayEvidence: true,
+    };
+  }
+  return blocker;
+}
+
 function finiteNumberOrNull(value) {
   if (value === null || value === undefined) return null;
   const n = Number(value);
@@ -277,14 +402,19 @@ function normalizeRefillBlocker(item = {}) {
     routeDeferralReason: item.routeDeferralReason || null,
     routeDeferralAction: item.routeDeferralAction || null,
     quoteAmountFloor: normalizeQuoteAmountFloor(item.quoteAmountFloor),
+    reconciledFromFreshGatewayEvidence: item.reconciledFromFreshGatewayEvidence === true,
     ...refillBlockerCostEvidence(item),
     stalePlannerMethod: normalizeStalePlannerMethod(item.stalePlannerMethod),
   };
 }
 
-export function refillBlockerDetails(blockers = []) {
+export function refillBlockerDetails(blockers = [], { amountFloorByRoute = null } = {}) {
   if (!Array.isArray(blockers)) return [];
-  return blockers
+  const source =
+    amountFloorByRoute && amountFloorByRoute.size > 0
+      ? blockers.map((blocker) => reconcileBlockerWithAmountFloorEvidence(blocker, amountFloorByRoute))
+      : blockers;
+  return source
     .map(normalizeRefillBlocker)
     .filter((item) => item.reason)
     .slice(0, 8);
@@ -351,6 +481,12 @@ function strategyLiveAdmissionBlockers(strategyDispatch = {}) {
     .slice(0, 8);
 }
 
+function resolveAmountFloorByRoute(input) {
+  if (input instanceof Map) return input;
+  if (Array.isArray(input)) return indexGatewayAmountFloorEvidence(input);
+  return new Map();
+}
+
 export function buildFullAutomationReadiness({
   runtime,
   inbound,
@@ -359,7 +495,9 @@ export function buildFullAutomationReadiness({
   payback,
   autopilot,
   commandHealth = {},
+  gatewayAmountFloorEvidence,
 } = {}) {
+  const amountFloorByRoute = resolveAmountFloorByRoute(gatewayAmountFloorEvidence);
   const runtimeReady = runtime?.summary?.ready === true;
   const operatingCapitalIngressCount = inbound?.summary?.operatingCapitalIngressCount ?? 0;
   const paybackExcludedCount = inbound?.summary?.paybackExcludedCount ?? 0;
@@ -379,7 +517,7 @@ export function buildFullAutomationReadiness({
     merklCanaryReadyCount > 0 && !["failed", "invalid", "error"].includes(String(merklCanaryStatus || ""));
   const liveAutomationObserved = autopilot?.present === true;
   const activeLiveAutomationRun = autopilot?.activeRun === true;
-  const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || []);
+  const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || [], { amountFloorByRoute });
   const refillIssueCounts = countByCategory(refillBlockers);
   const unresolvedRefillRoutes =
     liveAutomationObserved &&
@@ -516,6 +654,7 @@ async function main() {
     resolveAllChainAutopilotReport(autopilotLatest, autopilotLatestCompleted),
     { capitalManagerRefillJobsLatest: capitalManager.json },
   );
+  const gatewayQuoteFailureRecords = await readJsonl(config.dataDir, "gateway-quote-failures").catch(() => []);
 
   const report = buildFullAutomationReadiness({
     runtime,
@@ -525,6 +664,7 @@ async function main() {
     payback: payback.json,
     autopilot,
     commandHealth,
+    gatewayAmountFloorEvidence: gatewayQuoteFailureRecords,
   });
   report.commandHealth = commandHealth;
 
