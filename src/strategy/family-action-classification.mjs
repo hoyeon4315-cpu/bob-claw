@@ -367,15 +367,15 @@ function tryNoTradeEconomics(result, row, blocker) {
 }
 
 const CLASSIFIERS = Object.freeze([
-  (result, row, blocker, decisions, ctx, econ) => tryEnterable(result, row),
+  (result, row) => tryEnterable(result, row),
   (result, row, blocker) => tryPolicySafety(result, blocker),
-  (result, row, blocker, decisions, ctx, econ) => tryClaimReady(result, econ),
-  (result, row, blocker, decisions) => tryExit(result, decisions),
+  (result, _row, _blocker, _decisions, _ctx, econ) => tryClaimReady(result, econ),
+  (result, _row, _blocker, decisions) => tryExit(result, decisions),
   (result, row, blocker, decisions) => tryMissingProducer(result, row, blocker, decisions),
   (result, row, blocker) => tryReceiptReconcile(result, row, blocker),
-  (result, row, blocker, decisions, ctx) => tryRefill(result, row, blocker, ctx),
-  (result, row, blocker, decisions, ctx, econ) => tryClaimEconomicsBelowFloor(result, econ),
-  (result, row, blocker, decisions) => tryHoldNoop(result, row, decisions),
+  (result, row, blocker, _decisions, ctx) => tryRefill(result, row, blocker, ctx),
+  (result, _row, _blocker, _decisions, _ctx, econ) => tryClaimEconomicsBelowFloor(result, econ),
+  (result, row, _blocker, decisions) => tryHoldNoop(result, row, decisions),
   (result, row, blocker) => tryNoTradeEconomics(result, row, blocker),
   (result, row, blocker) => tryPolicySemanticCandidate(result, blocker),
 ]);

@@ -1850,7 +1850,7 @@ function derivePositionActionDecision(mark = {}) {
   const protocolId = mark.protocolId || null;
   const bindingKind = mark.bindingKind || null;
   const valueUsd = finiteNumber(mark.valueUsd, 0);
-  let decision = null;
+  let decision;
   if (mark.event === "position_mark_failed") {
     const failureKind = String(mark.failureKind || "unknown_failure").toLowerCase();
     decision = {
