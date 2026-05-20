@@ -39,6 +39,9 @@ function readyHandlerReport(overrides = {}, intentOverrides = {}) {
         estimatedAssetValueUsd: 91.12,
       },
       expectedNetUsd: 0.91,
+      requiredNetUsd: "requiredNetUsd" in intentOverrides ? intentOverrides.requiredNetUsd : null,
+      p90CostUsd: "p90CostUsd" in intentOverrides ? intentOverrides.p90CostUsd : 0.62,
+      effectiveFloorUsd: "effectiveFloorUsd" in intentOverrides ? intentOverrides.effectiveFloorUsd : null,
       costs: {
         expectedExecutionRefillCostUsd: 0.88,
         expectedReserveReplenishmentCostUsd: 0,
@@ -79,6 +82,8 @@ test("statuses enumerate report-only lifecycle outcomes", () => {
     [
       "READY_FOR_INTENT_CANDIDATE",
       "NO_LIVE_ROUTE",
+      "WAITLIST_BELOW_ROUTE_MINIMUM",
+      "QUOTE_COST_FIELDS_MISSING",
       "BACKLOG_MISSING_EVIDENCE",
       "TYPED_MISSING_EVIDENCE",
       "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
@@ -272,6 +277,95 @@ test("receipt/claim/exit/producer/policy/live remain futureHandlerBacklog with r
   assert.ok(live.requiredEvidence.includes("kill_switch_proof"));
   assert.equal(report.laneHandlerCoverage.reportOnly, true);
   assert.equal(report.laneSafetyProof.runtimeAuthority, "none");
+});
+
+test("above-min governing-aligned intent without USD cost-floor producer => QUOTE_COST_FIELDS_MISSING", () => {
+  const handlerReport = readyHandlerReport();
+  // Drop the USD cost-floor source from the planner dry-run intent.
+  handlerReport.handlerResults[0].dryRunIntent.requiredNetUsd = null;
+  handlerReport.handlerResults[0].dryRunIntent.p90CostUsd = null;
+  handlerReport.handlerResults[0].dryRunIntent.effectiveFloorUsd = null;
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "QUOTE_COST_FIELDS_MISSING");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.equal(candidate.nextAutomationStep, "supply_real_producer_usd_cost_floor_fields_without_fabrication");
+  assert.ok(candidate.missingUsdCostFloorFields.includes("requiredNetUsd|p90CostUsd|effectiveFloorUsd"));
+  assert.ok(candidate.quoteCostFieldsMissing);
+  assert.equal(candidate.quoteCostFieldsMissing.missingUsdCostFloorProducer, "src/treasury/refill-job.mjs");
+});
+
+test("anti-overfit: distinct method tuples both block on USD cost-floor when missing", () => {
+  for (const tuple of [
+    {
+      selectedMethod: "antialpha_method",
+      source: { chain: "ax", asset: "AX" },
+      destination: { chain: "az", asset: "AZ" },
+    },
+    {
+      selectedMethod: "antibeta_method",
+      source: { chain: "bx", asset: "BX" },
+      destination: { chain: "bz", asset: "BZ" },
+    },
+  ]) {
+    const handlerReport = readyHandlerReport(
+      {},
+      {
+        selectedMethod: tuple.selectedMethod,
+        plannerCandidateMethods: [tuple.selectedMethod],
+        source: { ...tuple.source, token: "0xs", estimatedUsd: 5 },
+        destination: {
+          chain: tuple.destination.chain,
+          asset: tuple.destination.asset,
+          token: "0xd",
+          targetAmount: "9999",
+          targetAmountDecimal: 0.00009999,
+          estimatedAssetValueUsd: 4,
+        },
+        p90CostUsd: null,
+      },
+    );
+    const report = buildLaneIntentCandidateReport({
+      laneHandlerReport: handlerReport,
+      readinessReport: { liveAutomation: { refillBlockers: [] } },
+    });
+    const candidate = report.laneIntentCandidates[0];
+    assert.equal(candidate.status, "QUOTE_COST_FIELDS_MISSING", `tuple ${tuple.selectedMethod}`);
+    assert.equal(candidate.canIntent, false);
+    assert.equal(candidate.canLive, false);
+  }
+});
+
+test("above-min canIntent requires USD floor + producer agreement; otherwise canIntent stays false", () => {
+  // Surface mismatch (handler agrees but readiness has unrelated current-method blocker) must
+  // never permit canIntent=true regardless of USD floor presence.
+  const handlerReport = readyHandlerReport();
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "base",
+            asset: "wBTC.OFT",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "cross_chain_bridge_or_swap",
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.notEqual(candidate.status, "READY_FOR_INTENT_CANDIDATE");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
 });
 
 test("no capital_refill pilot lane produces no candidate but keeps backlog populated", () => {

@@ -10,10 +10,27 @@
 export const CANDIDATE_STATUSES = Object.freeze([
   "READY_FOR_INTENT_CANDIDATE",
   "NO_LIVE_ROUTE",
+  "WAITLIST_BELOW_ROUTE_MINIMUM",
+  "QUOTE_COST_FIELDS_MISSING",
   "BACKLOG_MISSING_EVIDENCE",
   "TYPED_MISSING_EVIDENCE",
   "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
   "UNRESOLVED_STALE_READINESS_SNAPSHOT",
+]);
+
+// Quote-cost fields propagated from real producers only. Sourced from the
+// readiness `gatewaySuccessProbe` (raw quote evidence) and planner
+// `dryRunIntent`/blocker USD floor projection. Never fabricated.
+export const QUOTE_COST_FIELD_NAMES = Object.freeze([
+  "amount",
+  "outputAmount",
+  "fees",
+  "executionFees",
+  "feeRatio",
+  "expectedNetUsd",
+  "requiredNetUsd",
+  "p90CostUsd",
+  "effectiveFloorUsd",
 ]);
 
 export const FUTURE_BACKLOG_LANES = Object.freeze([
@@ -178,6 +195,69 @@ function finiteNumber(value) {
   if (value === null || value === undefined) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function positiveBigInt(value) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    const bigint = BigInt(value);
+    return bigint > 0n ? bigint : null;
+  } catch {
+    return null;
+  }
+}
+
+function bigintToString(value) {
+  return typeof value === "bigint" ? value.toString() : null;
+}
+
+function minBigInt(values) {
+  const valid = values.filter((value) => typeof value === "bigint" && value > 0n);
+  if (valid.length === 0) return null;
+  return valid.reduce((min, value) => (value < min ? value : min), valid[0]);
+}
+
+function subtractReserve(amount, reserveRaw) {
+  if (typeof amount !== "bigint") return null;
+  if (typeof reserveRaw !== "bigint") return amount;
+  return amount > reserveRaw ? amount - reserveRaw : 0n;
+}
+
+function rawAmountForUsd({ usd, basisRaw, basisUsd }) {
+  const numericUsd = finiteNumber(usd);
+  const numericBasisUsd = finiteNumber(basisUsd);
+  const raw = positiveBigInt(basisRaw);
+  if (
+    !Number.isFinite(numericUsd) ||
+    !(numericUsd > 0) ||
+    !Number.isFinite(numericBasisUsd) ||
+    !(numericBasisUsd > 0) ||
+    raw === null
+  ) {
+    return null;
+  }
+  const estimate = Math.floor((Number(raw) * numericUsd) / numericBasisUsd);
+  return Number.isFinite(estimate) && estimate > 0 ? BigInt(estimate) : null;
+}
+
+function reserveRawSats(ref = null) {
+  return (
+    positiveBigInt(ref?.reserveSats) ||
+    positiveBigInt(ref?.holdbackSats) ||
+    positiveBigInt(ref?.requiredSats) ||
+    positiveBigInt(ref?.amountSats) ||
+    null
+  );
+}
+
+function reserveRef(rawRef = null, producer) {
+  const raw = reserveRawSats(rawRef);
+  return {
+    producer,
+    present: Boolean(rawRef),
+    amountSats: bigintToString(raw),
+    raw: rawRef || null,
+  };
 }
 
 function firstPresent(...values) {
@@ -381,15 +461,69 @@ function isAmountFloorTaxonomy(blocker = {}) {
   );
 }
 
+function gatewayProbeQuoteCost(blocker = {}) {
+  const probe = blocker?.gatewaySuccessProbe;
+  if (!probe || typeof probe !== "object") return null;
+  const cost = {
+    amount: probe.amount != null && String(probe.amount).length > 0 ? String(probe.amount) : null,
+    outputAmount:
+      probe.outputAmount != null && String(probe.outputAmount).length > 0 ? String(probe.outputAmount) : null,
+    fees: probe.fees != null && String(probe.fees).length > 0 ? String(probe.fees) : null,
+    executionFees:
+      probe.executionFees != null && String(probe.executionFees).length > 0 ? String(probe.executionFees) : null,
+    feeRatio: finiteNumber(probe.feeRatio),
+    observedAt: typeof probe.observedAt === "string" && probe.observedAt.length > 0 ? probe.observedAt : null,
+  };
+  if (!cost.amount && !cost.outputAmount && !cost.fees && !cost.executionFees && cost.feeRatio === null) return null;
+  return cost;
+}
+
+function missingUsdCostFloorFields(blocker = {}) {
+  const missing = [];
+  if (!present(blocker.expectedNetUsd)) missing.push("expectedNetUsd");
+  if (!present(blocker.requiredNetUsd) && !present(blocker.requiredNetPnlUsd)) missing.push("requiredNetUsd");
+  if (!present(blocker.p90CostUsd) && !present(blocker.receiptCostP90Usd) && !present(blocker.receiptCostFloorUsd))
+    missing.push("p90CostUsd");
+  if (!present(blocker.effectiveFloorUsd) && !present(blocker.effectiveCostFloorUsd)) missing.push("effectiveFloorUsd");
+  return missing;
+}
+
+function intentUsdFloorPresent(dryRunIntent = {}) {
+  if (!present(dryRunIntent.expectedNetUsd)) return false;
+  const floorCandidate =
+    dryRunIntent.requiredNetUsd ??
+    dryRunIntent.p90CostUsd ??
+    dryRunIntent.effectiveFloorUsd ??
+    dryRunIntent.requiredNetPnlUsd ??
+    null;
+  return present(floorCandidate);
+}
+
+function missingUsdCostFloorFromIntent(dryRunIntent = {}) {
+  const missing = [];
+  if (!present(dryRunIntent.expectedNetUsd)) missing.push("expectedNetUsd");
+  if (
+    !present(dryRunIntent.requiredNetUsd) &&
+    !present(dryRunIntent.p90CostUsd) &&
+    !present(dryRunIntent.effectiveFloorUsd) &&
+    !present(dryRunIntent.requiredNetPnlUsd)
+  ) {
+    missing.push("requiredNetUsd|p90CostUsd|effectiveFloorUsd");
+  }
+  return missing;
+}
+
 // Precise route-truth path: route exists per upstream verifier evidence but the
 // input amount the planner would dispatch is below the route's minimum. The
 // readiness blocker carries `quoteAmountFloor: { minimum, actual }` together
 // with `routeDeferralReason: "bridge_quote_amount_below_minimum"`. This is a
-// complete proof of NO_LIVE_ROUTE under current inventory; the lifecycle
-// defers until input consolidates. canIntent stays false; no policy/EV/cap
-// gate is relaxed. Synthetic chain/asset/method strings prove no target
-// hardcode.
-function noLiveRouteByAmountFloorEvidence({ governingAgreement, dryRunIntent, destination, source }) {
+// complete proof that the route is open above its minimum but the current
+// inventory cannot meet it. The lifecycle emits a typed
+// `WAITLIST_BELOW_ROUTE_MINIMUM` waitlist with `attemptedAmount` /
+// `minimumAmount` and forwards real-producer quote-cost fields. canIntent
+// stays false; no policy/EV/cap/cooldown/kill-switch gate is relaxed.
+// Synthetic chain/asset/method strings prove no target hardcode.
+function belowRouteMinimumEvidence({ governingAgreement, dryRunIntent, destination, source }) {
   if (governingAgreement.tupleMatchedCollisionCount === 0) return null;
   const selectedMethod = dryRunIntent.selectedMethod || null;
   if (!selectedMethod) return null;
@@ -397,6 +531,11 @@ function noLiveRouteByAmountFloorEvidence({ governingAgreement, dryRunIntent, de
   if (matched.length === 0) return null;
   const amountFloorEvidence = matched.map(blockerAmountFloorEvidence);
   if (!amountFloorEvidence.every(hasAmountFloorEvidence)) return null;
+  const quoteCost = matched.map(gatewayProbeQuoteCost).filter(Boolean);
+  const usdMissing = matched.map(missingUsdCostFloorFields).flat();
+  const missingUsdCostFloorFieldNames = [...new Set(usdMissing)];
+  const attemptedAmount = amountFloorEvidence[0].actual;
+  const minimumAmount = amountFloorEvidence[0].minimum;
   return {
     method: selectedMethod,
     resource: {
@@ -409,6 +548,199 @@ function noLiveRouteByAmountFloorEvidence({ governingAgreement, dryRunIntent, de
     plannerBlocker: governingAgreement.plannerBlocker,
     readinessBlockers: matched,
     amountFloorEvidence,
+    attemptedAmount,
+    minimumAmount,
+    quoteCost,
+    missingUsdCostFloorFields: missingUsdCostFloorFieldNames,
+    missingUsdCostFloorProducer:
+      missingUsdCostFloorFieldNames.length > 0 ? LIFECYCLE_PRODUCERS.readinessRefillBlockers.upstreamModule : null,
+  };
+}
+
+function costFloorEvidence(dryRunIntent = {}) {
+  const quoteFloor = array(dryRunIntent.quoteCost).find((entry) => entry && typeof entry === "object") || {};
+  return {
+    quoteCost: array(dryRunIntent.quoteCost),
+    expectedNetUsd: finiteNumber(dryRunIntent.expectedNetUsd),
+    requiredNetUsd: finiteNumber(firstPresent(dryRunIntent.requiredNetUsd, dryRunIntent.requiredNetPnlUsd)),
+    p90CostUsd: finiteNumber(
+      firstPresent(dryRunIntent.p90CostUsd, dryRunIntent.receiptCostP90Usd, dryRunIntent.receiptCostFloorUsd),
+    ),
+    effectiveFloorUsd: finiteNumber(firstPresent(dryRunIntent.effectiveFloorUsd, dryRunIntent.effectiveCostFloorUsd)),
+    routeKnownCostUsd: finiteNumber(dryRunIntent.routeQuoteRef?.routeKnownCostUsd),
+    quoteAmount: quoteFloor.amount != null ? String(quoteFloor.amount) : null,
+  };
+}
+
+function costFloorComplete(evidence = {}) {
+  return (
+    evidence.expectedNetUsd !== null &&
+    (evidence.requiredNetUsd !== null || evidence.p90CostUsd !== null || evidence.effectiveFloorUsd !== null)
+  );
+}
+
+function missingCostFloorFields(evidence = {}) {
+  const missing = [];
+  if (evidence.expectedNetUsd === null) missing.push("expectedNetUsd");
+  if (evidence.requiredNetUsd === null) missing.push("requiredNetUsd");
+  if (evidence.p90CostUsd === null) missing.push("p90CostUsd");
+  if (evidence.effectiveFloorUsd === null) missing.push("effectiveFloorUsd");
+  return missing;
+}
+
+function capRawLimit({ capUsd, basisRaw, basisUsd }) {
+  return rawAmountForUsd({ usd: capUsd, basisRaw, basisUsd });
+}
+
+function buildSizingInputs({ belowRouteMinimum = null, dryRunIntent = {}, destination = {}, source = {} } = {}) {
+  const attempted = positiveBigInt(belowRouteMinimum?.attemptedAmount ?? destination.targetAmount);
+  const minimum = positiveBigInt(belowRouteMinimum?.minimumAmount);
+  const routeMinimum = minimum || null;
+  const target = positiveBigInt(destination.targetAmount);
+  const sourceAmount = positiveBigInt(source.actual);
+  const gasReserveRaw = reserveRawSats(dryRunIntent.gasReserve);
+  const paybackReserveRaw = reserveRawSats(dryRunIntent.paybackReserve);
+  const afterPayback = subtractReserve(sourceAmount, paybackReserveRaw);
+  const afterGas = subtractReserve(afterPayback, gasReserveRaw);
+  const caps = dryRunIntent.policyCaps || {};
+  const basisRaw = attempted || target || routeMinimum;
+  const basisUsd = finiteNumber(destination.estimatedAssetValueUsd);
+  const perTxRaw = capRawLimit({ capUsd: firstPresent(caps.tinyLivePerTxUsd, caps.perTxUsd), basisRaw, basisUsd });
+  const dailyRaw = capRawLimit({ capUsd: caps.perDayUsd, basisRaw, basisUsd });
+  const lossRaw = finiteNumber(caps.maxDailyLossUsd) !== null && caps.maxDailyLossUsd >= 0 ? null : 0n;
+  const maxAllowed = minBigInt([afterGas, perTxRaw, dailyRaw, lossRaw]);
+  return {
+    attempted,
+    routeMinimum,
+    sourceAmount,
+    afterPayback,
+    afterGas,
+    perTxRaw,
+    dailyRaw,
+    lossRaw,
+    maxAllowed,
+    caps,
+  };
+}
+
+function collectSizingMissing(inputs = {}) {
+  const missing = [];
+  if (!inputs.attempted) missing.push("attemptedAmountSats");
+  if (!inputs.routeMinimum) missing.push("minRouteAmountSats");
+  if (!inputs.sourceAmount) missing.push("availableSourceAmountSats");
+  if (inputs.afterPayback === null) missing.push("availableAfterPaybackReserveSats");
+  if (inputs.afterGas === null) missing.push("availableAfterGasReserveSats");
+  if (inputs.perTxRaw === null) missing.push("maxAllowedByPerTxCapSats");
+  if (inputs.dailyRaw === null) missing.push("maxAllowedByDailyCapSats");
+  return [...new Set(missing)];
+}
+
+function resolveSizingOutcome(inputs = {}, missing = []) {
+  let sizingDecision = "NO_ROUTE_MINIMUM_SIZING_REQUIRED";
+  let sizingBlocker = null;
+  let proposed = null;
+  let deficit = null;
+  if (inputs.routeMinimum && inputs.attempted && inputs.attempted < inputs.routeMinimum) {
+    if (missing.length > 0) {
+      sizingDecision = "SIZING_BLOCKED_MISSING_FIELDS";
+      sizingBlocker = "sizing_required_fields_missing";
+    } else if (inputs.maxAllowed !== null && inputs.maxAllowed >= inputs.routeMinimum) {
+      sizingDecision = "REPORT_ONLY_SIZED_TO_ROUTE_MINIMUM";
+      proposed = inputs.routeMinimum;
+    } else {
+      sizingDecision = "WAITLIST_BELOW_ROUTE_MINIMUM_WITH_SAFE_SIZING_DEFICIT";
+      sizingBlocker = "safe_allocatable_capital_below_route_minimum";
+      deficit = inputs.maxAllowed === null ? inputs.routeMinimum : inputs.routeMinimum - inputs.maxAllowed;
+    }
+  }
+  return { sizingDecision, sizingBlocker, proposed, deficit };
+}
+
+function buildSizingRefs({ belowRouteMinimum = null, dryRunIntent = {}, source = {}, caps = {} } = {}) {
+  return {
+    sourceInventoryRef: {
+      producer: LIFECYCLE_PRODUCERS.refillPlanner.cli,
+      chain: source.chain || null,
+      asset: source.asset || null,
+      token: source.token || null,
+      sourceKind: source.sourceKind || null,
+      estimatedUsd: finiteNumber(source.estimatedUsd),
+    },
+    routeQuoteRef: {
+      producer: LIFECYCLE_PRODUCERS.readinessRefillBlockers.cli,
+      ...(dryRunIntent.routeQuoteRef || {}),
+      quoteAmountFloor: belowRouteMinimum?.amountFloorEvidence?.[0] || null,
+    },
+    paybackReserveRef: reserveRef(dryRunIntent.paybackReserve, LIFECYCLE_PRODUCERS.refillPlanner.module),
+    gasReserveRef: reserveRef(dryRunIntent.gasReserve, LIFECYCLE_PRODUCERS.refillPlanner.module),
+    policyCapRef: {
+      producer: "src/config/strategy-caps.mjs",
+      perTxUsd: finiteNumber(caps.perTxUsd),
+      tinyLivePerTxUsd: finiteNumber(caps.tinyLivePerTxUsd),
+      perDayUsd: finiteNumber(caps.perDayUsd),
+      maxDailyLossUsd: finiteNumber(caps.maxDailyLossUsd),
+    },
+  };
+}
+
+function buildReportOnlySizingDecision({
+  belowRouteMinimum = null,
+  dryRunIntent = {},
+  destination = {},
+  source = {},
+} = {}) {
+  const inputs = buildSizingInputs({ belowRouteMinimum, dryRunIntent, destination, source });
+  const missing = collectSizingMissing(inputs);
+  const outcome = resolveSizingOutcome(inputs, missing);
+  const refs = buildSizingRefs({ belowRouteMinimum, dryRunIntent, source, caps: inputs.caps });
+  const costFloor = costFloorEvidence(dryRunIntent);
+
+  return {
+    attemptedAmountSats: bigintToString(inputs.attempted),
+    minRouteAmountSats: bigintToString(inputs.routeMinimum),
+    proposedSizedAmountSats: bigintToString(outcome.proposed),
+    availableSourceAmountSats: bigintToString(inputs.sourceAmount),
+    availableAfterPaybackReserveSats: bigintToString(inputs.afterPayback),
+    availableAfterGasReserveSats: bigintToString(inputs.afterGas),
+    maxAllowedByPerTxCapSats: bigintToString(inputs.perTxRaw),
+    maxAllowedByDailyCapSats: bigintToString(inputs.dailyRaw),
+    maxAllowedByLossCapSats: bigintToString(inputs.lossRaw),
+    safeAllocatableAmountSats: bigintToString(inputs.maxAllowed),
+    sizingDeficitSats: bigintToString(outcome.deficit),
+    sizingDecision: outcome.sizingDecision,
+    sizingBlocker: outcome.sizingBlocker,
+    missingSizingFields: missing,
+    ...refs,
+    costFloor,
+  };
+}
+
+// Above-min quote evidence path. Activates when the planner's dry-run intent
+// is governing-aligned (no current-method readiness collision) but the USD
+// cost-floor source is structurally absent on the planner side. The lifecycle
+// emits `QUOTE_COST_FIELDS_MISSING` with the exact missing field names so the
+// consumer knows which producer must supply the floor before the candidate can
+// advance. canIntent stays false; no fabricated USD EV is introduced.
+function quoteCostFieldsMissingEvidence({ governingAgreement, dryRunIntent }) {
+  if (!governingAgreement.agrees) return null;
+  if (intentUsdFloorPresent(dryRunIntent)) return null;
+  const missing = missingUsdCostFloorFromIntent(dryRunIntent);
+  if (missing.length === 0) return null;
+  return {
+    method: dryRunIntent.selectedMethod || null,
+    missingUsdCostFloorFields: missing,
+    missingUsdCostFloorProducer: LIFECYCLE_PRODUCERS.refillPlanner.module,
+  };
+}
+
+function quoteCostFieldsMissingFromSizing(sizing = null) {
+  if (!sizing || costFloorComplete(sizing.costFloor)) return null;
+  const missing = missingCostFloorFields(sizing.costFloor);
+  if (missing.length === 0) return null;
+  return {
+    method: null,
+    missingUsdCostFloorFields: missing,
+    missingUsdCostFloorProducer: LIFECYCLE_PRODUCERS.refillPlanner.module,
   };
 }
 
@@ -533,7 +865,9 @@ function resolveLifecycleStatus({
   missingEvidence,
   governingAgreement,
   noLiveRouteEvidence,
-  noLiveRouteByAmountFloor,
+  belowRouteMinimum,
+  quoteCostFieldsMissing,
+  sizing,
   typedMissingEvidence,
 }) {
   if (!canDryRun) {
@@ -551,6 +885,13 @@ function resolveLifecycleStatus({
     };
   }
   if (governingAgreement.agrees) {
+    if (quoteCostFieldsMissing) {
+      return {
+        status: "QUOTE_COST_FIELDS_MISSING",
+        canIntent: false,
+        nextAutomationStep: "supply_real_producer_usd_cost_floor_fields_without_fabrication",
+      };
+    }
     return {
       status: "READY_FOR_INTENT_CANDIDATE",
       canIntent: true,
@@ -564,11 +905,28 @@ function resolveLifecycleStatus({
       nextAutomationStep: "wait_for_new_route_or_cost_floor_change_without_live_authority",
     };
   }
-  if (noLiveRouteByAmountFloor) {
+  if (belowRouteMinimum) {
+    if (sizing?.sizingDecision === "REPORT_ONLY_SIZED_TO_ROUTE_MINIMUM") {
+      if (quoteCostFieldsMissing) {
+        return {
+          status: "QUOTE_COST_FIELDS_MISSING",
+          canIntent: false,
+          nextAutomationStep: "supply_real_producer_usd_cost_floor_fields_without_fabrication",
+        };
+      }
+      return {
+        status: "READY_FOR_INTENT_CANDIDATE",
+        canIntent: true,
+        nextAutomationStep: "await_live_eligibility_gates_after_intent_candidate",
+      };
+    }
     return {
-      status: "NO_LIVE_ROUTE",
+      status: "WAITLIST_BELOW_ROUTE_MINIMUM",
       canIntent: false,
-      nextAutomationStep: "wait_for_input_amount_to_meet_route_minimum_without_live_authority",
+      nextAutomationStep:
+        sizing?.sizingBlocker === "safe_allocatable_capital_below_route_minimum"
+          ? "wait_for_safe_allocatable_capital_to_meet_route_minimum_without_live_authority"
+          : "wait_for_input_amount_to_meet_route_minimum_without_live_authority",
     };
   }
   if (typedMissingEvidence) {
@@ -592,17 +950,80 @@ function resolveLifecycleStatus({
   };
 }
 
+function candidateEvidenceComplete({ missingEvidence = [], lifecycle = {}, status = null } = {}) {
+  if (missingEvidence.length !== 0) return false;
+  if (lifecycle.canIntent) return true;
+  return status === "NO_LIVE_ROUTE" || status === "WAITLIST_BELOW_ROUTE_MINIMUM";
+}
+
+function candidateQuoteCost(belowRouteMinimum = null) {
+  return belowRouteMinimum ? belowRouteMinimum.quoteCost : [];
+}
+
+function candidateMissingUsdCostFloorFields({ belowRouteMinimum = null, quoteCostFieldsMissing = null } = {}) {
+  if (belowRouteMinimum) return belowRouteMinimum.missingUsdCostFloorFields;
+  if (quoteCostFieldsMissing) return quoteCostFieldsMissing.missingUsdCostFloorFields;
+  return [];
+}
+
+function candidateSizingFields(sizing = {}) {
+  return {
+    attemptedAmountSats: sizing.attemptedAmountSats,
+    minRouteAmountSats: sizing.minRouteAmountSats,
+    proposedSizedAmountSats: sizing.proposedSizedAmountSats,
+    availableSourceAmountSats: sizing.availableSourceAmountSats,
+    availableAfterPaybackReserveSats: sizing.availableAfterPaybackReserveSats,
+    availableAfterGasReserveSats: sizing.availableAfterGasReserveSats,
+    maxAllowedByPerTxCapSats: sizing.maxAllowedByPerTxCapSats,
+    maxAllowedByDailyCapSats: sizing.maxAllowedByDailyCapSats,
+    safeAllocatableAmountSats: sizing.safeAllocatableAmountSats,
+    sizingDecision: sizing.sizingDecision,
+    sizingBlocker: sizing.sizingBlocker,
+    sizingDeficitSats: sizing.sizingDeficitSats,
+    missingSizingFields: sizing.missingSizingFields,
+    sourceInventoryRef: sizing.sourceInventoryRef,
+    routeQuoteRef: sizing.routeQuoteRef,
+    paybackReserveRef: sizing.paybackReserveRef,
+    policyCapRef: sizing.policyCapRef,
+    gasReserveRef: sizing.gasReserveRef,
+  };
+}
+
+function effectiveQuoteCostFieldsMissingFor({
+  quoteCostFieldsMissing = null,
+  belowRouteMinimum = null,
+  sizing = null,
+}) {
+  if (quoteCostFieldsMissing) return quoteCostFieldsMissing;
+  if (!belowRouteMinimum) return null;
+  return quoteCostFieldsMissingFromSizing(sizing);
+}
+
+function candidateCoreRouteFields({ item = {}, handlerResult = {}, dryRunIntent = {}, source = {}, destination = {} }) {
+  return {
+    family: item.family || handlerResult?.family || null,
+    selectedMethod: dryRunIntent.selectedMethod || null,
+    executionMethod: dryRunIntent.selectedMethod || null,
+    plannerCandidateMethods: [...array(dryRunIntent.plannerCandidateMethods)],
+    sourceChain: source.chain || null,
+    sourceAsset: source.asset || null,
+    destinationChain: destination.chain || null,
+    destinationAsset: destination.asset || null,
+  };
+}
+
 function refillIntentCandidate({ handlerResult, readinessReport }) {
   const context = extractCandidateContext(handlerResult);
   const { item, dryRunIntent, source, destination, costs, safetyBlockers, canDryRun } = context;
   const governingAgreement = evaluateGoverningAgreement({ handlerResult, readinessReport });
   const noLiveRouteEvidence = preciseNoLiveRouteEvidence({ governingAgreement, dryRunIntent, destination });
-  const noLiveRouteByAmountFloor = noLiveRouteByAmountFloorEvidence({
+  const belowRouteMinimum = belowRouteMinimumEvidence({
     governingAgreement,
     dryRunIntent,
     destination,
     source,
   });
+  const quoteCostFieldsMissing = quoteCostFieldsMissingEvidence({ governingAgreement, dryRunIntent });
   const typedMissingEvidence = typedMissingEvidenceForTupleMatch({
     governingAgreement,
     dryRunIntent,
@@ -617,12 +1038,20 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     costs,
     handlerResult,
   });
+  const sizing = buildReportOnlySizingDecision({ belowRouteMinimum, dryRunIntent, destination, source });
+  const effectiveQuoteCostFieldsMissing = effectiveQuoteCostFieldsMissingFor({
+    quoteCostFieldsMissing,
+    belowRouteMinimum,
+    sizing,
+  });
   const lifecycle = resolveLifecycleStatus({
     canDryRun,
     missingEvidence,
     governingAgreement,
     noLiveRouteEvidence,
-    noLiveRouteByAmountFloor,
+    belowRouteMinimum,
+    quoteCostFieldsMissing: effectiveQuoteCostFieldsMissing,
+    sizing,
     typedMissingEvidence,
   });
 
@@ -632,26 +1061,22 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
       item,
       lane: "capital_refill",
       status: lifecycle.status,
-      evidenceComplete: missingEvidence.length === 0 && (lifecycle.canIntent || lifecycle.status === "NO_LIVE_ROUTE"),
+      evidenceComplete: candidateEvidenceComplete({ missingEvidence, lifecycle, status: lifecycle.status }),
       missingEvidence,
       canDryRun,
       canIntent: lifecycle.canIntent,
       nextAutomationStep: lifecycle.nextAutomationStep,
     }),
-    family: item.family || handlerResult?.family || null,
+    ...candidateCoreRouteFields({ item, handlerResult, dryRunIntent, source, destination }),
     status: lifecycle.status,
     sourceActionItem: item,
-    selectedMethod: dryRunIntent.selectedMethod || null,
-    executionMethod: dryRunIntent.selectedMethod || null,
-    plannerCandidateMethods: [...array(dryRunIntent.plannerCandidateMethods)],
-    sourceChain: source.chain || null,
-    sourceAsset: source.asset || null,
-    destinationChain: destination.chain || null,
-    destinationAsset: destination.asset || null,
     amount: destination.targetAmount || null,
     amountDecimal: destination.targetAmountDecimal ?? null,
     amountUsd: destination.estimatedAssetValueUsd ?? null,
     expectedNetUsd: dryRunIntent.expectedNetUsd ?? null,
+    requiredNetUsd: dryRunIntent.requiredNetUsd ?? null,
+    p90CostUsd: dryRunIntent.p90CostUsd ?? null,
+    effectiveFloorUsd: dryRunIntent.effectiveFloorUsd ?? null,
     costs: { ...costs },
     plannerBlocker: governingAgreement.plannerBlocker,
     readinessBlockers: governingAgreement.readinessBlockers,
@@ -662,7 +1087,18 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
       (entry) => entry.mismatchClass !== "stale_snapshot_method",
     ),
     noLiveRouteEvidence,
-    noLiveRouteByAmountFloor,
+    belowRouteMinimum,
+    // Back-compat alias for downstream consumers expecting the prior key.
+    noLiveRouteByAmountFloor: belowRouteMinimum,
+    quoteCostFieldsMissing: effectiveQuoteCostFieldsMissing,
+    attemptedAmount: belowRouteMinimum ? belowRouteMinimum.attemptedAmount : null,
+    minimumAmount: belowRouteMinimum ? belowRouteMinimum.minimumAmount : null,
+    ...candidateSizingFields(sizing),
+    quoteCost: candidateQuoteCost(belowRouteMinimum),
+    missingUsdCostFloorFields: candidateMissingUsdCostFloorFields({
+      belowRouteMinimum,
+      quoteCostFieldsMissing: effectiveQuoteCostFieldsMissing,
+    }),
     typedMissingEvidenceDetail: typedMissingEvidence,
     typedMissingEvidence: typedMissingEvidence ? [...typedMissingEvidence.typedMissingEvidence] : [],
     governingAgreement,
@@ -786,13 +1222,18 @@ function summarize(candidates, backlog) {
   let staleSnapshotCount = 0;
   let governingMismatchCount = 0;
   let typedMissingEvidenceCount = 0;
+  let belowRouteMinimumCount = 0;
+  let quoteCostFieldsMissingCount = 0;
   for (const candidate of candidates) {
     if (candidate.canIntent) intentCandidateCount += 1;
     if (candidate.canLive) canLiveCount += 1;
-    if (!["READY_FOR_INTENT_CANDIDATE", "NO_LIVE_ROUTE"].includes(candidate.status)) blockedCount += 1;
+    if (!["READY_FOR_INTENT_CANDIDATE", "NO_LIVE_ROUTE", "WAITLIST_BELOW_ROUTE_MINIMUM"].includes(candidate.status))
+      blockedCount += 1;
     if (candidate.status === "UNRESOLVED_STALE_READINESS_SNAPSHOT") staleSnapshotCount += 1;
     if (candidate.status === "UNRESOLVED_GOVERNING_SYNC_MISMATCH") governingMismatchCount += 1;
     if (candidate.status === "TYPED_MISSING_EVIDENCE") typedMissingEvidenceCount += 1;
+    if (candidate.status === "WAITLIST_BELOW_ROUTE_MINIMUM") belowRouteMinimumCount += 1;
+    if (candidate.status === "QUOTE_COST_FIELDS_MISSING") quoteCostFieldsMissingCount += 1;
   }
   return {
     intentCandidateCount,
@@ -802,6 +1243,8 @@ function summarize(candidates, backlog) {
     staleSnapshotCount,
     governingMismatchCount,
     typedMissingEvidenceCount,
+    belowRouteMinimumCount,
+    quoteCostFieldsMissingCount,
   };
 }
 

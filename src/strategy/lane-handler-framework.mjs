@@ -113,7 +113,10 @@ function refillSource(source = null) {
     chain: source.chain || null,
     asset: source.ticker || source.asset || null,
     token: source.token || null,
+    actual: source.actual ?? source.balance ?? null,
+    actualDecimal: finiteNumber(source.actualDecimal),
     estimatedUsd: finiteNumber(source.estimatedUsd),
+    sourceKind: source.sourceKind || null,
   };
 }
 
@@ -135,6 +138,28 @@ function refillCosts(job, fundingSource) {
     bridgeQuoteCostUsd: finiteNumber(job.movementBudget?.bridgeQuoteCostUsd),
     bridgeQuoteCostCeilingUsd: finiteNumber(job.movementBudget?.bridgeQuoteCostCeilingUsd),
     routeKnownCostUsd: finiteNumber(job.systemEconomics?.routeKnownCostUsd),
+  };
+}
+
+function refillPolicyCaps(job) {
+  const caps = job?.strategyPolicy?.caps || job?.strategyPolicy || {};
+  return {
+    perTxUsd: finiteNumber(caps.perTxUsd),
+    perDayUsd: finiteNumber(caps.perDayUsd),
+    maxDailyLossUsd: finiteNumber(caps.maxDailyLossUsd),
+    tinyLivePerTxUsd: finiteNumber(caps.tinyLivePerTxUsd),
+  };
+}
+
+function refillRouteQuoteRef(economics = {}) {
+  return {
+    routeKey: economics.routeKey || null,
+    amount: economics.amount || null,
+    routeInputUsd: finiteNumber(economics.routeInputUsd),
+    routeNetEdgeUsd: finiteNumber(economics.routeNetEdgeUsd),
+    routeExecutableNetEdgeUsd: finiteNumber(economics.routeExecutableNetEdgeUsd),
+    routeKnownCostUsd: finiteNumber(economics.routeKnownCostUsd),
+    routeFailureRate: finiteNumber(economics.routeFailureRate),
   };
 }
 
@@ -170,6 +195,7 @@ function plannerCandidateMethods(job, refillPlannerReport) {
 
 function capitalRefillDryRunIntent({ item, job, refillPlannerReport }) {
   const fundingSource = job.fundingSource || {};
+  const economics = job.systemEconomics || {};
   return {
     intentType: "capital_refill_dry_run",
     jobId: job.jobId || null,
@@ -177,7 +203,19 @@ function capitalRefillDryRunIntent({ item, job, refillPlannerReport }) {
     plannerCandidateMethods: plannerCandidateMethods(job, refillPlannerReport),
     source: refillSource(fundingSource.source),
     destination: refillDestination(job),
-    expectedNetUsd: finiteNumber(job.systemEconomics?.effectiveSystemNetPnlUsd),
+    expectedNetUsd: finiteNumber(economics.effectiveSystemNetPnlUsd),
+    // USD cost-floor projection forwarded from real planner producers only.
+    // Names match readiness blocker projection so consumers can compare floors
+    // across surfaces without re-deriving them. Null entries indicate a
+    // structurally absent producer; the lifecycle handles missing-floor
+    // remediation explicitly without fabricating USD EV.
+    requiredNetUsd: finiteNumber(economics.requiredNetUsd ?? economics.requiredNetPnlUsd),
+    p90CostUsd: finiteNumber(economics.p90CostUsd ?? economics.receiptCostP90Usd ?? economics.receiptCostFloorUsd),
+    effectiveFloorUsd: finiteNumber(economics.effectiveFloorUsd ?? economics.effectiveCostFloorUsd),
+    policyCaps: refillPolicyCaps(job),
+    routeQuoteRef: refillRouteQuoteRef(economics),
+    paybackReserve: job.paybackReserve || null,
+    gasReserve: job.gasReserve || null,
     costs: refillCosts(job, fundingSource),
     blocker: job.blocker || fundingSource.blocker || null,
     governingAgreement: governingAgreement({ item, job, refillPlannerReport, fundingSource }),

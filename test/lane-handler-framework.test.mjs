@@ -109,7 +109,10 @@ test("emits the required handler interface shape with a capital_refill dry-run i
     chain: "bitcoin",
     asset: "BTC",
     token: "0x0000000000000000000000000000000000000000",
+    actual: null,
+    actualDecimal: null,
     estimatedUsd: 91.12,
+    sourceKind: null,
   });
   assert.deepEqual(result.dryRunIntent.destination, {
     chain: "base",
