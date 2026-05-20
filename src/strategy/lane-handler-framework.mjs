@@ -262,6 +262,64 @@ function refillRouteQuoteRef(economics = {}) {
   };
 }
 
+function selectedRouteEconomics(entry = {}, fundingSelected = false) {
+  if (!fundingSelected) {
+    return {
+      routeQuoteRef: null,
+      costs: null,
+      expectedNetUsd: null,
+      requiredNetUsd: null,
+      p90CostUsd: null,
+      effectiveFloorUsd: null,
+    };
+  }
+  const economics = entry.systemEconomics || {};
+  return {
+    routeQuoteRef: refillRouteQuoteRef(economics),
+    costs: refillCosts(entry, entry.fundingSource || {}),
+    expectedNetUsd: finiteNumber(economics.effectiveSystemNetPnlUsd),
+    requiredNetUsd: finiteNumber(economics.requiredNetUsd),
+    p90CostUsd: finiteNumber(economics.p90CostUsd),
+    effectiveFloorUsd: finiteNumber(economics.effectiveFloorUsd),
+  };
+}
+
+function routeSourceCandidate({ entry, method, selectedJobId, selectedMethod }) {
+  const methodName = method.method || null;
+  const selected = entry.jobId === selectedJobId && methodName === selectedMethod;
+  const fundingSelected = entry.fundingSource?.method === methodName;
+  const routeEconomics = selectedRouteEconomics(entry, fundingSelected);
+  return {
+    jobId: entry.jobId || null,
+    method: methodName,
+    selected,
+    availability: method.availability || null,
+    preferred: method.preferred === true,
+    source: refillSource(method.source),
+    destination: refillDestination(entry),
+    ...routeEconomics,
+    missingInputs: [...array(method.missingInputs)],
+    blocker: entry.blocker || entry.fundingSource?.blocker || null,
+  };
+}
+
+function routeSourceCandidates(job, refillPlannerReport) {
+  if (!job?.chain || !job?.asset) return [];
+  const selectedMethod = job.executionMethod || job.fundingSource?.method || null;
+  const rows = [];
+  for (const entry of refillJobs(refillPlannerReport)) {
+    if (!entry) continue;
+    if (entry.chain !== job.chain) continue;
+    if (entry.asset !== job.asset) continue;
+    for (const method of array(entry.candidateMethods)) {
+      if (!method?.method) continue;
+      if (method.requiresManualFunding) continue;
+      rows.push(routeSourceCandidate({ entry, method, selectedJobId: job.jobId, selectedMethod }));
+    }
+  }
+  return rows;
+}
+
 function governingAgreement({ item, job, refillPlannerReport, fundingSource }) {
   const plannerDecision = refillPlannerReport.capitalPlan?.decision || null;
   const selectionStatus = fundingSource.selectionStatus || null;
@@ -411,6 +469,7 @@ function capitalRefillDryRunIntent({ item, job, refillPlannerReport, evCostModel
     jobId: job.jobId || null,
     selectedMethod,
     plannerCandidateMethods: plannerCandidateMethods(job, refillPlannerReport),
+    routeSourceCandidates: routeSourceCandidates(job, refillPlannerReport),
     source,
     destination,
     ...floorNumbers,

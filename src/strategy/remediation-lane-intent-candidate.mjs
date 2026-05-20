@@ -1128,7 +1128,99 @@ function routeRankingEntry({ method, selected, dryRunIntent = {}, selectedHasFre
   };
 }
 
+function routeRankingAmounts({ candidate = {}, sizing = {} } = {}) {
+  const quote = candidate.routeQuoteRef || {};
+  const quotedAmount = positiveBigInt(quote.amount);
+  const minRouteAmount = positiveBigInt(quote.quoteAmountFloor?.minimum) || positiveBigInt(sizing.minRouteAmountSats);
+  const safeAllocatable = positiveBigInt(sizing.safeAllocatableAmountSats);
+  const missingSats =
+    quotedAmount !== null && safeAllocatable !== null && safeAllocatable < quotedAmount
+      ? quotedAmount - safeAllocatable
+      : null;
+  return { quotedAmount, minRouteAmount, safeAllocatable, missingSats };
+}
+
+function routeRankingEconomics(candidate = {}) {
+  return {
+    expectedNetUsd: finiteNumber(candidate.expectedNetUsd),
+    effectiveFloorUsd: finiteNumber(candidate.effectiveFloorUsd),
+    p90CostUsd: finiteNumber(candidate.p90CostUsd),
+    requiredNetUsd: finiteNumber(candidate.requiredNetUsd),
+  };
+}
+
+function routeRankingHasQuoteCost({ candidate = {}, quotedAmount = null } = {}) {
+  const quote = candidate.routeQuoteRef || {};
+  const costs = candidate.costs || {};
+  return (
+    quotedAmount !== null &&
+    finiteNumber(costs.routeKnownCostUsd ?? quote.routeKnownCostUsd) !== null &&
+    finiteNumber(costs.expectedExecutionRefillCostUsd) !== null
+  );
+}
+
+function routeRankingBlocker({ candidate = {}, hasQuoteCost = false, economics = {} } = {}) {
+  if (!hasQuoteCost) return "quote_or_cost_provenance_missing_for_method";
+  if (
+    economics.expectedNetUsd === null ||
+    economics.effectiveFloorUsd === null ||
+    economics.p90CostUsd === null ||
+    economics.requiredNetUsd === null
+  ) {
+    return "route_ev_or_cost_floor_missing_for_method";
+  }
+  if (economics.expectedNetUsd < economics.effectiveFloorUsd) return "route_expected_net_below_effective_floor";
+  return candidate.blocker || null;
+}
+
+function routeRankingQuoteProvenance({ candidate = {}, hasQuoteCost = false } = {}) {
+  if (!hasQuoteCost) return "missing_quote_cost_provenance";
+  return candidate.selected ? "fresh_selected_route_quote" : "fresh_planner_route_quote";
+}
+
+function routeRankingEntryFromCandidate({ candidate = {}, dryRunIntent = {}, sizing = {} } = {}) {
+  const source = candidate.source || {};
+  const destination = candidate.destination || dryRunIntent.destination || {};
+  const amounts = routeRankingAmounts({ candidate, sizing });
+  const economics = routeRankingEconomics(candidate);
+  const hasQuoteCost = routeRankingHasQuoteCost({ candidate, quotedAmount: amounts.quotedAmount });
+  return {
+    method: candidate.method || null,
+    selected: candidate.selected === true,
+    sourceChain: source.chain || null,
+    sourceAsset: source.asset || source.ticker || null,
+    destinationChain: destination.chain || null,
+    destinationAsset: destination.asset || null,
+    quoteProvenance: routeRankingQuoteProvenance({ candidate, hasQuoteCost }),
+    quotedAmountSats: bigintToString(amounts.quotedAmount),
+    minRouteAmountSats: bigintToString(amounts.minRouteAmount),
+    safeAllocatableAmountSats: bigintToString(amounts.safeAllocatable),
+    missingSats: bigintToString(amounts.missingSats),
+    ...economics,
+    canSelectReportOnly: false,
+    blocker: routeRankingBlocker({ candidate, hasQuoteCost, economics }),
+    availability: candidate.availability || null,
+    missingInputs: [...array(candidate.missingInputs)],
+  };
+}
+
 function routeSourceRanking({ dryRunIntent = {}, costs = {} } = {}) {
+  if (array(dryRunIntent.routeSourceCandidates).length > 0) {
+    const sizing = buildReportOnlySizingDecision({
+      dryRunIntent,
+      destination: dryRunIntent.destination,
+      source: dryRunIntent.source,
+    });
+    return array(dryRunIntent.routeSourceCandidates)
+      .map((candidate) => routeRankingEntryFromCandidate({ candidate, dryRunIntent, sizing }))
+      .sort((left, right) => {
+        const leftQuote = left.quoteProvenance === "missing_quote_cost_provenance" ? 1 : 0;
+        const rightQuote = right.quoteProvenance === "missing_quote_cost_provenance" ? 1 : 0;
+        if (leftQuote !== rightQuote) return leftQuote - rightQuote;
+        if (left.selected !== right.selected) return left.selected ? -1 : 1;
+        return String(left.method || "").localeCompare(String(right.method || ""));
+      });
+  }
   const selectedMethod = dryRunIntent.selectedMethod || null;
   const selectedHasFreshQuoteCost = hasFreshSelectedRouteCost({ dryRunIntent, costs });
   return array(dryRunIntent.plannerCandidateMethods).map((method) =>
@@ -1139,6 +1231,91 @@ function routeSourceRanking({ dryRunIntent = {}, costs = {} } = {}) {
       selectedHasFreshQuoteCost,
     }),
   );
+}
+
+function capitalBucketsFromSizing(sizing = {}) {
+  const buckets = [
+    {
+      bucket: "source_inventory",
+      classification: "usable",
+      amountSats: sizing.availableSourceAmountSats,
+      source: sizing.sourceInventoryRef,
+    },
+    {
+      bucket: "payback_reserve",
+      classification: sizing.paybackReserveRef?.amountSats ? "payback reserve" : "reserved",
+      amountSats: sizing.paybackReserveRef?.amountSats || "0",
+      source: sizing.paybackReserveRef,
+    },
+    {
+      bucket: "gas_reserve",
+      classification: sizing.gasReserveRef?.amountSats ? "gas reserve" : "reserved",
+      amountSats: sizing.gasReserveRef?.amountSats || "0",
+      source: sizing.gasReserveRef,
+    },
+    {
+      bucket: "after_payback_reserve",
+      classification: "usable",
+      amountSats: sizing.availableAfterPaybackReserveSats,
+      source: sizing.paybackReserveRef,
+    },
+    {
+      bucket: "after_gas_reserve",
+      classification: "usable",
+      amountSats: sizing.availableAfterGasReserveSats,
+      source: sizing.gasReserveRef,
+    },
+    {
+      bucket: "per_tx_cap",
+      classification: "reserved",
+      amountSats: sizing.maxAllowedByPerTxCapSats,
+      source: sizing.policyCapRef,
+    },
+    {
+      bucket: "per_day_cap",
+      classification: "reserved",
+      amountSats: sizing.maxAllowedByDailyCapSats,
+      source: sizing.policyCapRef,
+    },
+    {
+      bucket: "safe_allocatable",
+      classification: "usable",
+      amountSats: sizing.safeAllocatableAmountSats,
+      source: {
+        producer: "src/strategy/remediation-lane-intent-candidate.mjs",
+        sizingDecision: sizing.sizingDecision,
+        sizingBlocker: sizing.sizingBlocker,
+      },
+    },
+  ];
+  return buckets.filter((entry) => entry.amountSats !== undefined);
+}
+
+function buildWaitlistRecheckCommand({ status, blocker } = {}) {
+  if (status !== "INSUFFICIENT_SAFE_CAPITAL" && blocker !== "safe_allocatable_capital_below_fresh_quote_amount") {
+    return null;
+  }
+  return "node src/cli/run-all-source-deployment-selector.mjs --json";
+}
+
+function buildReallocationCandidate({
+  lifecycle = {},
+  source = {},
+  destination = {},
+  dryRunIntent = {},
+  amountSweep = {},
+}) {
+  if (lifecycle.canIntent !== true) return null;
+  return {
+    reportOnly: true,
+    runtimeAuthority: "none",
+    sourceChain: source.chain || null,
+    sourceAsset: source.asset || null,
+    destinationChain: destination.chain || null,
+    destinationAsset: destination.asset || null,
+    method: dryRunIntent.selectedMethod || null,
+    amountSats: amountSweep.quotedAmountSats || null,
+  };
 }
 
 function evDecomposition({ dryRunIntent = {}, costs = {}, sizing = {} } = {}) {
@@ -1201,6 +1378,7 @@ function buildEconomicAllocationReview({ dryRunIntent = {}, costs = {}, sizing =
     safeAllocatableAmountSats: bigintToString(safeAllocatable),
     legalMinAmountSats: bigintToString(quoteAmount),
     legalMaxAmountSats: bigintToString(safeAllocatable),
+    missingSats: null,
     candidates: [],
     missingProvenance: [...missing],
   };
@@ -1220,10 +1398,12 @@ function buildEconomicAllocationReview({ dryRunIntent = {}, costs = {}, sizing =
   }
 
   if (safeAllocatable < quoteAmount) {
+    amountSweep.missingSats = bigintToString(quoteAmount - safeAllocatable);
     amountSweep.candidates.push({
       amountSats: bigintToString(quoteAmount),
       legal: false,
       reason: "quoted_amount_exceeds_safe_allocatable_capital",
+      missingSats: amountSweep.missingSats,
       expectedNetUsd,
       effectiveFloorUsd,
     });
@@ -1380,6 +1560,19 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     evDecomposition: economicReview.evDecomposition,
     amountSweep: economicReview.amountSweep,
     routeSourceRanking: economicReview.routeSourceRanking,
+    capitalBuckets: capitalBucketsFromSizing(sizing),
+    reallocationCandidate: buildReallocationCandidate({
+      lifecycle,
+      source,
+      destination,
+      dryRunIntent,
+      amountSweep: economicReview.amountSweep,
+    }),
+    waitlistRecheckCommand: buildWaitlistRecheckCommand({
+      status: lifecycle.status,
+      blocker: economicReview.blocker,
+    }),
+    missingSats: economicReview.amountSweep?.missingSats || sizing.sizingDeficitSats || null,
     economicBlocker: economicReview.blocker,
     missingEconomicProvenance: economicReview.missingProvenance,
     costs: { ...costs },

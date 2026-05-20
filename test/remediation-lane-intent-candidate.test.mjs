@@ -29,6 +29,7 @@ function readyHandlerReport(overrides = {}, intentOverrides = {}) {
         "cross_chain_bridge_or_swap",
         "cross_chain_swap_via_btc_intermediate",
       ],
+      routeSourceCandidates: intentOverrides.routeSourceCandidates || [],
       source: intentOverrides.source || {
         chain: "bitcoin",
         asset: "BTC",
@@ -396,6 +397,56 @@ test("fresh quote amount above safe capital blocks canIntent without selecting a
         estimatedAssetValueUsd: 80,
       },
       policyCaps: { tinyLivePerTxUsd: 25, perTxUsd: 25, perDayUsd: 25, maxDailyLossUsd: 10 },
+      routeSourceCandidates: [
+        {
+          method: "synthetic_bridge_alpha",
+          selected: false,
+          availability: "ready",
+          source: { chain: "sourceA", asset: "SRC_A", actual: "77777", estimatedUsd: 60 },
+          destination: { chain: "destA", asset: "DST_A" },
+          routeQuoteRef: {
+            amount: "100000",
+            routeKnownCostUsd: 0.1,
+          },
+          costs: {
+            expectedExecutionRefillCostUsd: 0.2,
+            routeKnownCostUsd: 0.1,
+          },
+          expectedNetUsd: 1.8,
+          requiredNetUsd: 0.95,
+          p90CostUsd: 0.85,
+          effectiveFloorUsd: 0.95,
+        },
+        {
+          method: "synthetic_bridge_beta",
+          selected: true,
+          availability: "ready",
+          source: { chain: "sourceB", asset: "SRC_B", actual: "50000", estimatedUsd: 50 },
+          destination: { chain: "destA", asset: "DST_A" },
+          routeQuoteRef: {
+            amount: "100000",
+            routeKnownCostUsd: 0.05,
+          },
+          costs: {
+            expectedExecutionRefillCostUsd: 0.15,
+            routeKnownCostUsd: 0.05,
+          },
+          expectedNetUsd: 2,
+          requiredNetUsd: 0.95,
+          p90CostUsd: 0.85,
+          effectiveFloorUsd: 0.95,
+        },
+        {
+          method: "synthetic_quoteless",
+          selected: false,
+          availability: "conditional",
+          source: { chain: "sourceC", asset: "SRC_C", actual: "12345", estimatedUsd: 12 },
+          destination: { chain: "destA", asset: "DST_A" },
+          routeQuoteRef: null,
+          costs: null,
+          missingInputs: ["quote_missing"],
+        },
+      ],
     },
   );
   const report = buildLaneIntentCandidateReport({
@@ -408,6 +459,58 @@ test("fresh quote amount above safe capital blocks canIntent without selecting a
   assert.equal(candidate.canLive, false);
   assert.equal(candidate.amountSweep.candidates[0].legal, false);
   assert.equal(candidate.amountSweep.candidates[0].reason, "quoted_amount_exceeds_safe_allocatable_capital");
+  assert.equal(candidate.missingSats, "68750");
+  assert.equal(candidate.amountSweep.candidates[0].missingSats, "68750");
+  assert.equal(candidate.waitlistRecheckCommand, "node src/cli/run-all-source-deployment-selector.mjs --json");
+  assert.deepEqual(
+    candidate.routeSourceRanking.map((entry) => entry.method),
+    ["synthetic_bridge_beta", "synthetic_bridge_alpha", "synthetic_quoteless"],
+  );
+  assert.equal(candidate.routeSourceRanking[0].quoteProvenance, "fresh_selected_route_quote");
+  assert.equal(candidate.routeSourceRanking[1].quoteProvenance, "fresh_planner_route_quote");
+  assert.equal(candidate.routeSourceRanking[2].blocker, "quote_or_cost_provenance_missing_for_method");
+  assert.equal(candidate.capitalBuckets.find((entry) => entry.bucket === "safe_allocatable").amountSats, "31250");
+  assert.equal(candidate.capitalBuckets.find((entry) => entry.bucket === "payback_reserve").classification, "reserved");
+  assert.equal(candidate.reallocationCandidate, null);
+});
+
+test("canIntent report-only candidate never implies canLive", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(
+      {},
+      {
+        expectedNetUsd: 2,
+        requiredNetUsd: 0.95,
+        p90CostUsd: 0.85,
+        effectiveFloorUsd: 0.95,
+        routeQuoteRef: {
+          routeKey: "synthetic-source->synthetic-dest",
+          amount: "100000",
+          routeInputUsd: 80,
+          routeNetEdgeUsd: 2.5,
+          routeExecutableNetEdgeUsd: 2.5,
+          routeKnownCostUsd: 0.05,
+        },
+        source: { chain: "intentSource", asset: "INT_SRC", token: "0xs", actual: "200000", estimatedUsd: 160 },
+        destination: {
+          chain: "intentDest",
+          asset: "INT_DST",
+          token: "0xd",
+          targetAmount: "100000",
+          targetAmountDecimal: 0.001,
+          estimatedAssetValueUsd: 80,
+        },
+        policyCaps: { tinyLivePerTxUsd: 500, perTxUsd: 500, perDayUsd: 500, maxDailyLossUsd: 10 },
+      },
+    ),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "READY_FOR_INTENT_CANDIDATE");
+  assert.equal(candidate.canIntent, true);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reallocationCandidate.reportOnly, true);
+  assert.equal(candidate.reallocationCandidate.runtimeAuthority, "none");
 });
 
 test("anti-overfit: distinct method tuples both block on USD cost-floor when missing", () => {
