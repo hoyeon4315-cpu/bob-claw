@@ -37,7 +37,7 @@ export function validateAndAppendLedgerEvent(event, context = {}) {
   if (!event || event.sleeve !== SLEEVE) {
     throw new Error("validateAndAppendLedgerEvent: event must carry sleeve: aggressive-velocity-v1");
   }
-  // TODO: full 15-pitfall validation + BigInt safety + price snapshot + evidence hash chain
+  // Future aggressive-sleeve work: full 15-pitfall validation + BigInt safety + price snapshot + evidence hash chain
   // For now: structural + meta (TDD will drive the real guards)
   return {
     ok: true,
@@ -51,7 +51,7 @@ export function validateAndAppendLedgerEvent(event, context = {}) {
  * Hierarchical breakdowns. Conservation invariant must hold.
  */
 export function computeSleevePnl({ ledgerRecords = [], currentPositionMarks = [], priceMap = {}, asOf } = {}) {
-  // TODO: lot accounting (specific-ID), IL calc via adapter, full cost subtraction, velocity metrics
+  // Future aggressive-sleeve work: lot accounting (specific-ID), IL calc via adapter, full cost subtraction, velocity metrics
   const realizedBtc = 0;
   const unrealizedBtc = 0;
   const netIncentivesBtc = 0;

@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { buildAutoKillConfig } from "../src/config/auto-kill.mjs";
+import { evaluateApprovalHygiene } from "../src/executor/policy/approval-hygiene.mjs";
+import { evaluateCapitalAuditGate } from "../src/executor/policy/capital-audit-gate.mjs";
 import { buildPolicyCoverageReport } from "../src/executor/policy/coverage-report.mjs";
+import { evaluateGasPriceCeiling } from "../src/executor/policy/gas-price-ceiling.mjs";
 import { evaluateIntentPolicies } from "../src/executor/policy/index.mjs";
+import { evaluatePreBroadcastSimulation } from "../src/executor/policy/pre-broadcast-simulator.mjs";
 
 const NOW = "2026-05-09T00:00:00.000Z";
 
@@ -241,4 +245,161 @@ test("policy coverage report maps all 11 AGENTS runtime safety checks", () => {
   const gasBudget = report.checks.find((item) => item.id === "failed_gas_budget_guard");
   assert.ok(gasBudget.blockers.includes("daily_gas_budget_exceeded"));
   assert.equal(gasBudget.policyResult, "cap_check+gas_budget");
+});
+
+test("policy coverage 12: approval hygiene blocks unsafe approval modes and warns on unknown modes", () => {
+  const blocked = evaluateApprovalHygiene({
+    intent: {
+      approval: {
+        token: "",
+        spender: "",
+        amount: "-1",
+        mode: "permit2",
+      },
+    },
+    now: NOW,
+  });
+  assert.equal(blocked.decision, "BLOCK");
+  assert.ok(blocked.blockers.includes("approval_target_missing"));
+  assert.ok(blocked.blockers.includes("approval_exact_amount_missing"));
+
+  const timeBoxed = evaluateApprovalHygiene({
+    intent: {
+      approval: {
+        token: "0x1",
+        spender: "0x2",
+        amount: "1",
+        mode: "time_boxed",
+        expiresAt: "2026-05-10T12:00:00.000Z",
+        revokeWhenIdle: false,
+      },
+    },
+    maxApprovalTtlMs: 60 * 60 * 1000,
+    now: NOW,
+  });
+  assert.equal(timeBoxed.decision, "BLOCK");
+  assert.ok(timeBoxed.blockers.includes("approval_ttl_exceeds_policy"));
+  assert.ok(timeBoxed.blockers.includes("approval_idle_revoke_missing"));
+
+  const warning = evaluateApprovalHygiene({
+    intent: {
+      approval: {
+        token: "0x1",
+        spender: "0x2",
+        amount: "1",
+        mode: "custom_mode",
+      },
+    },
+    now: NOW,
+  });
+  assert.equal(warning.decision, "ALLOW");
+  assert.deepEqual(warning.warnings, ["approval_mode_unrecognized"]);
+});
+
+test("policy coverage 13: capital audit gate blocks flagged strategies and otherwise allows", () => {
+  const noState = evaluateCapitalAuditGate({
+    intent: { strategyId: "wrapper-btc-arbitrage" },
+    capitalAuditState: null,
+    now: NOW,
+  });
+  assert.equal(noState.decision, "ALLOW");
+  assert.equal(noState.metrics.bypassReason, "feature_disabled_or_no_state");
+
+  const flagged = evaluateCapitalAuditGate({
+    intent: { strategyId: "wrapper-btc-arbitrage" },
+    capitalAuditState: {
+      flaggedStrategies: [
+        {
+          strategyId: "wrapper-btc-arbitrage",
+          unmatchedCount: 2,
+          latestUnmatchedAt: NOW,
+        },
+      ],
+    },
+    now: NOW,
+  });
+  assert.equal(flagged.decision, "BLOCK");
+  assert.deepEqual(flagged.blockers, ["capital_audit_pair_unmatched"]);
+  assert.equal(flagged.metrics.unmatchedCount, 2);
+});
+
+test("policy coverage 14: gas price ceiling uses recent history and ignores malformed rows", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-gas-price-"));
+  const historyPath = join(root, "gas-history-base.jsonl");
+  await writeFile(
+    historyPath,
+    [
+      JSON.stringify({ observedAt: "2026-05-08T23:30:00.000Z", gasPriceGwei: 12 }),
+      "not-json",
+      JSON.stringify({ observedAt: "2026-05-08T23:40:00.000Z", gasPriceGwei: 15 }),
+      JSON.stringify({ observedAt: "2026-05-08T23:50:00.000Z", gasPriceGwei: 20 }),
+    ].join("\n"),
+    "utf8",
+  );
+
+  const blocked = evaluateGasPriceCeiling({
+    intent: { chain: "base", gasPriceGwei: 25 },
+    now: NOW,
+    dataDir: root,
+  });
+  assert.equal(blocked.decision, "BLOCK");
+  assert.deepEqual(blocked.blockers, ["gas_price_above_ceiling"]);
+  assert.equal(blocked.metrics.historyEntriesCount, 3);
+  assert.equal(blocked.metrics.p90GasPriceGwei, 20);
+
+  const disabled = evaluateGasPriceCeiling({
+    intent: { chain: "base", gasPriceGwei: 25 },
+    now: NOW,
+    dataDir: root,
+    profile: { gasPriceCeiling: false },
+  });
+  assert.equal(disabled.decision, "ALLOW");
+  assert.equal(disabled.metrics.enabled, false);
+});
+
+test("policy coverage 15: pre-broadcast simulation records unavailable and revert outcomes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bob-claw-prebroadcast-"));
+  const auditPath = join(root, "pre-broadcast.jsonl");
+
+  const unavailable = await evaluatePreBroadcastSimulation({
+    intent: { strategyId: "wrapper-btc-arbitrage", chain: "missing-rpc-chain" },
+    profile: { preBroadcastSimulationEnabled: true },
+    now: NOW,
+    auditPath,
+  });
+  assert.equal(unavailable.decision, "BLOCK");
+  assert.deepEqual(unavailable.blockers, ["pre_broadcast_simulation_unavailable"]);
+
+  const reverted = await evaluatePreBroadcastSimulation({
+    intent: { strategyId: "wrapper-btc-arbitrage", chain: "base", tx: { to: "0x1", data: "0x" } },
+    profile: { preBroadcastSimulationEnabled: true },
+    provider: {
+      async call() {
+        const error = new Error("reverted");
+        error.code = "CALL_EXCEPTION";
+        throw error;
+      },
+    },
+    now: NOW,
+    auditPath,
+  });
+  assert.equal(reverted.decision, "BLOCK");
+  assert.deepEqual(reverted.blockers, ["pre_broadcast_simulation_revert"]);
+
+  const allowed = await evaluatePreBroadcastSimulation({
+    intent: { strategyId: "wrapper-btc-arbitrage", chain: "base", tx: { to: "0x1", data: "0x" } },
+    profile: { preBroadcastSimulationEnabled: true },
+    provider: {
+      async call() {
+        return "0x";
+      },
+    },
+    now: NOW,
+    auditPath,
+  });
+  assert.equal(allowed.decision, "ALLOW");
+  assert.equal(allowed.metrics.simulated, true);
+
+  const auditLines = (await readFile(auditPath, "utf8")).trim().split("\n");
+  assert.equal(auditLines.length, 2);
 });

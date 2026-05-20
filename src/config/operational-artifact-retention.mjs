@@ -1,8 +1,11 @@
 export const operationalArtifactRetentionConfig = Object.freeze({
   archiveCandidateMinAgeDays: 30,
   disposableCacheMinAgeDays: 7,
+  compactCandidateMinBytes: 25 * 1024 * 1024,
+  compactRetainLines: 5000,
   topFilesLimit: 10,
   archiveDestinationSegments: ["_archive", "operational-artifacts"],
+  archiveManifestBasename: "archive-manifest.jsonl",
   preserveLiveTruthSuffixes: ["-latest.json"],
   preserveLiveTruthBasenames: new Set([
     "approval-exposure.json",
@@ -45,17 +48,19 @@ export const operationalArtifactRetentionConfig = Object.freeze({
     "receipt-reconciliations.jsonl",
     "signer-audit.jsonl",
   ]),
-  archiveCandidateTokens: [
-    "history",
+  compactCandidateTokens: [
     "inventory",
     "observation",
     "opportunit",
-    "quote",
-    "route",
     "run",
-    "sample",
     "shadow",
     "snapshot",
+  ],
+  archiveCandidateTokens: [
+    "history",
+    "quote",
+    "route",
+    "sample",
     "sweep",
   ],
   disposablePathFragments: ["/cache/", "/temp/", "/tmp/"],

@@ -54,7 +54,7 @@ export function runProductAnalyticsCheck(argv = process.argv.slice(2)) {
   // Test blocked sensitive property
   const blockedResult = validateProductAnalyticsEvent("dashboard_interaction", {
     surface: "dashboard",
-    privateKey: "0xdeadbeef...", // should be blocked
+    commandOutput: "sensitive payload should be blocked",
   });
 
   const recorded = tracker.events();

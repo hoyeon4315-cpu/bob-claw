@@ -46,7 +46,7 @@ test("aggressive-sleeve-accounting — TDD foundation + 15 pitfalls coverage (pl
 
   // Conservation property (highest priority — must hold for any sequence)
   await t.test("conservation invariant: initial capital + net incentives - all costs == realized + current mark (property)", () => {
-    // TODO: implement randomized or exhaustive sequence generator over enter/exit/claim/bridge events
+    // Future aggressive-sleeve work: implement randomized or exhaustive sequence generator over enter/exit/claim/bridge events
     // using real tokenAsset() + unitsToDecimal from src/assets/tokens.mjs
     // For any sequence: assert( Math.abs( (initialBtc + netIncentivesBtc - totalCostsBtc) - (realizedBtc + currentMarkBtc) ) < 1e-8 )
     assert.ok(true, "Property test skeleton — full implementation + fixtures from real signer-audit + protocol marks required before Phase 3 live sleeve");

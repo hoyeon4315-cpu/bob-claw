@@ -5,7 +5,6 @@ import { getNumberEnv, getEnv } from "../config/env.mjs";
 import { resolveDefaultHeartbeatPath } from "../executor/runtime-paths.mjs";
 import { runWatchdogLoop } from "../executor/watchdog/runner.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
-
 // TODO(blocker-resolver): monitor logs/blocker-resolver-audit.jsonl heartbeat
 // alongside signer heartbeat once the resolver loop is launchd-managed.
 

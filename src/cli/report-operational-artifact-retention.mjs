@@ -19,12 +19,16 @@ function parseArgs(argv) {
   return {
     json: flags.has("--json"),
     archive: flags.has("--archive"),
+    compact: flags.has("--compact"),
     dryRun: flags.has("--dry-run") ? true : undefined,
     dataDir: options["data-dir"] || config.dataDir,
     logsDir: options["logs-dir"] || "./logs",
     dashboardDir: options["dashboard-dir"] || "./dashboard/public",
     archiveDir:
       options["archive-dir"] || join(config.dataDir, ...operationalArtifactRetentionConfig.archiveDestinationSegments),
+    manifestPath: options["manifest-path"],
+    compactMinBytes: options["compact-min-bytes"] ? Number(options["compact-min-bytes"]) : undefined,
+    retainLines: options["retain-lines"] ? Number(options["retain-lines"]) : undefined,
     top: options.top ? Number(options.top) : undefined,
   };
 }
@@ -45,7 +49,11 @@ async function main() {
     dashboardDir: resolve(args.dashboardDir),
     archiveDir: resolve(args.archiveDir),
     archive: args.archive,
+    compact: args.compact,
     dryRun: args.dryRun,
+    manifestPath: args.manifestPath ? resolve(args.manifestPath) : undefined,
+    compactCandidateMinBytes: args.compactMinBytes,
+    compactRetainLines: args.retainLines,
     topFilesLimit: args.top,
   });
 
@@ -56,11 +64,13 @@ async function main() {
 
   console.log(`dryRun=${report.dryRun}`);
   console.log(`archiveEnabled=${report.archiveEnabled}`);
+  console.log(`compactEnabled=${report.compactEnabled}`);
   console.log(`totalBytes=${report.totalBytes}`);
   console.log(`reclaimableBytes=${report.reclaimableBytes}`);
   console.log(`total=${bytesText(report.totalBytes)}`);
   console.log(`reclaimable=${bytesText(report.reclaimableBytes)}`);
   console.log(`archiveDir=${report.archiveDir}`);
+  console.log(`manifestPath=${report.manifestPath}`);
   for (const [category, summary] of Object.entries(report.byCategory)) {
     console.log(
       `${category} files=${summary.fileCount} total=${bytesText(summary.totalBytes)} reclaimable=${bytesText(summary.reclaimableBytes)}`,

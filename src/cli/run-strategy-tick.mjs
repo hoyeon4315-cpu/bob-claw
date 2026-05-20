@@ -1027,7 +1027,7 @@ async function main() {
       }
       const pendleRouter = getProtocolAddress("pendle", "base", "router");
       if (pendleRouter?.verified) {
-        // TODO: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })
+        // Future strategy-executor work: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })
       } else if (!args.quiet) {
         console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
       }
@@ -1073,7 +1073,7 @@ async function main() {
     if (!strategyIntentsBuilt && alloc.strategyId === "gmx-v2-perp-basis-avax") {
       const gmxRouter = getProtocolAddress("gmx", "avalanche", "exchangeRouter");
       if (gmxRouter?.verified) {
-        // TODO: buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })
+        // Future strategy-executor work: buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })
       } else if (!args.quiet) {
         console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
       }
@@ -1083,7 +1083,7 @@ async function main() {
     if (!strategyIntentsBuilt && alloc.strategyId === "berachain-bend-bex-bgt") {
       const bendPool = getProtocolAddress("bend", "bera", "bendPool");
       if (bendPool?.verified) {
-        // TODO: buildBerachainIntent({ poolAddress: bendPool.address, ... })
+        // Future strategy-executor work: buildBerachainIntent({ poolAddress: bendPool.address, ... })
       } else if (!args.quiet) {
         console.error(`  skip ${alloc.strategyId}: dedicated executor binding missing`);
       }

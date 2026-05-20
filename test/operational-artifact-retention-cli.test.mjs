@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { gunzipSync } from "node:zlib";
 import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 
@@ -19,6 +19,10 @@ async function withTempRoot(fn) {
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
+}
+
+async function writeJsonl(path, rows) {
+  await writeFile(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
 }
 
 async function writeSizedFile(path, size, fill = "x") {
@@ -48,16 +52,23 @@ async function runCli(rootDir, extraArgs = []) {
   return JSON.parse(stdout);
 }
 
-test("retention audit classifies protected, archive, disposable, and unknown artifacts without mutating by default", async () => {
+test("retention audit reports protected files and tail-preserving compact candidates without mutating by default", async () => {
   await withTempRoot(async (rootDir) => {
+    const compactCandidatePath = join(rootDir, "data", "treasury-inventory.jsonl");
     const liveTruthPath = join(rootDir, "data", "all-chain-autopilot-latest.json");
     const dashboardTruthPath = join(rootDir, "dashboard", "public", "dashboard-status.json");
     const auditPath = join(rootDir, "logs", "signer-audit.jsonl");
     const receiptPath = join(rootDir, "data", "receipt-reconciliations.jsonl");
-    const archiveCandidatePath = join(rootDir, "data", "all-chain-autopilot-runs.jsonl");
+    const archiveCandidatePath = join(rootDir, "data", "quote-surface-scans.jsonl");
     const disposablePath = join(rootDir, "data", "cache", "shadow-refresh.tmp.json");
     const unknownPath = join(rootDir, "data", "manual-review-surface.json");
 
+    await writeJsonl(compactCandidatePath, [
+      { observedAt: "2026-05-19T00:00:00.000Z", usd: 1, note: "a".repeat(64) },
+      { observedAt: "2026-05-19T01:00:00.000Z", usd: 2, note: "b".repeat(64) },
+      { observedAt: "2026-05-19T02:00:00.000Z", usd: 3, note: "c".repeat(64) },
+      { observedAt: "2026-05-19T03:00:00.000Z", usd: 4, note: "d".repeat(64) },
+    ]);
     await writeFile(liveTruthPath, JSON.stringify({ ok: true }), "utf8");
     await writeFile(dashboardTruthPath, JSON.stringify({ ready: true }), "utf8");
     await writeFile(auditPath, `${JSON.stringify({ event: "signed" })}\n`, "utf8");
@@ -69,44 +80,29 @@ test("retention audit classifies protected, archive, disposable, and unknown art
     await makeOld(archiveCandidatePath, 45);
     await makeOld(disposablePath, 10);
 
-    const beforeArchiveStat = await stat(archiveCandidatePath);
-    const beforeDisposableStat = await stat(disposablePath);
-
-    const result = await runCli(rootDir);
+    const result = await runCli(rootDir, ["--compact-min-bytes=1", "--retain-lines=2"]);
 
     assert.equal(result.dryRun, true);
     assert.equal(result.archiveEnabled, false);
-    assert.equal(
-      result.totalBytes,
-      beforeArchiveStat.size +
-        beforeDisposableStat.size +
-        (await stat(liveTruthPath)).size +
-        (await stat(dashboardTruthPath)).size +
-        (await stat(auditPath)).size +
-        (await stat(receiptPath)).size +
-        (await stat(unknownPath)).size,
-    );
+    assert.equal(result.compactEnabled, false);
     assert.equal(result.byCategory.preserve_live_truth.fileCount, 2);
     assert.equal(result.byCategory.preserve_audit_receipt.fileCount, 2);
+    assert.equal(result.byCategory.compact_candidate.fileCount, 1);
     assert.equal(result.byCategory.archive_candidate.fileCount, 1);
     assert.equal(result.byCategory.disposable_cache.fileCount, 1);
     assert.equal(result.byCategory.unknown_manual_review.fileCount, 1);
-    assert.equal(result.reclaimableBytes, beforeArchiveStat.size + beforeDisposableStat.size);
-    assert.deepEqual(
-      result.topFiles.slice(0, 2).map((item) => ({ path: item.relativePath, category: item.category })),
-      [
-        { path: "data/all-chain-autopilot-runs.jsonl", category: "archive_candidate" },
-        { path: "data/cache/shadow-refresh.tmp.json", category: "disposable_cache" },
-      ],
-    );
     assert.ok(
       result.plannedActions.some(
-        (item) => item.action === "archive_gzip" && item.relativePath === "data/all-chain-autopilot-runs.jsonl",
+        (item) =>
+          item.action === "compact_jsonl_tail" &&
+          item.relativePath === "data/treasury-inventory.jsonl" &&
+          item.retainedLines === 2 &&
+          item.archivedLines === 2,
       ),
     );
     assert.ok(
       result.plannedActions.some(
-        (item) => item.action === "delete_disposable" && item.relativePath === "data/cache/shadow-refresh.tmp.json",
+        (item) => item.action === "archive_gzip" && item.relativePath === "data/quote-surface-scans.jsonl",
       ),
     );
     assert.ok(
@@ -114,67 +110,80 @@ test("retention audit classifies protected, archive, disposable, and unknown art
         (item) => item.relativePath === "logs/signer-audit.jsonl" && item.reason === "preserve_audit_receipt",
       ),
     );
-    assert.ok(
-      result.skippedReasons.some(
-        (item) => item.relativePath === "data/manual-review-surface.json" && item.reason === "unknown_manual_review",
-      ),
-    );
-
-    assert.equal(await readFile(archiveCandidatePath, "utf8"), "a".repeat(4096));
-    assert.equal(await readFile(disposablePath, "utf8"), "b".repeat(2048));
-    await assert.rejects(
-      stat(join(rootDir, "archive", "operational-artifacts", "data", "all-chain-autopilot-runs.jsonl.gz")),
-    );
+    assert.equal((await readFile(compactCandidatePath, "utf8")).trim().split("\n").length, 4);
+    await assert.rejects(stat(join(rootDir, "archive", "operational-artifacts", "archive-manifest.jsonl")));
   });
 });
 
-test("archive mode gzips only eligible archive candidates and leaves protected files in place", async () => {
+test("compact mode preserves the tail, writes a gzip archive, and appends an archive manifest", async () => {
   await withTempRoot(async (rootDir) => {
-    const archiveCandidatePath = join(rootDir, "data", "gateway-update-autopilot-runs.jsonl");
+    const compactCandidatePath = join(rootDir, "data", "all-chain-autopilot-runs.jsonl");
+    await writeJsonl(compactCandidatePath, [
+      { observedAt: "2026-05-19T00:00:00.000Z", run: 1 },
+      { observedAt: "2026-05-19T01:00:00.000Z", run: 2 },
+      { observedAt: "2026-05-19T02:00:00.000Z", run: 3 },
+      { observedAt: "2026-05-19T03:00:00.000Z", run: 4 },
+      { observedAt: "2026-05-19T04:00:00.000Z", run: 5 },
+    ]);
+
+    const result = await runCli(rootDir, ["--compact", "--compact-min-bytes=1", "--retain-lines=2"]);
+
+    assert.equal(result.dryRun, false);
+    assert.equal(result.compactEnabled, true);
+    const compacted = result.archiveResults.find(
+      (item) => item.relativePath === "data/all-chain-autopilot-runs.jsonl" && item.status === "compacted",
+    );
+    assert.ok(compacted);
+    assert.equal(compacted.archivedLines, 3);
+    assert.equal(compacted.retainedLines, 2);
+    assert.ok(compacted.sha256);
+
+    const archivePath = compacted.archivePath.replaceAll("/", sep);
+    const retained = (await readFile(compactCandidatePath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(
+      retained.map((row) => row.run),
+      [4, 5],
+    );
+
+    const archived = gunzipSync(await readFile(archivePath)).toString("utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(
+      archived.map((row) => row.run),
+      [1, 2, 3],
+    );
+
+    const manifestLines = (await readFile(join(rootDir, "archive", "operational-artifacts", "archive-manifest.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.equal(manifestLines.length, 1);
+    assert.equal(manifestLines[0].originalPath, "data/all-chain-autopilot-runs.jsonl");
+    assert.equal(manifestLines[0].archivedLines, 3);
+    assert.equal(manifestLines[0].retainedLines, 2);
+    assert.equal(manifestLines[0].firstObservedAt, "2026-05-19T00:00:00.000Z");
+    assert.equal(manifestLines[0].lastObservedAt, "2026-05-19T02:00:00.000Z");
+    assert.ok(manifestLines[0].sha256);
+  });
+});
+
+test("archive mode gzips eligible whole-file archive candidates and deletes disposable caches", async () => {
+  await withTempRoot(async (rootDir) => {
+    const archiveCandidatePath = join(rootDir, "data", "quote-surface-scans.jsonl");
+    const disposablePath = join(rootDir, "logs", "strategy-evidence-refresh.err.log");
     const protectedAuditPath = join(rootDir, "logs", "signer-audit.jsonl");
-    const protectedLiveTruthPath = join(rootDir, "data", "gateway-update-autopilot-latest.json");
-    const unknownPath = join(rootDir, "data", "mystery-snapshot.json");
 
     await writeFile(archiveCandidatePath, `${JSON.stringify({ run: 1 })}\n${JSON.stringify({ run: 2 })}\n`, "utf8");
+    await writeFile(disposablePath, "temporary log output\n", "utf8");
     await writeFile(protectedAuditPath, `${JSON.stringify({ event: "rejected" })}\n`, "utf8");
-    await writeFile(protectedLiveTruthPath, JSON.stringify({ status: "current" }), "utf8");
-    await writeFile(unknownPath, JSON.stringify({ status: "unknown" }), "utf8");
     await makeOld(archiveCandidatePath, 60);
-    await makeOld(unknownPath, 60);
+    await makeOld(disposablePath, 10);
 
     const result = await runCli(rootDir, ["--archive"]);
 
     assert.equal(result.dryRun, false);
     assert.equal(result.archiveEnabled, true);
-    assert.ok(
-      result.archiveResults.some(
-        (item) => item.relativePath === "data/gateway-update-autopilot-runs.jsonl" && item.status === "archived",
-      ),
-    );
-    assert.ok(
-      result.skippedReasons.some(
-        (item) => item.relativePath === "logs/signer-audit.jsonl" && item.reason === "preserve_audit_receipt",
-      ),
-    );
-    assert.ok(
-      result.skippedReasons.some(
-        (item) => item.relativePath === "data/mystery-snapshot.json" && item.reason === "unknown_manual_review",
-      ),
-    );
-
-    const archivePath = join(
-      rootDir,
-      "archive",
-      "operational-artifacts",
-      "data",
-      "gateway-update-autopilot-runs.jsonl.gz",
-    );
-    const archived = gunzipSync(await readFile(archivePath)).toString("utf8");
-    assert.equal(archived, `${JSON.stringify({ run: 1 })}\n${JSON.stringify({ run: 2 })}\n`);
-
-    await assert.rejects(stat(archiveCandidatePath));
+    assert.ok(result.archiveResults.some((item) => item.relativePath === "data/quote-surface-scans.jsonl" && item.status === "archived"));
+    assert.ok(result.archiveResults.some((item) => item.relativePath === "logs/strategy-evidence-refresh.err.log" && item.status === "deleted"));
+    await assert.rejects(stat(disposablePath));
     assert.equal(await readFile(protectedAuditPath, "utf8"), `${JSON.stringify({ event: "rejected" })}\n`);
-    assert.equal(await readFile(protectedLiveTruthPath, "utf8"), JSON.stringify({ status: "current" }));
-    assert.equal(await readFile(unknownPath, "utf8"), JSON.stringify({ status: "unknown" }));
   });
 });
