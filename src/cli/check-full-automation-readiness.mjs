@@ -201,6 +201,7 @@ function classifyRefillIssue(reason = null) {
   const text = String(reason || "").trim();
   if (!text) return "unknown";
   if (text === "routing_exhausted") return "routing_exhausted";
+  if (text === "quote_amount_too_low") return "quote_amount_below_minimum";
   if (
     /insufficient source balance|source_inventory_below_target_amount|source_inventory_reserved|source inventory|insufficient_funds|insufficient balance/iu.test(
       text,
@@ -222,6 +223,14 @@ function classifyRefillIssue(reason = null) {
     return "route_unresolved";
   }
   return "execution_unresolved";
+}
+
+function normalizeQuoteAmountFloor(value) {
+  if (!value || typeof value !== "object") return null;
+  const minimum = value.minimum != null ? String(value.minimum) : null;
+  const actual = value.actual != null ? String(value.actual) : null;
+  if (!minimum && !actual) return null;
+  return { minimum, actual };
 }
 
 function finiteNumberOrNull(value) {
@@ -267,6 +276,7 @@ function normalizeRefillBlocker(item = {}) {
     taxonomy: item.taxonomy || null,
     routeDeferralReason: item.routeDeferralReason || null,
     routeDeferralAction: item.routeDeferralAction || null,
+    quoteAmountFloor: normalizeQuoteAmountFloor(item.quoteAmountFloor),
     ...refillBlockerCostEvidence(item),
     stalePlannerMethod: normalizeStalePlannerMethod(item.stalePlannerMethod),
   };

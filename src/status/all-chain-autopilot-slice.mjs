@@ -118,35 +118,52 @@ function refillBlockerStalePlannerMethod(item, plannerMethodsByResource) {
   });
 }
 
+function refillBlockerIdentityFields(item) {
+  return {
+    jobId: item.jobId || null,
+    strategyId: item.strategyId || null,
+    chain: item.chain || null,
+    asset: item.asset || null,
+    targetAsset: item.targetAsset || item.asset || null,
+    sourceChain: item.sourceChain || null,
+    sourceAsset: item.sourceAsset || null,
+    selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
+    executorFamily: item.executorFamily || null,
+    routeFamily: item.routeFamily || null,
+  };
+}
+
+function refillBlockerTaxonomyFields(item) {
+  return {
+    taxonomy: item.blockerTaxonomy || null,
+    scope: item.blockerScope || null,
+    improvementType: item.improvementType || null,
+    waitingHelps: item.waitingHelps === true,
+    dryRunCommand: item.dryRunCommand || null,
+    safeResetCommand: item.safeResetCommand || null,
+    nextOperatorAction: item.nextOperatorAction || null,
+    routeDeferralReason: item.routeDeferralReason || null,
+    routeDeferralAction: item.routeDeferralAction || null,
+    quoteAmountFloor: item.quoteAmountFloor || null,
+  };
+}
+
+function buildRefillBlockerEntry(item, { policyBlockerByJobId, plannerMethodsByResource }) {
+  return {
+    ...refillBlockerIdentityFields(item),
+    reason: refillReason(item, policyBlockerByJobId),
+    ...refillBlockerTaxonomyFields(item),
+    stalePlannerMethod: refillBlockerStalePlannerMethod(item, plannerMethodsByResource),
+  };
+}
+
 function refillBlockers(
   refillExecutions = [],
   { policyBlockerByJobId = new Map(), plannerMethodsByResource = null } = {},
 ) {
   return refillExecutions
     .filter((item) => !item.executed)
-    .map((item) => ({
-      jobId: item.jobId || null,
-      strategyId: item.strategyId || null,
-      chain: item.chain || null,
-      asset: item.asset || null,
-      targetAsset: item.targetAsset || item.asset || null,
-      sourceChain: item.sourceChain || null,
-      sourceAsset: item.sourceAsset || null,
-      reason: refillReason(item, policyBlockerByJobId),
-      selectedMethod: item.selectedExecutionMethod || item.executionMethod || null,
-      executorFamily: item.executorFamily || null,
-      routeFamily: item.routeFamily || null,
-      taxonomy: item.blockerTaxonomy || null,
-      scope: item.blockerScope || null,
-      improvementType: item.improvementType || null,
-      waitingHelps: item.waitingHelps === true,
-      dryRunCommand: item.dryRunCommand || null,
-      safeResetCommand: item.safeResetCommand || null,
-      nextOperatorAction: item.nextOperatorAction || null,
-      routeDeferralReason: item.routeDeferralReason || null,
-      routeDeferralAction: item.routeDeferralAction || null,
-      stalePlannerMethod: refillBlockerStalePlannerMethod(item, plannerMethodsByResource),
-    }))
+    .map((item) => buildRefillBlockerEntry(item, { policyBlockerByJobId, plannerMethodsByResource }))
     .filter((item) => item.reason)
     .slice(0, 8);
 }

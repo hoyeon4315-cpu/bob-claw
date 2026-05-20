@@ -117,6 +117,39 @@ test("refillBlockerDetails accepts alias keys for numeric cost-floor fields (no 
   assert.equal(entry.effectiveFloorUsd, 0.8);
 });
 
+test("refillBlockerDetails projects quoteAmountFloor and classifies quote_amount_too_low as quote_amount_below_minimum", () => {
+  const projected = refillBlockerDetails([
+    {
+      chain: "syntheticDst",
+      asset: "SYN_ASSET",
+      sourceChain: "syntheticSrc",
+      sourceAsset: "SYN_SRC",
+      reason: "quote_amount_too_low",
+      selectedMethod: "synthetic_route_method",
+      routeDeferralReason: "bridge_quote_amount_below_minimum",
+      routeDeferralAction: "defer_until_input_amount_meets_route_minimum_or_consolidate_inventory",
+      quoteAmountFloor: { minimum: "12345", actual: "678" },
+    },
+  ]);
+  const entry = projected[0];
+  assert.equal(entry.reason, "quote_amount_too_low");
+  assert.equal(entry.category, "quote_amount_below_minimum");
+  assert.equal(entry.routeDeferralReason, "bridge_quote_amount_below_minimum");
+  assert.deepEqual(entry.quoteAmountFloor, { minimum: "12345", actual: "678" });
+});
+
+test("refillBlockerDetails normalizes absent quoteAmountFloor to null", () => {
+  const projected = refillBlockerDetails([
+    {
+      chain: "syntheticDst",
+      asset: "SYN_ASSET",
+      reason: "routing_exhausted",
+      selectedMethod: "synthetic_method",
+    },
+  ]);
+  assert.equal(projected[0].quoteAmountFloor, null);
+});
+
 test("refillBlockerDetails drops entries missing reason and caps at 8 entries", () => {
   const projected = refillBlockerDetails([
     { chain: "a", asset: "b" },

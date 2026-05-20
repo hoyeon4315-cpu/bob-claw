@@ -73,11 +73,12 @@ export class GatewayClient {
 
     if (!response.ok) {
       const bodyCode = body && typeof body === "object" ? body.code || body.error || null : null;
-      const reason = response.status === 429
-        ? `HTTP 429 ${bodyCode || "RATE_LIMITED"}`
-        : bodyCode
-          ? `HTTP ${response.status} ${bodyCode}`
-          : `HTTP ${response.status}`;
+      const reason =
+        response.status === 429
+          ? `HTTP 429 ${bodyCode || "RATE_LIMITED"}`
+          : bodyCode
+            ? `HTTP ${response.status} ${bodyCode}`
+            : `HTTP ${response.status}`;
       throw new GatewayError(`Gateway request failed: ${reason}`, {
         url,
         status: response.status,
@@ -120,7 +121,9 @@ export function classifyGatewayBlockedReason(error) {
     const normalizedCode = normalizeGatewayCode(code);
     if (normalizedCode === "global_limit_exceeded") return "gateway_global_rate_limited";
     if (normalizedCode === "exceeded_limit") {
-      const limit = String(error.details?.body?.details?.limit || "").trim().toLowerCase();
+      const limit = String(error.details?.body?.details?.limit || "")
+        .trim()
+        .toLowerCase();
       if (limit === "0 btc") return "gateway_zero_btc_limit";
       return "gateway_route_limit_exceeded";
     }
@@ -137,6 +140,23 @@ export function isDeterministicGatewayBlock(error) {
   if (!(error instanceof GatewayError)) return false;
   const status = Number(error.details?.status);
   return Number.isFinite(status) && status >= 400 && status < 500;
+}
+
+function normalizeAmountString(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text;
+}
+
+export function gatewayQuoteAmountFloor(error) {
+  if (!(error instanceof GatewayError)) return null;
+  if (classifyGatewayBlockedReason(error) !== "quote_amount_too_low") return null;
+  const body = error.details?.body;
+  const minimum = normalizeAmountString(body?.details?.minimum ?? body?.minimum);
+  const actual = normalizeAmountString(body?.details?.actual ?? body?.actual);
+  if (!minimum && !actual) return null;
+  return { minimum, actual };
 }
 
 export function routeKey(route) {

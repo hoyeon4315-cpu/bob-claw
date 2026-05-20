@@ -359,6 +359,59 @@ function hasCostFloorEvidence(evidence) {
   );
 }
 
+function blockerAmountFloorEvidence(blocker = {}) {
+  const floor = blocker?.quoteAmountFloor;
+  if (!floor || typeof floor !== "object") return null;
+  const minimum = floor.minimum != null && String(floor.minimum).length > 0 ? String(floor.minimum) : null;
+  const actual = floor.actual != null && String(floor.actual).length > 0 ? String(floor.actual) : null;
+  if (!minimum && !actual) return null;
+  return { minimum, actual };
+}
+
+function hasAmountFloorEvidence(evidence) {
+  if (!evidence) return false;
+  return typeof evidence.minimum === "string" && evidence.minimum.length > 0;
+}
+
+function isAmountFloorTaxonomy(blocker = {}) {
+  return (
+    String(blocker.routeDeferralReason || "") === "bridge_quote_amount_below_minimum" ||
+    String(blocker.reason || "") === "quote_amount_too_low" ||
+    String(blocker.category || "") === "quote_amount_below_minimum"
+  );
+}
+
+// Precise route-truth path: route exists per upstream verifier evidence but the
+// input amount the planner would dispatch is below the route's minimum. The
+// readiness blocker carries `quoteAmountFloor: { minimum, actual }` together
+// with `routeDeferralReason: "bridge_quote_amount_below_minimum"`. This is a
+// complete proof of NO_LIVE_ROUTE under current inventory; the lifecycle
+// defers until input consolidates. canIntent stays false; no policy/EV/cap
+// gate is relaxed. Synthetic chain/asset/method strings prove no target
+// hardcode.
+function noLiveRouteByAmountFloorEvidence({ governingAgreement, dryRunIntent, destination, source }) {
+  if (governingAgreement.tupleMatchedCollisionCount === 0) return null;
+  const selectedMethod = dryRunIntent.selectedMethod || null;
+  if (!selectedMethod) return null;
+  const matched = governingAgreement.tupleMatchedCollisions.filter(isAmountFloorTaxonomy);
+  if (matched.length === 0) return null;
+  const amountFloorEvidence = matched.map(blockerAmountFloorEvidence);
+  if (!amountFloorEvidence.every(hasAmountFloorEvidence)) return null;
+  return {
+    method: selectedMethod,
+    resource: {
+      chain: destination.chain || null,
+      asset: destination.asset || null,
+      token: destination.token || null,
+      sourceChain: source.chain || null,
+      sourceAsset: source.asset || null,
+    },
+    plannerBlocker: governingAgreement.plannerBlocker,
+    readinessBlockers: matched,
+    amountFloorEvidence,
+  };
+}
+
 function preciseNoLiveRouteEvidence({ governingAgreement, dryRunIntent, destination }) {
   const selectedMethod = dryRunIntent.selectedMethod || null;
   if (!selectedMethod || !governingAgreement.plannerBlocker) return null;
@@ -480,6 +533,7 @@ function resolveLifecycleStatus({
   missingEvidence,
   governingAgreement,
   noLiveRouteEvidence,
+  noLiveRouteByAmountFloor,
   typedMissingEvidence,
 }) {
   if (!canDryRun) {
@@ -510,6 +564,13 @@ function resolveLifecycleStatus({
       nextAutomationStep: "wait_for_new_route_or_cost_floor_change_without_live_authority",
     };
   }
+  if (noLiveRouteByAmountFloor) {
+    return {
+      status: "NO_LIVE_ROUTE",
+      canIntent: false,
+      nextAutomationStep: "wait_for_input_amount_to_meet_route_minimum_without_live_authority",
+    };
+  }
   if (typedMissingEvidence) {
     return {
       status: "TYPED_MISSING_EVIDENCE",
@@ -536,6 +597,12 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
   const { item, dryRunIntent, source, destination, costs, safetyBlockers, canDryRun } = context;
   const governingAgreement = evaluateGoverningAgreement({ handlerResult, readinessReport });
   const noLiveRouteEvidence = preciseNoLiveRouteEvidence({ governingAgreement, dryRunIntent, destination });
+  const noLiveRouteByAmountFloor = noLiveRouteByAmountFloorEvidence({
+    governingAgreement,
+    dryRunIntent,
+    destination,
+    source,
+  });
   const typedMissingEvidence = typedMissingEvidenceForTupleMatch({
     governingAgreement,
     dryRunIntent,
@@ -555,6 +622,7 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     missingEvidence,
     governingAgreement,
     noLiveRouteEvidence,
+    noLiveRouteByAmountFloor,
     typedMissingEvidence,
   });
 
@@ -594,6 +662,7 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
       (entry) => entry.mismatchClass !== "stale_snapshot_method",
     ),
     noLiveRouteEvidence,
+    noLiveRouteByAmountFloor,
     typedMissingEvidenceDetail: typedMissingEvidence,
     typedMissingEvidence: typedMissingEvidence ? [...typedMissingEvidence.typedMissingEvidence] : [],
     governingAgreement,
