@@ -1125,6 +1125,11 @@ test("all-chain autopilot can stop cleanly after refill finalization", async (t)
   assert.equal(runs.length, 1);
   assert.equal(runs[0].autopilotRunId, report.autopilotRunId);
   assert.equal(runs[0].phase, "refill_complete");
+  assert.equal(runs[0].historySchemaVersion, 1);
+  assert.equal(runs[0].stepCount, report.steps.length);
+  assert.equal(runs[0].steps.some((step) => step.json), false);
+  assert.equal(runs[0].steps.some((step) => step.jsonSummary), true);
+  assert.equal(latestCompleted.steps.some((step) => step.json), true);
 });
 
 test("all-chain autopilot runs auto-kill before live-capable steps and suppresses execute when armed", async () => {

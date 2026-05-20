@@ -29,6 +29,12 @@ function parseArgs(argv) {
     manifestPath: options["manifest-path"],
     compactMinBytes: options["compact-min-bytes"] ? Number(options["compact-min-bytes"]) : undefined,
     retainLines: options["retain-lines"] ? Number(options["retain-lines"]) : undefined,
+    compactPaths: options["compact-path"]
+      ? options["compact-path"]
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : undefined,
     top: options.top ? Number(options.top) : undefined,
   };
 }
@@ -54,6 +60,7 @@ async function main() {
     manifestPath: args.manifestPath ? resolve(args.manifestPath) : undefined,
     compactCandidateMinBytes: args.compactMinBytes,
     compactRetainLines: args.retainLines,
+    compactPaths: args.compactPaths,
     topFilesLimit: args.top,
   });
 

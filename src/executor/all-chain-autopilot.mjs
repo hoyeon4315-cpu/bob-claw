@@ -1621,10 +1621,69 @@ async function writeAutopilotLatestCompleted(dataDir, report) {
   );
 }
 
+function compactAutopilotStepJson(json) {
+  if (!json || typeof json !== "object") return null;
+  const compact = {};
+  for (const key of [
+    "schemaVersion",
+    "observedAt",
+    "generatedAt",
+    "status",
+    "phase",
+    "ready",
+    "blockedReason",
+    "noTxReason",
+    "reason",
+    "decision",
+    "mode",
+    "triggered",
+    "killSwitchActive",
+    "alreadyArmed",
+  ]) {
+    if (json[key] !== undefined) compact[key] = json[key];
+  }
+  if (Array.isArray(json.blockers)) compact.blockerCount = json.blockers.length;
+  if (Array.isArray(json.refillBlockers)) compact.refillBlockerCount = json.refillBlockers.length;
+  if (Array.isArray(json.jobs)) compact.jobCount = json.jobs.length;
+  if (Array.isArray(json.candidates)) compact.candidateCount = json.candidates.length;
+  if (json.summary && typeof json.summary === "object") {
+    compact.summary = json.summary;
+  }
+  return Object.keys(compact).length ? compact : null;
+}
+
+function buildAutopilotRunHistoryRecord(report) {
+  return {
+    schemaVersion: 1,
+    historySchemaVersion: 1,
+    observedAt: report.observedAt,
+    autopilotRunId: report.autopilotRunId,
+    mode: report.mode,
+    status: report.status,
+    phase: report.phase,
+    blockedReason: report.blockedReason,
+    chains: report.chains,
+    summary: report.summary,
+    idleConsolidationPlan: report.idleConsolidationPlan,
+    idleConsolidationDispatches: report.idleConsolidationDispatches,
+    refillExecutions: report.refillExecutions,
+    stepCount: Array.isArray(report.steps) ? report.steps.length : 0,
+    steps: (report.steps || []).map((step) => ({
+      name: step.name,
+      args: step.args,
+      ok: step.ok,
+      exitCode: step.exitCode,
+      stderrSummary: step.stderrSummary,
+      jsonSummary: compactAutopilotStepJson(step.json),
+      error: step.error,
+    })),
+  };
+}
+
 async function writeAutopilotCompletedArtifacts(dataDir, report) {
   await writeAutopilotLatest(dataDir, report);
   await writeAutopilotLatestCompleted(dataDir, report);
-  await new JsonlStore(dataDir).append("all-chain-autopilot-runs", report);
+  await new JsonlStore(dataDir).append("all-chain-autopilot-runs", buildAutopilotRunHistoryRecord(report));
 }
 
 async function runJsonStep({ name, args, runCommandImpl, cwd, timeoutMs, steps }) {

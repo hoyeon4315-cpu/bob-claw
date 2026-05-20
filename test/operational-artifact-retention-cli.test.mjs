@@ -165,6 +165,47 @@ test("compact mode preserves the tail, writes a gzip archive, and appends an arc
   });
 });
 
+test("compact mode can be scoped to a single non-audit JSONL path", async () => {
+  await withTempRoot(async (rootDir) => {
+    const selectedPath = join(rootDir, "data", "all-chain-autopilot-runs.jsonl");
+    const unselectedPath = join(rootDir, "data", "treasury-inventory.jsonl");
+    await writeJsonl(selectedPath, [
+      { observedAt: "2026-05-19T00:00:00.000Z", run: 1, payload: "a".repeat(64) },
+      { observedAt: "2026-05-19T01:00:00.000Z", run: 2, payload: "b".repeat(64) },
+      { observedAt: "2026-05-19T02:00:00.000Z", run: 3, payload: "c".repeat(64) },
+    ]);
+    await writeJsonl(unselectedPath, [
+      { observedAt: "2026-05-19T00:00:00.000Z", run: 1, payload: "d".repeat(64) },
+      { observedAt: "2026-05-19T01:00:00.000Z", run: 2, payload: "e".repeat(64) },
+      { observedAt: "2026-05-19T02:00:00.000Z", run: 3, payload: "f".repeat(64) },
+    ]);
+
+    const result = await runCli(rootDir, [
+      "--compact",
+      "--compact-min-bytes=1",
+      "--retain-lines=1",
+      "--compact-path=data/all-chain-autopilot-runs.jsonl",
+    ]);
+
+    assert.deepEqual(result.thresholds.compactPaths, ["data/all-chain-autopilot-runs.jsonl"]);
+    assert.ok(
+      result.archiveResults.some(
+        (item) =>
+          item.relativePath === "data/all-chain-autopilot-runs.jsonl" &&
+          item.status === "compacted" &&
+          item.archivedLines === 2,
+      ),
+    );
+    assert.ok(
+      result.skippedReasons.some(
+        (item) => item.relativePath === "data/treasury-inventory.jsonl" && item.reason === "outside_compact_path_filter",
+      ),
+    );
+    assert.equal((await readFile(selectedPath, "utf8")).trim().split("\n").length, 1);
+    assert.equal((await readFile(unselectedPath, "utf8")).trim().split("\n").length, 3);
+  });
+});
+
 test("archive mode gzips eligible whole-file archive candidates and deletes disposable caches", async () => {
   await withTempRoot(async (rootDir) => {
     const archiveCandidatePath = join(rootDir, "data", "quote-surface-scans.jsonl");

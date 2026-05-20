@@ -20,6 +20,13 @@ function normalizePath(value) {
 }
 
 /**
+ * @param {string} value
+ */
+function normalizeCliPath(value) {
+  return normalizePath(value.trim()).replace(/^\.?\//u, "");
+}
+
+/**
  * @param {string} childPath
  * @param {string} parentPath
  */
@@ -474,6 +481,7 @@ async function compactJsonlTail(file, plan, manifestPath, observedAt) {
  *   topFilesLimit?: number,
  *   compactCandidateMinBytes?: number,
  *   compactRetainLines?: number,
+ *   compactPaths?: string[],
  * }} options
  */
 export async function auditOperationalArtifacts(options) {
@@ -492,6 +500,10 @@ export async function auditOperationalArtifacts(options) {
   const nowMs = new Date(options.now || Date.now()).getTime();
   const observedAt = new Date(nowMs).toISOString();
   const topFilesLimit = options.topFilesLimit || operationalArtifactRetentionConfig.topFilesLimit;
+  const compactPathFilter =
+    options.compactPaths && options.compactPaths.length
+      ? new Set(options.compactPaths.map((item) => normalizeCliPath(item)))
+      : null;
   const rules = {
     archiveCandidateMinAgeDays: operationalArtifactRetentionConfig.archiveCandidateMinAgeDays,
     disposableCacheMinAgeDays: operationalArtifactRetentionConfig.disposableCacheMinAgeDays,
@@ -554,6 +566,12 @@ export async function auditOperationalArtifacts(options) {
   }
 
   for (const file of files.filter((item) => item.plannedAction === "compact_jsonl_tail")) {
+    if (compactPathFilter && !compactPathFilter.has(file.relativePath)) {
+      file.reclaimable = false;
+      file.reason = "outside_compact_path_filter";
+      file.plannedAction = null;
+      continue;
+    }
     const compactPlan = await buildCompactionPlan(file, rules, archiveDir);
     file.compactPlan = compactPlan;
     file.reclaimableBytes = compactPlan.reclaimableBytes;
@@ -680,6 +698,7 @@ export async function auditOperationalArtifacts(options) {
       disposableCacheMinAgeDays: rules.disposableCacheMinAgeDays,
       compactCandidateMinBytes: rules.compactCandidateMinBytes,
       compactRetainLines: rules.compactRetainLines,
+      compactPaths: compactPathFilter ? [...compactPathFilter].sort() : null,
     },
     byCategory,
     topFiles,
