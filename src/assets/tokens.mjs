@@ -378,6 +378,25 @@ export function isZeroToken(token) {
   return normalizeToken(token) === normalizeToken(ZERO_TOKEN);
 }
 
+// Reverse lookup: returns candidate token addresses (lowercased) for a given
+// asset ticker. Native-equivalent tickers (BTC on Bitcoin L1, ETH on EVM)
+// resolve to ZERO_TOKEN. The lookup is registry-driven; no chain/ticker
+// literal is special-cased in callers.
+export function tokensForTicker(ticker) {
+  const normalized = String(ticker || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return [];
+  if (normalized === "btc" || normalized === "eth" || normalized === "native") {
+    return [normalizeToken(ZERO_TOKEN)];
+  }
+  const matches = [];
+  for (const [token, def] of TOKEN_DEFINITIONS.entries()) {
+    if (String(def.ticker || "").toLowerCase() === normalized) matches.push(token);
+  }
+  return matches;
+}
+
 export function tokenAsset(chain, token, overrides = {}) {
   const normalized = normalizeToken(token);
   if (!normalized) {
