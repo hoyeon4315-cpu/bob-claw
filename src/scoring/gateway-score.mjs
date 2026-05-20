@@ -76,6 +76,7 @@ function executableOutputUsdForDestination({ quote, dstAsset, outputUsd, dexOutp
 function exactGasGapForFailure(reason) {
   if (reason === "erc20_allowance_insufficient") return "exact_src_execution_gas_allowance_insufficient";
   if (reason === "erc20_balance_insufficient") return "exact_src_execution_gas_token_insufficient";
+  if (reason === "failed_inner_call") return "exact_src_execution_gas_failed_inner_call";
   if (reason === "execution_reverted") return "exact_src_execution_gas_reverted";
   if (reason === "insufficient_funds") return "exact_src_execution_gas_funds_insufficient";
   if (reason === "rpc_error") return "exact_src_execution_gas_rpc_error";
@@ -83,6 +84,14 @@ function exactGasGapForFailure(reason) {
     return "exact_src_execution_gas_missing_tx_payload";
   }
   return "exact_src_execution_gas_not_estimated";
+}
+
+function expandedExactGasGaps(reason) {
+  const primary = exactGasGapForFailure(reason);
+  if (primary === "exact_src_execution_gas_failed_inner_call") {
+    return [primary, "exact_src_execution_gas_reverted"];
+  }
+  return [primary];
 }
 
 function classifyQuote({
@@ -163,7 +172,7 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     options.requireExactExecutionGas &&
     executionGasSource !== "eth_estimateGas"
   ) {
-    dataGaps.push(exactGasGapForFailure(exactExecutionGasFailureReason));
+    dataGaps.push(...expandedExactGasGaps(exactExecutionGasFailureReason));
   }
   if (hasNativeBitcoinLeg && !Number.isFinite(bitcoinFee?.estimatedFeeUsd)) {
     dataGaps.push("bitcoin_network_fee_not_modelled");

@@ -178,12 +178,38 @@ export async function readContractCode(chainName, address, chainConfig = EVM_CHA
   throw error;
 }
 
+const KNOWN_REVERT_SELECTORS = Object.freeze({
+  "0x1425ea42": "failed_inner_call",
+});
+
+export function revertSelectorFromError(error) {
+  const attempts = Array.isArray(error?.attempts) ? error.attempts : [];
+  for (const attempt of attempts) {
+    const data = attempt?.data;
+    if (typeof data === "string" && data.length >= 10 && data.startsWith("0x")) {
+      return data.slice(0, 10).toLowerCase();
+    }
+  }
+  return null;
+}
+
+function knownRevertSubReason(error) {
+  const selector = revertSelectorFromError(error);
+  if (!selector) return null;
+  return KNOWN_REVERT_SELECTORS[selector] || null;
+}
+
 export function classifyGasEstimateError(error) {
-  const messages = [error.message, ...(error.attempts || []).map((attempt) => attempt.message)].filter(Boolean).join(" | ");
+  const messages = [error.message, ...(error.attempts || []).map((attempt) => attempt.message)]
+    .filter(Boolean)
+    .join(" | ");
   if (/insufficient funds/i.test(messages)) return "insufficient_funds";
-  if (/transfer amount exceeds allowance|insufficient allowance|allowance exceeded/i.test(messages)) return "erc20_allowance_insufficient";
+  if (/transfer amount exceeds allowance|insufficient allowance|allowance exceeded/i.test(messages))
+    return "erc20_allowance_insufficient";
   if (/transfer amount exceeds balance|insufficient balance/i.test(messages)) return "erc20_balance_insufficient";
-  if (/execution reverted|revert/i.test(messages)) return "execution_reverted";
+  if (/execution reverted|revert/i.test(messages)) {
+    return knownRevertSubReason(error) || "execution_reverted";
+  }
   if (/missing transaction target/i.test(messages)) return "missing_tx_target";
   return "rpc_error";
 }
