@@ -9,6 +9,7 @@
 
 export const CANDIDATE_STATUSES = Object.freeze([
   "READY_FOR_INTENT_CANDIDATE",
+  "SMALLER_LEGAL_ROUTE_FOUND_REPORT_ONLY",
   "NO_LIVE_ROUTE",
   "WAITLIST_BELOW_ROUTE_MINIMUM",
   "INSUFFICIENT_CAP_OR_RESERVE",
@@ -937,7 +938,7 @@ function resolveLifecycleStatus({
     if (economicReview?.status && economicReview.status !== "READY_FOR_INTENT_CANDIDATE") {
       return {
         status: economicReview.status,
-        canIntent: false,
+        canIntent: economicReview.canIntent === true,
         nextAutomationStep: economicReview.nextAutomationStep,
       };
     }
@@ -1298,6 +1299,91 @@ function buildWaitlistRecheckCommand({ status, blocker } = {}) {
   return "node src/cli/run-all-source-deployment-selector.mjs --json";
 }
 
+function selectWaitlistRoute(economicReview = {}) {
+  const ranking = array(economicReview.routeSourceRanking);
+  return ranking.find((entry) => entry.selected) || ranking.find((entry) => entry.quotedAmountSats) || {};
+}
+
+function waitlistAmountFields({ amountSweep = {}, sizing = {}, destination = {} } = {}) {
+  return {
+    requiredSats: amountSweep.quotedAmountSats || sizing.attemptedAmountSats || destination.targetAmount || null,
+    routeMinimumAmountSats: amountSweep.routeMinimumAmountSats || sizing.minRouteAmountSats || null,
+    safeAllocatableAmountSats: amountSweep.safeAllocatableAmountSats || sizing.safeAllocatableAmountSats || null,
+    missingSats: amountSweep.missingSats || sizing.sizingDeficitSats || null,
+  };
+}
+
+function waitlistSource({ selectedRoute = {}, source = {}, sizing = {} } = {}) {
+  return {
+    chain: selectedRoute.sourceChain || source.chain || null,
+    asset: selectedRoute.sourceAsset || source.asset || null,
+    token: source.token || null,
+    producer: sizing.sourceInventoryRef?.producer || LIFECYCLE_PRODUCERS.refillPlanner.cli,
+  };
+}
+
+function waitlistDestination({ selectedRoute = {}, destination = {} } = {}) {
+  return {
+    chain: selectedRoute.destinationChain || destination.chain || null,
+    asset: selectedRoute.destinationAsset || destination.asset || null,
+    token: destination.token || null,
+  };
+}
+
+function waitlistQuoteStaleness(quote = {}) {
+  return quote.ttlSeconds || quote.observedAt || quote.generatedAt
+    ? "quote_freshness_provided_by_quote_producer"
+    : "ttl_not_provided_by_quote_producer";
+}
+
+function waitlistQuote({ selectedRoute = {}, amountSweep = {}, sizing = {} } = {}) {
+  const quote = sizing.routeQuoteRef || {};
+  return {
+    producer: quote.producer || LIFECYCLE_PRODUCERS.readinessRefillBlockers.cli,
+    quotedAmountSats: amountSweep.quotedAmountSats || selectedRoute.quotedAmountSats || null,
+    routeMinimumAmountSats: amountSweep.routeMinimumAmountSats || selectedRoute.minRouteAmountSats || null,
+    quoteProvenance: selectedRoute.quoteProvenance || null,
+    ttlSeconds: finiteNumber(quote.ttlSeconds),
+    observedAt: quote.observedAt || quote.generatedAt || null,
+    staleness: waitlistQuoteStaleness(quote),
+  };
+}
+
+function buildSafeCapitalWaitlist({
+  lifecycle = {},
+  economicReview = {},
+  sizing = {},
+  source = {},
+  destination = {},
+} = {}) {
+  const waitlistRecheckCommand = buildWaitlistRecheckCommand({
+    status: lifecycle.status,
+    blocker: economicReview.blocker,
+  });
+  if (!waitlistRecheckCommand) return null;
+  const amountSweep = economicReview.amountSweep || {};
+  const selectedRoute = selectWaitlistRoute(economicReview);
+  return {
+    status: lifecycle.status,
+    blocker: economicReview.blocker || null,
+    ...waitlistAmountFields({ amountSweep, sizing, destination }),
+    source: waitlistSource({ selectedRoute, source, sizing }),
+    destination: waitlistDestination({ selectedRoute, destination }),
+    capProvenance: sizing.policyCapRef || null,
+    paybackReserveProvenance: sizing.paybackReserveRef || null,
+    gasReserveProvenance: sizing.gasReserveRef || null,
+    quote: waitlistQuote({ selectedRoute, amountSweep, sizing }),
+    nextRefreshTrigger: "fresh_selector_or_refill_planner_rerun",
+    waitlistRecheckCommand,
+  };
+}
+
+function routeOrFallback(route = {}, routeKey, fallback = {}, fallbackKey = routeKey) {
+  const routeSource = route || {};
+  const fallbackSource = fallback || {};
+  return routeSource[routeKey] || fallbackSource[fallbackKey] || null;
+}
+
 function buildReallocationCandidate({
   lifecycle = {},
   source = {},
@@ -1306,15 +1392,16 @@ function buildReallocationCandidate({
   amountSweep = {},
 }) {
   if (lifecycle.canIntent !== true) return null;
+  const selectedRoute = amountSweep.selectedReportOnlyRoute || null;
   return {
     reportOnly: true,
     runtimeAuthority: "none",
-    sourceChain: source.chain || null,
-    sourceAsset: source.asset || null,
-    destinationChain: destination.chain || null,
-    destinationAsset: destination.asset || null,
-    method: dryRunIntent.selectedMethod || null,
-    amountSats: amountSweep.quotedAmountSats || null,
+    sourceChain: routeOrFallback(selectedRoute, "sourceChain", source, "chain"),
+    sourceAsset: routeOrFallback(selectedRoute, "sourceAsset", source, "asset"),
+    destinationChain: routeOrFallback(selectedRoute, "destinationChain", destination, "chain"),
+    destinationAsset: routeOrFallback(selectedRoute, "destinationAsset", destination, "asset"),
+    method: routeOrFallback(selectedRoute, "method", dryRunIntent, "selectedMethod"),
+    amountSats: amountSweep.selectedReportOnlyAmountSats || amountSweep.quotedAmountSats || null,
   };
 }
 
@@ -1351,6 +1438,192 @@ function evDecomposition({ dryRunIntent = {}, costs = {}, sizing = {} } = {}) {
   };
 }
 
+function missingEconomicReviewInputs({
+  expectedNetUsd = null,
+  effectiveFloorUsd = null,
+  hasFreshQuoteCost = false,
+  safeAllocatable = null,
+  quoteAmount = null,
+} = {}) {
+  const missing = [];
+  if (expectedNetUsd === null) missing.push("expectedNetUsd");
+  if (effectiveFloorUsd === null) missing.push("effectiveFloorUsd");
+  if (!hasFreshQuoteCost) missing.push("freshSelectedRouteQuoteCost");
+  if (safeAllocatable === null) missing.push("safeAllocatableAmountSats");
+  if (quoteAmount === null) missing.push("routeQuoteAmountSats");
+  return missing;
+}
+
+function buildAmountSweep({ sizing = {}, quoteAmount = null, safeAllocatable = null, missing = [] } = {}) {
+  return {
+    mode: "report_only_single_fresh_quote_amount",
+    routeMinimumAmountSats: sizing.minRouteAmountSats,
+    quotedAmountSats: bigintToString(quoteAmount),
+    safeAllocatableAmountSats: bigintToString(safeAllocatable),
+    legalMinAmountSats: bigintToString(quoteAmount),
+    legalMaxAmountSats: bigintToString(safeAllocatable),
+    missingSats: null,
+    candidates: [],
+    missingProvenance: [...missing],
+  };
+}
+
+function routeCandidateMissingSats({ routeAmount = null, safeAllocatable = null } = {}) {
+  if (routeAmount === null || safeAllocatable === null) return null;
+  if (safeAllocatable >= routeAmount) return null;
+  return bigintToString(routeAmount - safeAllocatable);
+}
+
+function routeCandidateCostComplete(entry = {}) {
+  return (
+    finiteNumber(entry.expectedNetUsd) !== null &&
+    finiteNumber(entry.effectiveFloorUsd) !== null &&
+    finiteNumber(entry.p90CostUsd) !== null &&
+    finiteNumber(entry.requiredNetUsd) !== null
+  );
+}
+
+function routeCandidateLegal({ entry = {}, routeAmount = null, safeAllocatable = null } = {}) {
+  if (routeAmount === null || safeAllocatable === null) return false;
+  if (routeAmount > safeAllocatable) return false;
+  if (!routeCandidateCostComplete(entry)) return false;
+  if (finiteNumber(entry.expectedNetUsd) < finiteNumber(entry.effectiveFloorUsd)) return false;
+  return entry.blocker === null;
+}
+
+function routeCandidateReason({ legal = false, missingSats = null, blocker = null } = {}) {
+  if (legal) return null;
+  if (missingSats) return "quoted_amount_exceeds_safe_allocatable_capital";
+  return blocker || "route_expected_net_below_effective_floor";
+}
+
+function amountSweepCandidateForRoute({ entry = {}, safeAllocatable = null } = {}) {
+  const routeAmount = positiveBigInt(entry.quotedAmountSats);
+  const missingSats = routeCandidateMissingSats({ routeAmount, safeAllocatable });
+  const legal = routeCandidateLegal({ entry, routeAmount, safeAllocatable });
+  return {
+    method: entry.method || null,
+    sourceChain: entry.sourceChain || null,
+    sourceAsset: entry.sourceAsset || null,
+    destinationChain: entry.destinationChain || null,
+    destinationAsset: entry.destinationAsset || null,
+    amountSats: entry.quotedAmountSats,
+    legal,
+    reason: routeCandidateReason({ legal, missingSats, blocker: entry.blocker }),
+    missingSats,
+    expectedNetUsd: finiteNumber(entry.expectedNetUsd),
+    effectiveFloorUsd: finiteNumber(entry.effectiveFloorUsd),
+    p90CostUsd: finiteNumber(entry.p90CostUsd),
+    requiredNetUsd: finiteNumber(entry.requiredNetUsd),
+  };
+}
+
+function fallbackShortfallCandidate({
+  quoteAmount = null,
+  safeAllocatable = null,
+  expectedNetUsd = null,
+  effectiveFloorUsd = null,
+} = {}) {
+  return {
+    amountSats: bigintToString(quoteAmount),
+    legal: false,
+    reason: "quoted_amount_exceeds_safe_allocatable_capital",
+    missingSats: bigintToString(quoteAmount - safeAllocatable),
+    expectedNetUsd,
+    effectiveFloorUsd,
+  };
+}
+
+function matchingRouteForCandidate(ranking = [], candidate = {}) {
+  return (
+    ranking.find((entry) => entry.method === candidate.method && entry.quotedAmountSats === candidate.amountSats) ||
+    null
+  );
+}
+
+function rankingWithReportOnlySelection(ranking = [], candidate = {}) {
+  return ranking.map((entry) =>
+    entry.method === candidate.method && entry.quotedAmountSats === candidate.amountSats
+      ? { ...entry, canSelectReportOnly: true, blocker: null }
+      : entry,
+  );
+}
+
+function smallerRouteReport({
+  reviewIntent = {},
+  costs = {},
+  sizing = {},
+  amountSweep = {},
+  ranking = [],
+  selected = {},
+} = {}) {
+  amountSweep.selectedReportOnlyAmountSats = selected.amountSats;
+  amountSweep.selectedReportOnlyMethod = selected.method || null;
+  amountSweep.selectedReportOnlyRoute = matchingRouteForCandidate(ranking, selected);
+  return {
+    verdict: "SMALLER_LEGAL_ROUTE_FOUND_REPORT_ONLY",
+    status: "SMALLER_LEGAL_ROUTE_FOUND_REPORT_ONLY",
+    canIntent: true,
+    blocker: null,
+    nextAutomationStep: "await_live_eligibility_gates_after_report_only_smaller_route_candidate",
+    missingProvenance: [],
+    evDecomposition: evDecomposition({ dryRunIntent: reviewIntent, costs, sizing }),
+    amountSweep,
+    routeSourceRanking: rankingWithReportOnlySelection(ranking, selected),
+  };
+}
+
+function insufficientSafeCapitalReport({
+  reviewIntent = {},
+  costs = {},
+  sizing = {},
+  amountSweep = {},
+  ranking = [],
+} = {}) {
+  return {
+    verdict: "INSUFFICIENT_SAFE_CAPITAL",
+    status: "INSUFFICIENT_SAFE_CAPITAL",
+    canIntent: false,
+    blocker: "safe_allocatable_capital_below_fresh_quote_amount",
+    nextAutomationStep: "wait_for_safe_capital_or_smaller_fresh_quote_without_live_authority",
+    missingProvenance: [],
+    evDecomposition: evDecomposition({ dryRunIntent: reviewIntent, costs, sizing }),
+    amountSweep,
+    routeSourceRanking: ranking,
+  };
+}
+
+function buildSafeCapitalShortfallReview({
+  reviewIntent = {},
+  costs = {},
+  sizing = {},
+  amountSweep = {},
+  safeAllocatable = null,
+  quoteAmount = null,
+} = {}) {
+  const ranking = routeSourceRanking({ dryRunIntent: reviewIntent, costs });
+  amountSweep.candidates = ranking
+    .filter((route) => route.quotedAmountSats)
+    .map((entry) => amountSweepCandidateForRoute({ entry, safeAllocatable }));
+  if (amountSweep.candidates.length === 0) {
+    amountSweep.candidates.push(
+      fallbackShortfallCandidate({
+        quoteAmount,
+        safeAllocatable,
+        expectedNetUsd: finiteNumber(reviewIntent.expectedNetUsd),
+        effectiveFloorUsd: finiteNumber(reviewIntent.effectiveFloorUsd),
+      }),
+    );
+  }
+  const selected = amountSweep.candidates.find((entry) => entry.legal === true);
+  if (selected) return smallerRouteReport({ reviewIntent, costs, sizing, amountSweep, ranking, selected });
+  amountSweep.missingSats = bigintToString(quoteAmount - safeAllocatable);
+  amountSweep.candidates = amountSweep.candidates.map((entry) =>
+    entry.missingSats ? entry : { ...entry, missingSats: amountSweep.missingSats },
+  );
+  return insufficientSafeCapitalReport({ reviewIntent, costs, sizing, amountSweep, ranking });
+}
+
 function buildEconomicAllocationReview({ dryRunIntent = {}, costs = {}, sizing = {} } = {}) {
   const reviewIntent = {
     ...dryRunIntent,
@@ -1364,24 +1637,14 @@ function buildEconomicAllocationReview({ dryRunIntent = {}, costs = {}, sizing =
   const safeAllocatable = positiveBigInt(sizing.safeAllocatableAmountSats);
   const quoteAmount = quoteAmountCandidate(reviewIntent, sizing);
   const hasFreshQuoteCost = hasFreshSelectedRouteCost({ dryRunIntent: reviewIntent, costs });
-  const missing = [];
-  if (expectedNetUsd === null) missing.push("expectedNetUsd");
-  if (effectiveFloorUsd === null) missing.push("effectiveFloorUsd");
-  if (!hasFreshQuoteCost) missing.push("freshSelectedRouteQuoteCost");
-  if (safeAllocatable === null) missing.push("safeAllocatableAmountSats");
-  if (quoteAmount === null) missing.push("routeQuoteAmountSats");
-
-  const amountSweep = {
-    mode: "report_only_single_fresh_quote_amount",
-    routeMinimumAmountSats: sizing.minRouteAmountSats,
-    quotedAmountSats: bigintToString(quoteAmount),
-    safeAllocatableAmountSats: bigintToString(safeAllocatable),
-    legalMinAmountSats: bigintToString(quoteAmount),
-    legalMaxAmountSats: bigintToString(safeAllocatable),
-    missingSats: null,
-    candidates: [],
-    missingProvenance: [...missing],
-  };
+  const missing = missingEconomicReviewInputs({
+    expectedNetUsd,
+    effectiveFloorUsd,
+    hasFreshQuoteCost,
+    safeAllocatable,
+    quoteAmount,
+  });
+  const amountSweep = buildAmountSweep({ sizing, quoteAmount, safeAllocatable, missing });
 
   if (missing.length > 0) {
     return {
@@ -1398,26 +1661,7 @@ function buildEconomicAllocationReview({ dryRunIntent = {}, costs = {}, sizing =
   }
 
   if (safeAllocatable < quoteAmount) {
-    amountSweep.missingSats = bigintToString(quoteAmount - safeAllocatable);
-    amountSweep.candidates.push({
-      amountSats: bigintToString(quoteAmount),
-      legal: false,
-      reason: "quoted_amount_exceeds_safe_allocatable_capital",
-      missingSats: amountSweep.missingSats,
-      expectedNetUsd,
-      effectiveFloorUsd,
-    });
-    return {
-      verdict: "INSUFFICIENT_SAFE_CAPITAL",
-      status: "INSUFFICIENT_SAFE_CAPITAL",
-      canIntent: false,
-      blocker: "safe_allocatable_capital_below_fresh_quote_amount",
-      nextAutomationStep: "wait_for_safe_capital_or_smaller_fresh_quote_without_live_authority",
-      missingProvenance: [],
-      evDecomposition: evDecomposition({ dryRunIntent: reviewIntent, costs, sizing }),
-      amountSweep,
-      routeSourceRanking: routeSourceRanking({ dryRunIntent: reviewIntent, costs }),
-    };
+    return buildSafeCapitalShortfallReview({ reviewIntent, costs, sizing, amountSweep, safeAllocatable, quoteAmount });
   }
 
   const marginUsd = numericComparison(expectedNetUsd, effectiveFloorUsd);
@@ -1559,6 +1803,7 @@ function refillIntentCandidate({ handlerResult, readinessReport }) {
     economicReview,
     evDecomposition: economicReview.evDecomposition,
     amountSweep: economicReview.amountSweep,
+    waitlist: buildSafeCapitalWaitlist({ lifecycle, economicReview, sizing, source, destination }),
     routeSourceRanking: economicReview.routeSourceRanking,
     capitalBuckets: capitalBucketsFromSizing(sizing),
     reallocationCandidate: buildReallocationCandidate({

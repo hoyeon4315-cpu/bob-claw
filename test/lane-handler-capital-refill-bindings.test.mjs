@@ -442,13 +442,23 @@ test("source code carries no sample-specific production branch keyed on the curr
       "utf8",
     );
     const floorSrc = await fs.readFile(new URL("../src/executor/policy/ev-cost-floor.mjs", import.meta.url), "utf8");
-    // No production branch should switch on the current PR's destination asset
-    // value or amount literal. The asset name `wBTC.OFT`, the chain name `base`
-    // (without word boundary, e.g. used as a path token), and the literal
-    // `10000`/`25000` floor amounts must not appear as runtime constants.
-    for (const src of [handlerSrc, bindingSrc, floorSrc]) {
+    const lifecycleSrc = await fs.readFile(
+      new URL("../src/strategy/remediation-lane-intent-candidate.mjs", import.meta.url),
+      "utf8",
+    );
+    // No production branch should switch on current evidence values. Strip
+    // line comments first so explanatory BTC/Gateway prose does not count as a
+    // runtime branch.
+    for (const src of [handlerSrc, bindingSrc, floorSrc, lifecycleSrc].map((text) =>
+      text
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("//"))
+        .join("\n"),
+    )) {
       assert.doesNotMatch(src, /\bwBTC\.OFT\b/);
-      assert.doesNotMatch(src, /\b(10000|25000)\b/);
+      assert.doesNotMatch(src, /\b[Bb]ase\b/);
+      assert.doesNotMatch(src, /\bBTC\b/);
+      assert.doesNotMatch(src, /\b(10000|25000|100000|32288)\b/);
     }
   });
 });

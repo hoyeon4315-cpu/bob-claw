@@ -103,6 +103,7 @@ test("statuses enumerate report-only lifecycle outcomes", () => {
     [...CANDIDATE_STATUSES],
     [
       "READY_FOR_INTENT_CANDIDATE",
+      "SMALLER_LEGAL_ROUTE_FOUND_REPORT_ONLY",
       "NO_LIVE_ROUTE",
       "WAITLIST_BELOW_ROUTE_MINIMUM",
       "INSUFFICIENT_CAP_OR_RESERVE",
@@ -462,6 +463,19 @@ test("fresh quote amount above safe capital blocks canIntent without selecting a
   assert.equal(candidate.missingSats, "68750");
   assert.equal(candidate.amountSweep.candidates[0].missingSats, "68750");
   assert.equal(candidate.waitlistRecheckCommand, "node src/cli/run-all-source-deployment-selector.mjs --json");
+  assert.equal(candidate.waitlist.requiredSats, "100000");
+  assert.equal(candidate.waitlist.safeAllocatableAmountSats, "31250");
+  assert.equal(candidate.waitlist.missingSats, "68750");
+  assert.equal(candidate.waitlist.source.chain, "sourceB");
+  assert.equal(candidate.waitlist.source.asset, "SRC_B");
+  assert.equal(candidate.waitlist.capProvenance.producer, "src/config/strategy-caps.mjs");
+  assert.equal(candidate.waitlist.paybackReserveProvenance.producer, "src/treasury/refill-job.mjs");
+  assert.equal(candidate.waitlist.gasReserveProvenance.producer, "src/treasury/refill-job.mjs");
+  assert.equal(candidate.waitlist.quote.producer, "node src/cli/check-full-automation-readiness.mjs --json");
+  assert.equal(candidate.waitlist.quote.ttlSeconds, null);
+  assert.equal(candidate.waitlist.quote.staleness, "ttl_not_provided_by_quote_producer");
+  assert.equal(candidate.waitlist.nextRefreshTrigger, "fresh_selector_or_refill_planner_rerun");
+  assert.equal(candidate.waitlist.waitlistRecheckCommand, "node src/cli/run-all-source-deployment-selector.mjs --json");
   assert.deepEqual(
     candidate.routeSourceRanking.map((entry) => entry.method),
     ["synthetic_bridge_beta", "synthetic_bridge_alpha", "synthetic_quoteless"],
@@ -472,6 +486,84 @@ test("fresh quote amount above safe capital blocks canIntent without selecting a
   assert.equal(candidate.capitalBuckets.find((entry) => entry.bucket === "safe_allocatable").amountSats, "31250");
   assert.equal(candidate.capitalBuckets.find((entry) => entry.bucket === "payback_reserve").classification, "reserved");
   assert.equal(candidate.reallocationCandidate, null);
+});
+
+test("smaller legal route is selected report-only when it fits safe capital", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(
+      {},
+      {
+        routeSourceCandidates: [
+          {
+            method: "synthetic_large_route",
+            selected: true,
+            availability: "ready",
+            source: { chain: "moon", asset: "MOON", actual: "60000", estimatedUsd: 60 },
+            destination: { chain: "mars", asset: "MARS_BTC" },
+            routeQuoteRef: { amount: "90000", routeKnownCostUsd: 0.1 },
+            costs: { expectedExecutionRefillCostUsd: 0.2, routeKnownCostUsd: 0.1 },
+            expectedNetUsd: 2,
+            requiredNetUsd: 0.4,
+            p90CostUsd: 0.3,
+            effectiveFloorUsd: 0.4,
+          },
+          {
+            method: "synthetic_smaller_route",
+            selected: false,
+            availability: "ready",
+            source: { chain: "venus", asset: "VENUS", actual: "45000", estimatedUsd: 45 },
+            destination: { chain: "mars", asset: "MARS_BTC" },
+            routeQuoteRef: { amount: "25000", routeKnownCostUsd: 0.08 },
+            costs: { expectedExecutionRefillCostUsd: 0.12, routeKnownCostUsd: 0.08 },
+            expectedNetUsd: 1.2,
+            requiredNetUsd: 0.4,
+            p90CostUsd: 0.3,
+            effectiveFloorUsd: 0.4,
+          },
+        ],
+        source: { chain: "moon", asset: "MOON", token: "0xmoon", actual: "60000", estimatedUsd: 60 },
+        destination: {
+          chain: "mars",
+          asset: "MARS_BTC",
+          token: "0xmars",
+          targetAmount: "90000",
+          targetAmountDecimal: 0.0009,
+          estimatedAssetValueUsd: 90,
+        },
+        routeQuoteRef: {
+          routeKey: "moon->mars",
+          amount: "90000",
+          routeInputUsd: 90,
+          routeNetEdgeUsd: 2.5,
+          routeExecutableNetEdgeUsd: 2.5,
+          routeKnownCostUsd: 0.1,
+        },
+        expectedNetUsd: 2,
+        requiredNetUsd: 0.4,
+        p90CostUsd: 0.3,
+        effectiveFloorUsd: 0.4,
+        policyCaps: { tinyLivePerTxUsd: 40, perTxUsd: 40, perDayUsd: 40, maxDailyLossUsd: 10 },
+      },
+    ),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "SMALLER_LEGAL_ROUTE_FOUND_REPORT_ONLY");
+  assert.equal(candidate.canIntent, true);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.equal(candidate.reallocationCandidate.method, "synthetic_smaller_route");
+  assert.equal(candidate.reallocationCandidate.amountSats, "25000");
+  assert.equal(candidate.amountSweep.selectedReportOnlyAmountSats, "25000");
+  assert.equal(
+    candidate.amountSweep.candidates.find((entry) => entry.method === "synthetic_smaller_route").legal,
+    true,
+  );
+  assert.equal(
+    candidate.amountSweep.candidates.find((entry) => entry.method === "synthetic_large_route").reason,
+    "quoted_amount_exceeds_safe_allocatable_capital",
+  );
 });
 
 test("canIntent report-only candidate never implies canLive", () => {
