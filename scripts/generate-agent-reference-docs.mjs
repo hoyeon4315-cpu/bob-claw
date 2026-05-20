@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -162,6 +163,18 @@ async function readJsonIfExists(filePath) {
   return JSON.parse(sourceText);
 }
 
+function isGitTracked(relativePath, rootDir = ROOT_DIR) {
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", normalizePath(relativePath)], {
+      cwd: rootDir,
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function buildGraphSummary(graphData) {
   if (!graphData || !Array.isArray(graphData.nodes) || !Array.isArray(graphData.links)) {
     return null;
@@ -197,7 +210,7 @@ function existingCanonicalDocs(rootDir = ROOT_DIR) {
 export async function collectAgentReferenceModel(rootDir = ROOT_DIR, outputPath = DEFAULT_OUTPUT_PATH) {
   const packageJsonPath = resolve(rootDir, "package.json");
   const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-  const graphData = await readJsonIfExists(resolve(rootDir, GRAPH_PATH));
+  const graphData = isGitTracked(GRAPH_PATH, rootDir) ? await readJsonIfExists(resolve(rootDir, GRAPH_PATH)) : null;
 
   return {
     outputPath: normalizePath(outputPath),
