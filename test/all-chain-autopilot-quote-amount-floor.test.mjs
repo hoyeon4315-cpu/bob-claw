@@ -72,3 +72,35 @@ test("routeExhaustionDeferral keeps existing taxonomy when quote_amount_too_low 
   // Falls through to mixed-provider behavior, not the amount-floor branch.
   assert.notEqual(deferral.routeDeferralReason, "bridge_quote_amount_below_minimum");
 });
+
+test("routeExhaustionDeferral classifies invalid_request_recipient subtype precisely", () => {
+  const deferral = routeExhaustionDeferral([{ method: "synthetic_alpha", blockedReason: "invalid_request_recipient" }]);
+  assert.equal(deferral.routeDeferralReason, "bridge_request_invalid_recipient_format");
+  assert.equal(deferral.routeDeferralAction, "defer_until_recipient_address_matches_destination_chain_format");
+});
+
+test("routeExhaustionDeferral classifies invalid_request_amount_unit subtype precisely", () => {
+  const deferral = routeExhaustionDeferral([
+    { method: "synthetic_beta", blockedReason: "invalid_request_amount_unit" },
+  ]);
+  assert.equal(deferral.routeDeferralReason, "bridge_request_invalid_amount_unit");
+});
+
+test("routeExhaustionDeferral classifies invalid_request_token subtype precisely", () => {
+  const deferral = routeExhaustionDeferral([{ method: "synthetic_gamma", blockedReason: "invalid_request_token" }]);
+  assert.equal(deferral.routeDeferralReason, "bridge_request_invalid_token");
+});
+
+test("routeExhaustionDeferral classifies invalid_request_route_param subtype precisely", () => {
+  const deferral = routeExhaustionDeferral([
+    { method: "synthetic_delta", blockedReason: "invalid_request_route_param" },
+  ]);
+  assert.equal(deferral.routeDeferralReason, "bridge_request_invalid_route_param");
+});
+
+test("routeExhaustionDeferral classifies gateway_invalid_request_unknown precisely", () => {
+  const deferral = routeExhaustionDeferral([
+    { method: "synthetic_epsilon", blockedReason: "gateway_invalid_request_unknown" },
+  ]);
+  assert.equal(deferral.routeDeferralReason, "bridge_request_invalid_unknown");
+});

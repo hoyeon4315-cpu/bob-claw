@@ -114,6 +114,42 @@ export function gatewayErrorCode(error) {
   return error.details?.body?.code || error.details?.body?.error || null;
 }
 
+const INVALID_REQUEST_SUBTYPE_RULES = Object.freeze([
+  {
+    subtype: "invalid_request_recipient",
+    keywords: ["recipient", "bitcoin address", "evm address", "btc address", "sender address"],
+  },
+  {
+    subtype: "invalid_request_amount_unit",
+    keywords: ["amount", "decimals", "wei", "satoshi", "sats", "unit"],
+  },
+  {
+    subtype: "invalid_request_token",
+    keywords: ["token", "asset", "src token", "dst token", "srctoken", "dsttoken"],
+  },
+  {
+    subtype: "invalid_request_route_param",
+    keywords: ["route", "chain", "srcchain", "dstchain", "slippage", "affiliate", "unsupported"],
+  },
+]);
+
+export function classifyGatewayInvalidRequestSubtype(error) {
+  if (!(error instanceof GatewayError)) return null;
+  const body = error.details?.body;
+  if (!body) return null;
+  const code = normalizeGatewayCode(body.code || body.error);
+  if (code !== "invalid_request") return null;
+  const messageSource = [body.error, body.message, body.details?.reason, body.details?.message]
+    .filter((part) => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+  if (!messageSource) return "gateway_invalid_request_unknown";
+  for (const rule of INVALID_REQUEST_SUBTYPE_RULES) {
+    if (rule.keywords.some((keyword) => messageSource.includes(keyword))) return rule.subtype;
+  }
+  return "gateway_invalid_request_unknown";
+}
+
 export function classifyGatewayBlockedReason(error) {
   if (!(error instanceof GatewayError)) return null;
   const code = gatewayErrorCode(error);
@@ -126,6 +162,9 @@ export function classifyGatewayBlockedReason(error) {
         .toLowerCase();
       if (limit === "0 btc") return "gateway_zero_btc_limit";
       return "gateway_route_limit_exceeded";
+    }
+    if (normalizedCode === "invalid_request") {
+      return classifyGatewayInvalidRequestSubtype(error) || "gateway_invalid_request_unknown";
     }
     return normalizedCode;
   }

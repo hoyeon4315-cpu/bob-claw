@@ -13,7 +13,7 @@ import {
 } from "../assets/tokens.mjs";
 import { hydrateOfframpExecutionFromGatewayBody } from "../gateway/executable-quote.mjs";
 import { GatewayClient, routeKey, summarizeRoutes } from "../gateway/client.mjs";
-import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
+import { buildGatewayQuoteParams, verifyAddressForChain } from "../gateway/quote-params.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 
 const SCHEMA_VERSION = 4;
@@ -231,8 +231,8 @@ function quoteParamsFor(route, amount) {
   return buildGatewayQuoteParams({
     route,
     amount,
-    sender: config.verifyRecipient,
-    recipient: route.dstChain === "bitcoin" ? config.verifyBtcRecipient : config.verifyRecipient,
+    sender: verifyAddressForChain(route.srcChain),
+    recipient: verifyAddressForChain(route.dstChain),
   });
 }
 

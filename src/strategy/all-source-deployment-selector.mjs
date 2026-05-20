@@ -237,9 +237,10 @@ function makeCandidate(fields, { activeCapitalUsd = null } = {}) {
   return candidate;
 }
 
-function campaignByOpportunity(campaignAware = {}) {
+function campaignByOpportunity(campaignAware) {
   const map = new Map();
-  for (const candidate of array(campaignAware.candidates)) {
+  const source = campaignAware ?? {};
+  for (const candidate of array(source.candidates)) {
     if (candidate?.opportunityId) map.set(String(candidate.opportunityId), candidate);
   }
   return map;
@@ -792,12 +793,16 @@ function resizeTinyCanary({
 }
 
 function normalizeMerklCandidates({
-  merklQueue = {},
-  merklOpportunities = {},
-  campaignAware = {},
-  capitalManagerRefill = {},
+  merklQueue: rawMerklQueue,
+  merklOpportunities: rawMerklOpportunities,
+  campaignAware: rawCampaignAware,
+  capitalManagerRefill: rawCapitalManagerRefill,
   activeCapitalUsd = null,
 }) {
+  const merklQueue = rawMerklQueue ?? {};
+  const merklOpportunities = rawMerklOpportunities ?? {};
+  const campaignAware = rawCampaignAware ?? {};
+  const capitalManagerRefill = rawCapitalManagerRefill ?? {};
   const campaigns = campaignByOpportunity(campaignAware);
   const opportunities = merklOpportunityById(merklOpportunities);
   return array(merklQueue.queue).map((item) => {
@@ -2043,8 +2048,9 @@ function addMerklQueueFamilyCoverage(rows, merklQueue = {}) {
   }
 }
 
-function addCampaignAwareFamilyCoverage(rows, campaignAware = {}) {
-  for (const candidate of array(campaignAware.candidates)) {
+function addCampaignAwareFamilyCoverage(rows, campaignAware) {
+  const source = campaignAware ?? {};
+  for (const candidate of array(source.candidates)) {
     const families = familySetForSurface(candidate);
     for (const family of families) {
       addFamilySurface(rows, family, {

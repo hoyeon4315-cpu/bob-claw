@@ -185,3 +185,9 @@ export function isEvmChain(chain) {
 export function isBitcoinChain(chain) {
   return Boolean(getBitcoinChainConfig(chain));
 }
+
+export function chainAddressFamily(chain) {
+  if (isBitcoinChain(chain)) return "btc";
+  if (isEvmChain(chain)) return "evm";
+  return null;
+}

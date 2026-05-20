@@ -453,9 +453,37 @@ export function refillRouteAttemptReason(result = {}, { method = null } = {}) {
   };
 }
 
+const GATEWAY_INVALID_REQUEST_DEFERRAL_BY_SUBTYPE = Object.freeze({
+  invalid_request_recipient: {
+    routeDeferralReason: "bridge_request_invalid_recipient_format",
+    routeDeferralAction: "defer_until_recipient_address_matches_destination_chain_format",
+  },
+  invalid_request_amount_unit: {
+    routeDeferralReason: "bridge_request_invalid_amount_unit",
+    routeDeferralAction: "defer_until_amount_unit_matches_source_token_decimals",
+  },
+  invalid_request_token: {
+    routeDeferralReason: "bridge_request_invalid_token",
+    routeDeferralAction: "defer_until_source_or_destination_token_resolves_to_supported_asset",
+  },
+  invalid_request_route_param: {
+    routeDeferralReason: "bridge_request_invalid_route_param",
+    routeDeferralAction: "defer_until_route_param_matches_supported_chain_or_provider",
+  },
+  gateway_invalid_request_unknown: {
+    routeDeferralReason: "bridge_request_invalid_unknown",
+    routeDeferralAction: "defer_until_gateway_invalid_request_payload_is_diagnosed",
+  },
+});
+
 export function routeExhaustionDeferral(routeAttemptReasons = []) {
   const reasons = new Set((routeAttemptReasons || []).map((item) => item?.blockedReason).filter(Boolean));
   const methods = new Set((routeAttemptReasons || []).map((item) => item?.method).filter(Boolean));
+  if (reasons.size === 1) {
+    const onlyReason = [...reasons][0];
+    const invalidRequestDeferral = GATEWAY_INVALID_REQUEST_DEFERRAL_BY_SUBTYPE[onlyReason];
+    if (invalidRequestDeferral) return invalidRequestDeferral;
+  }
   if (reasons.has("quote_amount_too_low") && reasons.size === 1) {
     return {
       routeDeferralReason: "bridge_quote_amount_below_minimum",

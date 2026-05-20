@@ -1,13 +1,13 @@
 import { config } from "../config/env.mjs";
 import { GatewayClient, classifyGatewayBlockedReason } from "./client.mjs";
-import { buildGatewayQuoteParams } from "./quote-params.mjs";
+import { buildGatewayQuoteParams, verifyAddressForChain } from "./quote-params.mjs";
 
 export function quoteParamsForStoredQuote(quote, senderAddress) {
   return buildGatewayQuoteParams({
     route: quote.route,
     amount: quote.amount,
-    sender: senderAddress || config.verifyRecipient,
-    recipient: quote.route.dstChain === "bitcoin" ? config.verifyBtcRecipient : config.verifyRecipient,
+    sender: senderAddress || verifyAddressForChain(quote.route.srcChain),
+    recipient: verifyAddressForChain(quote.route.dstChain),
   });
 }
 
@@ -53,10 +53,7 @@ export function normalizeExecutableQuote(quote, execution = {}) {
 
 export async function hydrateStoredOfframpQuoteExecution(
   quote,
-  {
-    client = new GatewayClient({ baseUrl: config.gatewayApiBase }),
-    senderAddress = null,
-  } = {},
+  { client = new GatewayClient({ baseUrl: config.gatewayApiBase }), senderAddress = null } = {},
 ) {
   if (!isOfframpExecutionHydrationRequired(quote)) {
     return normalizeExecutableQuote(quote);
@@ -86,9 +83,7 @@ export async function hydrateStoredOfframpQuoteExecution(
 
 export async function hydrateOfframpExecutionFromGatewayBody(
   body,
-  {
-    client = new GatewayClient({ baseUrl: config.gatewayApiBase }),
-  } = {},
+  { client = new GatewayClient({ baseUrl: config.gatewayApiBase }) } = {},
 ) {
   const executable = normalizeExecutableQuoteFromGatewayBody(body);
   if (executable.quoteType !== "offramp" || (executable.txTo && executable.txData)) {

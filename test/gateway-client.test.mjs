@@ -4,6 +4,7 @@ import {
   GatewayClient,
   GatewayError,
   classifyGatewayBlockedReason,
+  classifyGatewayInvalidRequestSubtype,
   gatewayQuoteAmountFloor,
   normalizeGatewayRoutesBody,
   parseGatewayOrder,
@@ -166,4 +167,55 @@ test("gatewayQuoteAmountFloor handles missing minimum or actual gracefully", () 
     body: { code: "QUOTE_AMOUNT_TOO_LOW", details: {} },
   });
   assert.equal(gatewayQuoteAmountFloor(empty), null);
+});
+
+// INVALID_REQUEST subtype classification: precise typed reasons so downstream
+// taxonomy can distinguish recipient/token/amount/route causes without
+// collapsing to a single bucket. Keyword matching is registry-free; the rule
+// table is the only literal source.
+test("classifyGatewayInvalidRequestSubtype routes recipient-format errors", () => {
+  const error = new GatewayError("Gateway request failed: HTTP 400 INVALID_REQUEST", {
+    status: 400,
+    body: { code: "INVALID_REQUEST", error: "Expected a Bitcoin address but found an EVM address" },
+  });
+  assert.equal(classifyGatewayInvalidRequestSubtype(error), "invalid_request_recipient");
+  assert.equal(classifyGatewayBlockedReason(error), "invalid_request_recipient");
+});
+
+test("classifyGatewayInvalidRequestSubtype routes amount-unit errors", () => {
+  const error = new GatewayError("Gateway request failed: HTTP 400 INVALID_REQUEST", {
+    status: 400,
+    body: { code: "INVALID_REQUEST", error: "Invalid amount: expected 18 decimals" },
+  });
+  assert.equal(classifyGatewayInvalidRequestSubtype(error), "invalid_request_amount_unit");
+});
+
+test("classifyGatewayInvalidRequestSubtype routes token errors", () => {
+  const error = new GatewayError("Gateway request failed: HTTP 400 INVALID_REQUEST", {
+    status: 400,
+    body: { code: "INVALID_REQUEST", error: "Unknown dstToken" },
+  });
+  assert.equal(classifyGatewayInvalidRequestSubtype(error), "invalid_request_token");
+});
+
+test("classifyGatewayInvalidRequestSubtype routes route-param errors", () => {
+  const error = new GatewayError("Gateway request failed: HTTP 400 INVALID_REQUEST", {
+    status: 400,
+    body: { code: "INVALID_REQUEST", error: "Unsupported srcChain" },
+  });
+  assert.equal(classifyGatewayInvalidRequestSubtype(error), "invalid_request_route_param");
+});
+
+test("classifyGatewayInvalidRequestSubtype falls back to unknown when message lacks keywords", () => {
+  const error = new GatewayError("Gateway request failed: HTTP 400 INVALID_REQUEST", {
+    status: 400,
+    body: { code: "INVALID_REQUEST", error: "Bad request" },
+  });
+  assert.equal(classifyGatewayInvalidRequestSubtype(error), "gateway_invalid_request_unknown");
+  assert.equal(classifyGatewayBlockedReason(error), "gateway_invalid_request_unknown");
+});
+
+test("classifyGatewayInvalidRequestSubtype is null for non-INVALID_REQUEST errors", () => {
+  const error = new GatewayError("Gateway request failed: HTTP 404", { status: 404 });
+  assert.equal(classifyGatewayInvalidRequestSubtype(error), null);
 });
