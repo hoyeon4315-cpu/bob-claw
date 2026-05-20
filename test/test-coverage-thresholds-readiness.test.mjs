@@ -6,7 +6,7 @@ test("repository wires minimum coverage enforcement into package scripts and PR 
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(
     packageJson.scripts?.["test:coverage"],
-    "node --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=65 --test-coverage-functions=80 --test-coverage-include=src/executor/policy/*.mjs --test-coverage-include=src/executor/payback/*.mjs --test-coverage-include=src/risk/auto-kill-triggers.mjs --test test/executor-policy-coverage.test.mjs test/executor-policy-index.test.mjs test/gateway-availability.test.mjs test/auto-kill-triggers.test.mjs test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs test/payback-quote-proof-matrix.test.mjs",
+    "node --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=65 --test-coverage-functions=80 --test-coverage-include=src/executor/policy/*.mjs --test-coverage-include=src/executor/payback/*.mjs --test-coverage-include=src/risk/auto-kill-triggers.mjs --test test/executor-policy-coverage.test.mjs test/executor-policy-index.test.mjs test/gateway-availability.test.mjs test/auto-kill-triggers.test.mjs test/payback-scheduler.test.mjs test/payback-accumulator.test.mjs test/payback-dashboard.test.mjs test/payback-quote-proof-matrix.test.mjs test/capital-audit-gate.test.mjs test/executor-approval-hygiene.test.mjs test/aggressive-velocity-policy.test.mjs",
     "package.json must expose a real coverage gate with nonzero thresholds over the documented critical source scope",
   );
 
