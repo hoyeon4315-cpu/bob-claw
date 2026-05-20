@@ -256,6 +256,65 @@ test("does not special-case strategy family names for pilot handlers", () => {
   assert.equal(report.handlerResults[0].dryRunIntent.selectedMethod, "cross_chain_bridge_or_swap");
 });
 
+test("capital_refill handler ranks same-family jobs by report-only economics instead of array order", () => {
+  const staleNegative = refillJob("capital_family", {
+    jobId: "first-negative",
+    requiresManualReview: true,
+    reviewReasons: ["route_refill_economically_unjustified"],
+    fundingSource: {
+      ...refillJob("capital_family").fundingSource,
+      selectionStatus: "ready",
+      method: "cross_chain_bridge_or_swap",
+      expectedExecutionRefillCostUsd: 0.89,
+    },
+    executionMethod: "cross_chain_bridge_or_swap",
+    systemEconomics: {
+      amount: "100000",
+      effectiveSystemNetPnlUsd: -0.7,
+      routeExecutableNetEdgeUsd: 0.2,
+      routeKnownCostUsd: 0.07,
+    },
+  });
+  const positiveAlternative = refillJob("capital_family", {
+    jobId: "second-positive",
+    requiresManualReview: false,
+    reviewReasons: [],
+    fundingSource: {
+      ...refillJob("capital_family").fundingSource,
+      selectionStatus: "ready",
+      method: "cross_chain_swap_via_btc_intermediate",
+      expectedExecutionRefillCostUsd: 0.4,
+      source: {
+        chain: "syntheticSource",
+        token: "0xs",
+        ticker: "SYN",
+        actual: "50000",
+        estimatedUsd: 50,
+      },
+    },
+    executionMethod: "cross_chain_swap_via_btc_intermediate",
+    systemEconomics: {
+      amount: "200000",
+      routeInputUsd: 100,
+      effectiveSystemNetPnlUsd: 1.4,
+      routeExecutableNetEdgeUsd: 1.8,
+      routeKnownCostUsd: 0.1,
+    },
+  });
+  const report = buildLaneHandlerReport({
+    selectorReport: { actionLaneQueue: [queueItem("capital_family", "capital_refill")] },
+    refillPlannerReport: {
+      capitalPlan: { decision: "REFILL_REQUIRED" },
+      jobs: { jobs: [staleNegative, positiveAlternative] },
+    },
+  });
+  const intent = report.handlerResults[0].dryRunIntent;
+  assert.equal(intent.jobId, "second-positive");
+  assert.equal(intent.selectedMethod, "cross_chain_swap_via_btc_intermediate");
+  assert.equal(intent.expectedNetUsd, 1.4);
+  assert.equal(report.handlerResults[0].canLive, false);
+});
+
 test("builds from provided in-memory reports without generated runtime artifacts", () => {
   const report = buildLaneHandlerReport({
     selectorReport: { actionLaneQueue: [queueItem("blocked_family", "producer_backlog")] },

@@ -85,6 +85,12 @@ function syntheticHandlerReport({ plannerBlocker = null, intentOverrides = {} } 
 }
 
 test("amount-floor evidence on tuple-matched readiness blocker yields WAITLIST_BELOW_ROUTE_MINIMUM", () => {
+  // Planner intent supplies `expectedNetUsd` (so missingEvidence at the
+  // candidate-evidence layer stays empty) but does NOT supply the cost-floor
+  // numerics. The governing-sync rule in `belowRouteMinimumEvidence` therefore
+  // drops `expectedNetUsd` from the missing-USD list (planner side has it)
+  // while keeping `requiredNetUsd`, `p90CostUsd`, and `effectiveFloorUsd`
+  // missing on both producer sides.
   const report = buildLaneIntentCandidateReport({
     laneHandlerReport: syntheticHandlerReport(),
     readinessReport: {
@@ -134,8 +140,10 @@ test("amount-floor evidence on tuple-matched readiness blocker yields WAITLIST_B
   assert.equal(candidate.quoteCost[0].fees, "225000");
   assert.equal(candidate.quoteCost[0].executionFees, "215000");
   assert.equal(candidate.quoteCost[0].feeRatio, 9.0);
-  // USD cost-floor source absent => exact missing fields named, canIntent=false
-  assert.ok(candidate.missingUsdCostFloorFields.includes("expectedNetUsd"));
+  // USD cost-floor source absent on blocker; planner intent supplies
+  // expectedNetUsd so governing-sync drops it from missing. The remaining
+  // three USD floor fields are absent on both producer sides.
+  assert.ok(!candidate.missingUsdCostFloorFields.includes("expectedNetUsd"));
   assert.ok(candidate.missingUsdCostFloorFields.includes("requiredNetUsd"));
   assert.ok(candidate.missingUsdCostFloorFields.includes("p90CostUsd"));
   assert.ok(candidate.missingUsdCostFloorFields.includes("effectiveFloorUsd"));
@@ -239,12 +247,23 @@ test("insufficient reserve/cap emits typed waitlist with exact sizing deficit", 
     },
   });
   const candidate = report.laneIntentCandidates[0];
-  assert.equal(candidate.status, "WAITLIST_BELOW_ROUTE_MINIMUM");
+  // Cap/reserve insufficiency is its own truthful lifecycle state distinct
+  // from pure inventory-below-route-minimum: committed policy caps clamp
+  // safe-allocatable below the route minimum. The sizingBlocker still carries
+  // `safe_allocatable_capital_below_route_minimum`; no cap is relaxed.
+  assert.equal(candidate.status, "INSUFFICIENT_CAP_OR_RESERVE");
   assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
   assert.equal(candidate.proposedSizedAmountSats, null);
   assert.equal(candidate.safeAllocatableAmountSats, "24000");
   assert.equal(candidate.sizingDeficitSats, "1000");
   assert.equal(candidate.sizingBlocker, "safe_allocatable_capital_below_route_minimum");
+  assert.equal(
+    candidate.nextAutomationStep,
+    "wait_for_safe_allocatable_capital_to_meet_route_minimum_without_live_authority",
+  );
 });
 
 test("safe sizing without USD cost-floor blocks canIntent with exact missing fields", () => {
@@ -439,6 +458,10 @@ for (const tuple of ANTI_OVERFIT_TUPLES) {
 // (`gatewaySuccessProbe`). With no probe the candidate must not invent quote
 // fields and must keep the missing-fields list populated.
 test("no gatewaySuccessProbe => quoteCost array empty and USD floor flagged missing", () => {
+  // Planner intent has expectedNetUsd (default) but not the cost-floor
+  // numerics; the blocker also lacks them. Governing-sync keeps the three
+  // genuinely-absent fields in the missing list while dropping
+  // `expectedNetUsd` which the planner supplies.
   const report = buildLaneIntentCandidateReport({
     laneHandlerReport: syntheticHandlerReport(),
     readinessReport: {
@@ -464,7 +487,10 @@ test("no gatewaySuccessProbe => quoteCost array empty and USD floor flagged miss
   assert.equal(candidate.status, "WAITLIST_BELOW_ROUTE_MINIMUM");
   assert.equal(candidate.canIntent, false);
   assert.deepEqual(candidate.quoteCost, []);
-  assert.ok(candidate.missingUsdCostFloorFields.includes("expectedNetUsd"));
+  assert.ok(!candidate.missingUsdCostFloorFields.includes("expectedNetUsd"));
+  assert.ok(candidate.missingUsdCostFloorFields.includes("requiredNetUsd"));
+  assert.ok(candidate.missingUsdCostFloorFields.includes("p90CostUsd"));
+  assert.ok(candidate.missingUsdCostFloorFields.includes("effectiveFloorUsd"));
 });
 
 test("amount-floor mismatched on different selectedMethod stays out of NO_LIVE_ROUTE", () => {

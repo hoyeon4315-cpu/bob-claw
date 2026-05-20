@@ -29,7 +29,13 @@ function readyHandlerReport(overrides = {}, intentOverrides = {}) {
         "cross_chain_bridge_or_swap",
         "cross_chain_swap_via_btc_intermediate",
       ],
-      source: intentOverrides.source || { chain: "bitcoin", asset: "BTC", token: "0x0", estimatedUsd: 91.1 },
+      source: intentOverrides.source || {
+        chain: "bitcoin",
+        asset: "BTC",
+        token: "0x0",
+        actual: "200000",
+        estimatedUsd: 154,
+      },
       destination: intentOverrides.destination || {
         chain: "base",
         asset: "wBTC.OFT",
@@ -38,16 +44,31 @@ function readyHandlerReport(overrides = {}, intentOverrides = {}) {
         targetAmountDecimal: 0.00118732,
         estimatedAssetValueUsd: 91.12,
       },
-      expectedNetUsd: 0.91,
+      expectedNetUsd: "expectedNetUsd" in intentOverrides ? intentOverrides.expectedNetUsd : 0.91,
       requiredNetUsd: "requiredNetUsd" in intentOverrides ? intentOverrides.requiredNetUsd : null,
       p90CostUsd: "p90CostUsd" in intentOverrides ? intentOverrides.p90CostUsd : 0.62,
-      effectiveFloorUsd: "effectiveFloorUsd" in intentOverrides ? intentOverrides.effectiveFloorUsd : null,
+      effectiveFloorUsd: "effectiveFloorUsd" in intentOverrides ? intentOverrides.effectiveFloorUsd : 0.75,
+      routeQuoteRef: intentOverrides.routeQuoteRef || {
+        routeKey: "synthetic-source->synthetic-dest",
+        amount: "10000",
+        routeInputUsd: 91.12,
+        routeNetEdgeUsd: 1.79,
+        routeExecutableNetEdgeUsd: 1.79,
+        routeKnownCostUsd: 0.38,
+        routeFailureRate: 0.01,
+      },
       costs: {
         expectedExecutionRefillCostUsd: 0.88,
         expectedReserveReplenishmentCostUsd: 0,
         bridgeQuoteCostUsd: 0.88,
         bridgeQuoteCostCeilingUsd: 1.5,
         routeKnownCostUsd: 0.38,
+      },
+      policyCaps: intentOverrides.policyCaps || {
+        tinyLivePerTxUsd: 500,
+        perTxUsd: 500,
+        perDayUsd: 500,
+        maxDailyLossUsd: 100,
       },
       blocker: null,
       governingAgreement: {
@@ -83,6 +104,11 @@ test("statuses enumerate report-only lifecycle outcomes", () => {
       "READY_FOR_INTENT_CANDIDATE",
       "NO_LIVE_ROUTE",
       "WAITLIST_BELOW_ROUTE_MINIMUM",
+      "INSUFFICIENT_CAP_OR_RESERVE",
+      "TRUE_ECONOMIC_NO_GO_NEGATIVE_EV",
+      "WAITLIST_FOR_BETTER_ROUTE_OR_SIZE",
+      "ROUTE_OR_COST_PROVENANCE_MISSING",
+      "INSUFFICIENT_SAFE_CAPITAL",
       "QUOTE_COST_FIELDS_MISSING",
       "BACKLOG_MISSING_EVIDENCE",
       "TYPED_MISSING_EVIDENCE",
@@ -301,6 +327,89 @@ test("above-min governing-aligned intent without USD cost-floor producer => QUOT
   assert.equal(candidate.quoteCostFieldsMissing.missingUsdCostFloorProducer, "src/treasury/refill-job.mjs");
 });
 
+test("negative EV after legal amount sweep blocks canIntent with producer decomposition", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      expectedNetUsd: -0.25,
+      requiredNetUsd: 0.95,
+      p90CostUsd: 0.85,
+      effectiveFloorUsd: 0.95,
+      routeQuoteRef: {
+        routeKey: "generic-source->generic-dest",
+        amount: "10000",
+        routeInputUsd: 10,
+        routeNetEdgeUsd: 0.2,
+        routeExecutableNetEdgeUsd: 0.2,
+        routeKnownCostUsd: 0.05,
+      },
+      source: { chain: "genericSource", asset: "GEN_SRC", token: "0xs", actual: "50000", estimatedUsd: 50 },
+      destination: {
+        chain: "genericDest",
+        asset: "GEN_DST",
+        token: "0xd",
+        targetAmount: "10000",
+        targetAmountDecimal: 0.0001,
+        estimatedAssetValueUsd: 10,
+      },
+      policyCaps: { tinyLivePerTxUsd: 100, perTxUsd: 100, perDayUsd: 100, maxDailyLossUsd: 10 },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TRUE_ECONOMIC_NO_GO_NEGATIVE_EV");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.economicReview.verdict, "TRUE_ECONOMIC_NO_GO_NEGATIVE_EV");
+  assert.equal(candidate.amountSweep.candidates[0].legal, true);
+  assert.equal(candidate.amountSweep.candidates[0].reason, "expected_net_below_effective_floor");
+  assert.equal(candidate.evDecomposition.expectedNetUsd, -0.25);
+  assert.equal(candidate.evDecomposition.effectiveFloorUsd, 0.95);
+});
+
+test("fresh quote amount above safe capital blocks canIntent without selecting a route", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      expectedNetUsd: 2,
+      requiredNetUsd: 0.95,
+      p90CostUsd: 0.85,
+      effectiveFloorUsd: 0.95,
+      routeQuoteRef: {
+        routeKey: "generic-source->generic-dest",
+        amount: "100000",
+        routeInputUsd: 80,
+        routeNetEdgeUsd: 2.5,
+        routeExecutableNetEdgeUsd: 2.5,
+        routeKnownCostUsd: 0.05,
+      },
+      source: { chain: "genericSource", asset: "GEN_SRC", token: "0xs", actual: "50000", estimatedUsd: 50 },
+      destination: {
+        chain: "genericDest",
+        asset: "GEN_DST",
+        token: "0xd",
+        targetAmount: "100000",
+        targetAmountDecimal: 0.001,
+        estimatedAssetValueUsd: 80,
+      },
+      policyCaps: { tinyLivePerTxUsd: 25, perTxUsd: 25, perDayUsd: 25, maxDailyLossUsd: 10 },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "INSUFFICIENT_SAFE_CAPITAL");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.amountSweep.candidates[0].legal, false);
+  assert.equal(candidate.amountSweep.candidates[0].reason, "quoted_amount_exceeds_safe_allocatable_capital");
+});
+
 test("anti-overfit: distinct method tuples both block on USD cost-floor when missing", () => {
   for (const tuple of [
     {
@@ -329,6 +438,7 @@ test("anti-overfit: distinct method tuples both block on USD cost-floor when mis
           estimatedAssetValueUsd: 4,
         },
         p90CostUsd: null,
+        effectiveFloorUsd: null,
       },
     );
     const report = buildLaneIntentCandidateReport({
@@ -832,10 +942,10 @@ test("EV-style current-method blocker without cost-floor numbers emits TYPED_MIS
   );
 });
 
-test("source-tuple mismatch falls back to UNRESOLVED_GOVERNING_SYNC_MISMATCH", () => {
-  // Planner source tuple does not match readiness blocker source tuple — the
-  // typed-missing-evidence path requires structural tuple agreement, so the
-  // verdict stays UNRESOLVED rather than over-aggregating.
+test("source-specific blocker for a different tuple does not create typed missing evidence", () => {
+  // Planner source tuple does not match readiness blocker source tuple. The
+  // typed-missing-evidence path requires structural tuple agreement, and the
+  // source-specific stale blocker must not override the selected planner job.
   const handlerReport = readyHandlerReport(
     {},
     {
@@ -872,7 +982,9 @@ test("source-tuple mismatch falls back to UNRESOLVED_GOVERNING_SYNC_MISMATCH", (
     },
   });
   const candidate = report.laneIntentCandidates[0];
-  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  assert.notEqual(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  assert.equal(candidate.governingAgreement.sourceMismatchedBlockers.length, 1);
+  assert.equal(candidate.governingAgreement.blockingReadinessBlockers.length, 0);
   assert.equal(candidate.typedMissingEvidence.length, 0);
 });
 

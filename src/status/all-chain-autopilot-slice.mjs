@@ -157,12 +157,35 @@ function buildRefillBlockerEntry(item, { policyBlockerByJobId, plannerMethodsByR
   };
 }
 
+// Structural supersession at the producer layer: when a not-executed
+// refillExecution carries BOTH a `selectedExecutionMethod` and a different
+// `executionMethod`, the planner has reassigned the method for the same record
+// (same jobId/resource). If the current `executionMethod` is in the planner's
+// fresh candidate methods for that (chain, asset) AND the stale
+// `selectedExecutionMethod` is not, the persisted record is a snapshot of a
+// prior method choice that has been superseded by the current planner state.
+// Drop it from the blocker projection so readiness/dashboard/lifecycle do not
+// surface an obsolete refill blocker. No family/chain/asset/method/amount is
+// named; only structural overlap between the two governing surfaces is used.
+function refillExecutionSupersededByPlannerMethodReassignment(item, plannerMethodsByResource) {
+  if (!plannerMethodsByResource || plannerMethodsByResource.size === 0) return false;
+  const selected = item.selectedExecutionMethod || null;
+  const current = item.executionMethod || null;
+  if (!selected || !current || selected === current) return false;
+  const key = resourceKey(item.chain || null, item.asset || item.targetAsset || null);
+  if (!key) return false;
+  const methods = plannerMethodsByResource.get(key);
+  if (!methods || methods.size === 0) return false;
+  return methods.has(current) && !methods.has(selected);
+}
+
 function refillBlockers(
   refillExecutions = [],
   { policyBlockerByJobId = new Map(), plannerMethodsByResource = null } = {},
 ) {
   return refillExecutions
     .filter((item) => !item.executed)
+    .filter((item) => !refillExecutionSupersededByPlannerMethodReassignment(item, plannerMethodsByResource))
     .map((item) => buildRefillBlockerEntry(item, { policyBlockerByJobId, plannerMethodsByResource }))
     .filter((item) => item.reason)
     .slice(0, 8);

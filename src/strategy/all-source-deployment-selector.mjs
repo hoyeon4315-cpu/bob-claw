@@ -2398,7 +2398,7 @@ function capitalUtilization({ capitalAudit = {}, unifiedCapital = {} }) {
   };
 }
 
-function buildLaneHandlerPilotReport({ now, actionLaneQueue, options }) {
+function buildLaneHandlerPilotReport({ now, actionLaneQueue, options, activeCapitalUsd = null }) {
   return buildLaneHandlerReport({
     selectorReport: {
       generatedAt: now,
@@ -2406,6 +2406,14 @@ function buildLaneHandlerPilotReport({ now, actionLaneQueue, options }) {
     },
     refillPlannerReport: options.capitalManagerRefill || {},
     receiptReport: options.receiptLedger || {},
+    auditRecords: Array.isArray(options.auditRecords)
+      ? options.auditRecords
+      : Array.isArray(options.signerAuditRecords)
+        ? options.signerAuditRecords
+        : null,
+    receiptRecords: Array.isArray(options.receiptRecords) ? options.receiptRecords : null,
+    evCostModel: options.evCostModel || null,
+    activeCapitalUsd,
     now,
   });
 }
@@ -2425,11 +2433,12 @@ function laneHandlerPilotSummary(laneHandlerReport) {
   };
 }
 
-function buildRemediationLifecycleBundle({ now, dryRunRemediationPlan, options }) {
+function buildRemediationLifecycleBundle({ now, dryRunRemediationPlan, options, activeCapitalUsd = null }) {
   const laneHandlerReport = buildLaneHandlerPilotReport({
     now,
     actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
     options,
+    activeCapitalUsd,
   });
   const laneIntentCandidateReport = buildLaneIntentCandidateReport({
     selectorReport: {
@@ -2527,6 +2536,7 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
     now,
     dryRunRemediationPlan,
     options,
+    activeCapitalUsd,
   });
 
   return {
