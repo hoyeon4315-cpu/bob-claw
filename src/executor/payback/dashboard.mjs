@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import snapshotPaybackAccumulator, { profitSatsFromRecord } from "./accumulator.mjs";
+import snapshotPaybackAccumulator, { buildPriceIndex, profitSatsFromRecord } from "./accumulator.mjs";
 import { GATEWAY_BTC_OFFRAMP_STRATEGY_ID } from "../helpers/gateway-btc-offramp.mjs";
 import { loadLivePaybackReceiptStore, loadPaybackAuditLog } from "../ingestor/execution-receipt-ingest.mjs";
 import { buildPaybackQuoteProofMatrixFromFiles } from "./quote-proof-matrix.mjs";
@@ -186,24 +186,24 @@ function buildRealizedProfitPeriodDistribution({
 } = {}) {
   const periodMs = PAYBACK_FORECAST_PERIOD_DAYS * DAY_MS;
   const periodBuckets = new Map();
+  const priceIndex = buildPriceIndex(marketPriceSnapshots);
+  const profitConfig = { priceIndex };
   for (const record of recordsFromForecastStore(auditLogLines, receiptStore)) {
     const observedAtMs = normalizeTimestamp(
       record.observedAt ??
-      record.timestamp ??
-      record.createdAt ??
-      record.receipt?.observedAt ??
-      record.realized?.observedAt,
+        record.timestamp ??
+        record.createdAt ??
+        record.receipt?.observedAt ??
+        record.realized?.observedAt,
     );
     if (!Number.isFinite(observedAtMs) || !Number.isFinite(windowStartMs) || !Number.isFinite(nowMs)) continue;
     if (observedAtMs < windowStartMs || observedAtMs > nowMs) continue;
-    const profitSats = profitSatsFromRecord(record, marketPriceSnapshots, {});
+    const profitSats = profitSatsFromRecord(record, marketPriceSnapshots, profitConfig);
     if (!Number.isFinite(profitSats)) continue;
     const periodIndex = Math.max(0, Math.floor((observedAtMs - windowStartMs) / periodMs));
     periodBuckets.set(periodIndex, (periodBuckets.get(periodIndex) || 0) + profitSats);
   }
-  const periodTotals = [...periodBuckets.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([, value]) => value);
+  const periodTotals = [...periodBuckets.entries()].sort(([left], [right]) => left - right).map(([, value]) => value);
   return {
     sampleCount: periodTotals.length,
     medianSatsPerPeriod: median(periodTotals),
@@ -219,8 +219,7 @@ function buildEstimatedPeriodsToFirstPayback({
   reportingPnlBaseline = null,
 } = {}) {
   const nowMs = normalizeTimestamp(now);
-  const rollingWindowStartMs =
-    Number.isFinite(nowMs) ? nowMs - (PAYBACK_FORECAST_WINDOW_DAYS * DAY_MS) : null;
+  const rollingWindowStartMs = Number.isFinite(nowMs) ? nowMs - PAYBACK_FORECAST_WINDOW_DAYS * DAY_MS : null;
   const scopedWindowStartMs = laterTimestampMs(rollingWindowStartMs, reportingPnlBaseline?.anchoredAt);
   const scopedAuditLogLines = filterRecordsByReportingPnlBaseline(auditLogLines, reportingPnlBaseline);
   const scopedReceiptStore = forecastReceiptStore(receiptStore, reportingPnlBaseline);
@@ -244,10 +243,9 @@ function buildEstimatedPeriodsToFirstPayback({
     windowStartMs: scopedWindowStartMs,
     nowMs,
   });
-  const realizedGrossProfitSatsPeriodMedian =
-    Number.isFinite(realizedPeriodDistribution.medianSatsPerPeriod)
-      ? realizedPeriodDistribution.medianSatsPerPeriod
-      : null;
+  const realizedGrossProfitSatsPeriodMedian = Number.isFinite(realizedPeriodDistribution.medianSatsPerPeriod)
+    ? realizedPeriodDistribution.medianSatsPerPeriod
+    : null;
   const activeProfileBudgetUsd = profileSettlementTargetUsd(ACTIVE_SLEEVE_PROFILE_ID);
   const baselineApplied =
     Number.isFinite(reportingPnlBaseline?.anchoredAtMs) &&
@@ -255,7 +253,8 @@ function buildEstimatedPeriodsToFirstPayback({
   const profiles = Object.fromEntries(
     Object.keys(SLEEVE_PROFILES).map((profileId) => {
       const profileBudgetUsd = profileSettlementTargetUsd(profileId);
-      const scalingRatio = scaleRatio(activeProfileBudgetUsd, profileBudgetUsd) ?? (profileId === ACTIVE_SLEEVE_PROFILE_ID ? 1 : null);
+      const scalingRatio =
+        scaleRatio(activeProfileBudgetUsd, profileBudgetUsd) ?? (profileId === ACTIVE_SLEEVE_PROFILE_ID ? 1 : null);
       const projectedGrossProfitSatsPerPeriod =
         realizedGrossProfitSatsPerPeriod > 0 && Number.isFinite(scalingRatio)
           ? realizedGrossProfitSatsPerPeriod * scalingRatio
@@ -279,9 +278,10 @@ function buildEstimatedPeriodsToFirstPayback({
         reason = "profile_budget_unresolved";
       } else {
         estimatedPeriods = round(requiredGrossProfitSats / projectedGrossProfitSatsPerPeriod, 2);
-        medianEstimatedPeriods = projectedMedianGrossProfitSatsPerPeriod > 0
-          ? round(requiredGrossProfitSats / projectedMedianGrossProfitSatsPerPeriod, 2)
-          : null;
+        medianEstimatedPeriods =
+          projectedMedianGrossProfitSatsPerPeriod > 0
+            ? round(requiredGrossProfitSats / projectedMedianGrossProfitSatsPerPeriod, 2)
+            : null;
       }
       return [
         profileId,
@@ -380,7 +380,9 @@ function buildMinimumPaybackReview({
           status: estimate.status || "unavailable",
           reason: estimate.reason || null,
           estimatedPeriods: Number.isFinite(estimate.estimatedPeriods) ? estimate.estimatedPeriods : null,
-          medianEstimatedPeriods: Number.isFinite(estimate.medianEstimatedPeriods) ? estimate.medianEstimatedPeriods : null,
+          medianEstimatedPeriods: Number.isFinite(estimate.medianEstimatedPeriods)
+            ? estimate.medianEstimatedPeriods
+            : null,
         },
       ];
     }),
@@ -398,9 +400,7 @@ function buildMinimumPaybackReview({
     };
   }
 
-  const profileReasons = profileIds
-    .map((profileId) => profileSummaries[profileId]?.reason)
-    .filter(Boolean);
+  const profileReasons = profileIds.map((profileId) => profileSummaries[profileId]?.reason).filter(Boolean);
   const estimatedWithinThresholdProfiles = profileIds.filter((profileId) => {
     const periods = profileSummaries[profileId]?.estimatedPeriods;
     return Number.isFinite(periods) && periods < 8;
@@ -437,7 +437,8 @@ export function buildProposedMinPaybackPatch({
   proposedMinPaybackSats = PROPOSED_MIN_PAYBACK_SATS,
   trigger = "both_profiles_above_threshold",
 } = {}) {
-  const rationale = MIN_PAYBACK_PROPOSAL_RATIONALE[trigger] || MIN_PAYBACK_PROPOSAL_RATIONALE.both_profiles_above_threshold;
+  const rationale =
+    MIN_PAYBACK_PROPOSAL_RATIONALE[trigger] || MIN_PAYBACK_PROPOSAL_RATIONALE.both_profiles_above_threshold;
   return [
     `# Trigger: ${trigger}`,
     `# Rationale: ${rationale}`,
@@ -453,10 +454,7 @@ export function buildProposedMinPaybackPatch({
   ].join("\n");
 }
 
-async function maybeWriteProposedMinPaybackPatch({
-  dataDir = null,
-  estimatedPeriodsToFirstPayback = null,
-} = {}) {
+async function maybeWriteProposedMinPaybackPatch({ dataDir = null, estimatedPeriodsToFirstPayback = null } = {}) {
   if (!dataDir) return { path: null, trigger: null };
   const trigger = minPaybackProposalTrigger(estimatedPeriodsToFirstPayback);
   if (!trigger) return { path: null, trigger: null };
@@ -472,10 +470,7 @@ function minimumPaybackProgress(decision, { source = null } = {}) {
     "decisionLog.inputs.grossTargetBeforeCostsSats",
     "decisionLog.applied.grossTargetBeforeCostsSats",
   ]);
-  const minPaybackSats = firstFinite(decision, [
-    "decisionLog.inputs.minPaybackSats",
-    "policy.minPaybackSats",
-  ]);
+  const minPaybackSats = firstFinite(decision, ["decisionLog.inputs.minPaybackSats", "policy.minPaybackSats"]);
   const baseRatio = firstFinite(decision, [
     "decisionLog.inputs.baseRatio",
     "decisionLog.applied.baseRatio",
@@ -523,18 +518,15 @@ function minimumPaybackProgress(decision, { source = null } = {}) {
 function allRecordsForPayback(auditLogLines = [], receiptStore = {}) {
   return [
     ...normalizeRecords(auditLogLines),
-    ...Object.values(receiptStore).filter(Array.isArray).flatMap((items) => normalizeRecords(items)),
+    ...Object.values(receiptStore)
+      .filter(Array.isArray)
+      .flatMap((items) => normalizeRecords(items)),
   ];
 }
 
 function threeWayPaybackReceipt(record) {
   return {
-    sourceTxHash: firstPresent(record, [
-      "signerResult.broadcast.txHash",
-      "broadcast.txHash",
-      "receipt.hash",
-      "txHash",
-    ]),
+    sourceTxHash: firstPresent(record, ["signerResult.broadcast.txHash", "broadcast.txHash", "receipt.hash", "txHash"]),
     gatewayOrderId: firstPresent(record, [
       "metadata.gatewayOrderId",
       "plan.intent.metadata.gatewayOrderId",
@@ -553,11 +545,7 @@ function threeWayPaybackReceipt(record) {
 }
 
 function paybackSettlementTimestamp(record) {
-  return firstPresent(record, [
-    "destinationProof.observedAt",
-    "settledAt",
-    "observedAt",
-  ]);
+  return firstPresent(record, ["destinationProof.observedAt", "settledAt", "observedAt"]);
 }
 
 function deliveredPaybackRecord(records = []) {
@@ -570,10 +558,7 @@ function deliveredPaybackRecord(records = []) {
       record?.intent?.strategyId ??
       record?.signerResult?.signed?.strategyId ??
       null;
-    const intentType =
-      record?.intent?.intentType ??
-      record?.plan?.intent?.intentType ??
-      null;
+    const intentType = record?.intent?.intentType ?? record?.plan?.intent?.intentType ?? null;
     if (strategyId !== GATEWAY_BTC_OFFRAMP_STRATEGY_ID && intentType !== "gateway_btc_offramp") continue;
     if (record?.settlementStatus !== "delivered" && record?.destinationProof?.status !== "delivered") continue;
     const receipt = threeWayPaybackReceipt(record);
@@ -598,21 +583,22 @@ export async function buildPaybackDashboardSlice({
   quoteProofMatrixBuilder = buildPaybackQuoteProofMatrixFromFiles,
   writeProposedPatch = true,
 } = {}) {
-  const resolvedAuditLogLines = auditLogLines || await loadPaybackAuditLog({ logsDir });
-  const resolvedReceiptStore = receiptStore || await loadLivePaybackReceiptStore({ dataDir });
+  const resolvedAuditLogLines = auditLogLines || (await loadPaybackAuditLog({ logsDir }));
+  const resolvedReceiptStore = receiptStore || (await loadLivePaybackReceiptStore({ dataDir }));
   const reportingPnlBaseline = dataDir ? await readReportingPnlBaseline({ dataDir }) : null;
   const policy = loadPaybackPolicyConfig(PAYBACK_CONFIG);
   const snapshot = snapshotPaybackAccumulator(resolvedAuditLogLines, resolvedReceiptStore, {
     paybackStrategyIds: [GATEWAY_BTC_OFFRAMP_STRATEGY_ID],
     paybackIntentTypes: ["gateway_btc_offramp"],
   });
-  const decision = typeof decisionBuilder === "function"
-    ? await decisionBuilder({
-        auditLogLines: resolvedAuditLogLines,
-        receiptStore: resolvedReceiptStore,
-        now,
-      })
-    : null;
+  const decision =
+    typeof decisionBuilder === "function"
+      ? await decisionBuilder({
+          auditLogLines: resolvedAuditLogLines,
+          receiptStore: resolvedReceiptStore,
+          now,
+        })
+      : null;
   const previewAfterDestination =
     typeof decisionBuilder === "function" && isMissingDestinationDecision(decision)
       ? await decisionBuilder({
@@ -706,13 +692,12 @@ export async function buildPaybackDashboardSlice({
     schemaVersion: 1,
     observedAt: now,
     lastPaybackSettledAt: paybackSettlementTimestamp(latestDelivered),
-    lastPaybackSettledSats:
-      firstFinite(latestDelivered, [
-        "destinationProof.observedDelta",
-        "payback.settledBalanceDeltaSats",
-        "realized.settledBalanceDeltaSats",
-        "settledBalanceDeltaSats",
-      ]),
+    lastPaybackSettledSats: firstFinite(latestDelivered, [
+      "destinationProof.observedDelta",
+      "payback.settledBalanceDeltaSats",
+      "realized.settledBalanceDeltaSats",
+      "settledBalanceDeltaSats",
+    ]),
     accumulatorPendingSats: snapshot.pendingDeferredSats,
     grossProfitSatsPeriod: snapshot.grossProfitSats_period,
     paidBackSatsLifetime: snapshot.paidBackSats_lifetime,
@@ -723,17 +708,13 @@ export async function buildPaybackDashboardSlice({
     scheduler: {
       status: decision?.status || null,
       reason: decision?.reason || null,
-      requiredEnvName: firstPresent(decision, [
-        "decisionLog.inputs.bitcoinDestAddressEnv",
-      ]),
-      nextAction:
-        isMissingDestinationDecision(decision)
-          ? "set_payback_btc_destination_env"
-          : isMissingReserveDecision(decision)
-            ? "restore_profit_reserve_wbtc_oft"
+      requiredEnvName: firstPresent(decision, ["decisionLog.inputs.bitcoinDestAddressEnv"]),
+      nextAction: isMissingDestinationDecision(decision)
+        ? "set_payback_btc_destination_env"
+        : isMissingReserveDecision(decision)
+          ? "restore_profit_reserve_wbtc_oft"
           : null,
-      minimumPaybackProgress:
-        effectiveMinimumProgress,
+      minimumPaybackProgress: effectiveMinimumProgress,
       previewAfterDestination: previewAfterDestination
         ? {
             ...previewMinimumPaybackProgress,

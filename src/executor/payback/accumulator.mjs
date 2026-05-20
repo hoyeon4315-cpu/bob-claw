@@ -152,11 +152,7 @@ function normalizeRecordList(items) {
 function latestTimestampMs(records = []) {
   return records.reduce((latest, item) => {
     const next = normalizeTimestamp(
-      item?.observedAt ||
-        item?.timestamp ||
-        item?.settledAt ||
-        item?.signedAt ||
-        item?.generatedAt,
+      item?.observedAt || item?.timestamp || item?.settledAt || item?.signedAt || item?.generatedAt,
     );
     return next != null && next > latest ? next : latest;
   }, 0);
@@ -203,37 +199,81 @@ function btcUsdFromRecord(record) {
   ]);
 }
 
-function btcUsdForRecord(record, marketPriceSnapshots = [], config = {}) {
-  const directRecordPrice = btcUsdFromRecord(record);
-  if (Number.isFinite(directRecordPrice)) return directRecordPrice;
+export function buildPriceIndex(snapshots = []) {
+  const entries = [];
+  let latestMs = Number.NEGATIVE_INFINITY;
+  let latestBtcUsd = null;
+  for (const snapshot of Array.isArray(snapshots) ? snapshots : []) {
+    const btcUsd = btcUsdFromSnapshot(snapshot);
+    const ms = latestTimestampMs([snapshot]);
+    if (!Number.isFinite(btcUsd) || !Number.isFinite(ms)) continue;
+    entries.push({ ms, btcUsd });
+    if (ms > latestMs) {
+      latestMs = ms;
+      latestBtcUsd = btcUsd;
+    }
+  }
+  return { entries, fallbackBtcUsd: latestBtcUsd };
+}
 
-  const configBtcUsd =
-    finiteNumber(config?.btcUsd) ??
-    finiteNumber(config?.prices?.btc) ??
-    finiteNumber(config?.priceSnapshot?.btcUsd) ??
-    btcUsdFromSnapshot(config?.priceSnapshot);
-  if (Number.isFinite(configBtcUsd)) return configBtcUsd;
-
-  const observedAtMs = latestTimestampMs([record]);
+function nearestBtcUsdFromEntries(entries, observedAtMs) {
   let winner = null;
   let winnerDistance = Number.POSITIVE_INFINITY;
   let winnerTs = Number.POSITIVE_INFINITY;
+  const refMs = Number.isFinite(observedAtMs) ? observedAtMs : null;
+  for (const entry of entries) {
+    const distance = refMs !== null ? Math.abs(entry.ms - refMs) : 0;
+    if (distance < winnerDistance || (distance === winnerDistance && entry.ms < winnerTs)) {
+      winner = entry.btcUsd;
+      winnerDistance = distance;
+      winnerTs = entry.ms;
+    }
+  }
+  return winner;
+}
+
+function pickBtcUsdFromIndex(observedAtMs, priceIndex) {
+  const entries = priceIndex?.entries;
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  const winner = nearestBtcUsdFromEntries(entries, observedAtMs);
+  if (Number.isFinite(winner)) return winner;
+  if (Number.isFinite(priceIndex.fallbackBtcUsd)) return priceIndex.fallbackBtcUsd;
+  return null;
+}
+
+function nearestBtcUsdFromSnapshots(marketPriceSnapshots, observedAtMs) {
+  const entries = [];
   for (const snapshot of marketPriceSnapshots) {
     const btcUsd = btcUsdFromSnapshot(snapshot);
     const snapshotMs = latestTimestampMs([snapshot]);
     if (!Number.isFinite(btcUsd) || !Number.isFinite(snapshotMs)) continue;
-    const distance = Number.isFinite(observedAtMs)
-      ? Math.abs(snapshotMs - observedAtMs)
-      : 0;
-    if (
-      distance < winnerDistance ||
-      (distance === winnerDistance && snapshotMs < winnerTs)
-    ) {
-      winner = btcUsd;
-      winnerDistance = distance;
-      winnerTs = snapshotMs;
-    }
+    entries.push({ ms: snapshotMs, btcUsd });
   }
+  return nearestBtcUsdFromEntries(entries, observedAtMs);
+}
+
+function configuredBtcUsd(config) {
+  return (
+    finiteNumber(config?.btcUsd) ??
+    finiteNumber(config?.prices?.btc) ??
+    finiteNumber(config?.priceSnapshot?.btcUsd) ??
+    btcUsdFromSnapshot(config?.priceSnapshot)
+  );
+}
+
+function btcUsdForRecord(record, marketPriceSnapshots = [], config = {}) {
+  const directRecordPrice = btcUsdFromRecord(record);
+  if (Number.isFinite(directRecordPrice)) return directRecordPrice;
+
+  const configBtcUsd = configuredBtcUsd(config);
+  if (Number.isFinite(configBtcUsd)) return configBtcUsd;
+
+  const observedAtMs = latestTimestampMs([record]);
+  if (config?.priceIndex) {
+    return pickBtcUsdFromIndex(observedAtMs, config.priceIndex);
+  }
+
+  const winner = nearestBtcUsdFromSnapshots(marketPriceSnapshots, observedAtMs);
   if (Number.isFinite(winner)) return winner;
   return latestBtcUsd({ marketPriceSnapshots }, config);
 }
@@ -283,15 +323,9 @@ function isOperatingCapitalIngressRecord(record) {
     record?.job?.capitalSource ??
     null;
   const capitalFlow =
-    record?.capitalFlow ??
-    record?.metadata?.capitalFlow ??
-    record?.classification?.capitalFlow ??
-    null;
+    record?.capitalFlow ?? record?.metadata?.capitalFlow ?? record?.classification?.capitalFlow ?? null;
   const paybackExclusion =
-    record?.paybackExclusion ??
-    record?.metadata?.paybackExclusion ??
-    record?.classification?.paybackExclusion ??
-    false;
+    record?.paybackExclusion ?? record?.metadata?.paybackExclusion ?? record?.classification?.paybackExclusion ?? false;
   const eventType = record?.event ?? record?.eventType ?? null;
   return (
     paybackExclusion === true ||
@@ -571,7 +605,8 @@ function periodBounds(config) {
   const startMs = normalizeTimestamp(config?.periodStartAt);
   const endMs = normalizeTimestamp(config?.periodEndAt);
   return {
-    periodId: config?.periodId || (Number.isFinite(startMs) || Number.isFinite(endMs) ? "configured_period" : "all_time"),
+    periodId:
+      config?.periodId || (Number.isFinite(startMs) || Number.isFinite(endMs) ? "configured_period" : "all_time"),
     startMs: Number.isFinite(startMs) ? startMs : null,
     endMs: Number.isFinite(endMs) ? endMs : null,
   };
@@ -581,7 +616,7 @@ function rollingBounds(nowMs, config) {
   const rollingWindowDays = finiteNonNegative(config?.rollingWindowDays) ?? DEFAULT_ROLLING_WINDOW_DAYS;
   return {
     nowMs,
-    startMs: nowMs > 0 ? nowMs - (rollingWindowDays * DAY_MS) : null,
+    startMs: nowMs > 0 ? nowMs - rollingWindowDays * DAY_MS : null,
   };
 }
 
@@ -596,9 +631,7 @@ function safeRatio(numerator, denominator) {
 
 function sumProfitProvenance(profitRecords, predicate = () => true) {
   const selected = profitRecords.filter((item) => predicate(item));
-  const directSats = selected
-    .filter((item) => item.source === "direct_sats")
-    .reduce((sum, item) => sum + item.sats, 0);
+  const directSats = selected.filter((item) => item.source === "direct_sats").reduce((sum, item) => sum + item.sats, 0);
   const projectedSats = selected
     .filter((item) => item.source === "usd_projected")
     .reduce((sum, item) => sum + item.sats, 0);
@@ -655,7 +688,9 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
     },
     config,
   );
-  const valuationConfig = Number.isFinite(btcUsd) ? { ...config, btcUsd } : config;
+  const priceIndex = buildPriceIndex(store.marketPriceSnapshots);
+  const baseConfig = Number.isFinite(btcUsd) ? { ...config, btcUsd } : { ...config };
+  const valuationConfig = { ...baseConfig, priceIndex };
   const markers = paybackMarkers(config);
   const period = periodBounds(config);
   const latestObservedMs = Math.max(
@@ -677,11 +712,12 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
         observedAtMs: latestTimestampMs([record]),
       };
     })
-    .filter((item) =>
-      !isPaybackRecord(item.record, markers) &&
-      !isOperatingCapitalIngressRecord(item.record) &&
-      Number.isFinite(item.sats) &&
-      item.sats > 0,
+    .filter(
+      (item) =>
+        !isPaybackRecord(item.record, markers) &&
+        !isOperatingCapitalIngressRecord(item.record) &&
+        Number.isFinite(item.sats) &&
+        item.sats > 0,
     );
 
   const paybackRecords = allRecords
@@ -706,14 +742,12 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
   const grossProfitSatsRolling12m = profitRecords
     .filter((item) => isWithinWindow(item.observedAtMs, rolling.startMs, rolling.nowMs))
     .reduce((sum, item) => sum + item.sats, 0);
-  const periodProfitProvenance = sumProfitProvenance(
-    profitRecords,
-    (item) => isWithinWindow(item.observedAtMs, period.startMs, period.endMs),
+  const periodProfitProvenance = sumProfitProvenance(profitRecords, (item) =>
+    isWithinWindow(item.observedAtMs, period.startMs, period.endMs),
   );
   const lifetimeProfitProvenance = sumProfitProvenance(profitRecords);
-  const rolling12mProfitProvenance = sumProfitProvenance(
-    profitRecords,
-    (item) => isWithinWindow(item.observedAtMs, rolling.startMs, rolling.nowMs),
+  const rolling12mProfitProvenance = sumProfitProvenance(profitRecords, (item) =>
+    isWithinWindow(item.observedAtMs, rolling.startMs, rolling.nowMs),
   );
 
   const paidBackSatsLifetime = paybackRecords.reduce((sum, item) => sum + (item.settledSats || 0), 0);
@@ -729,9 +763,7 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
 
   const pendingSnapshot = pendingSnapshotValue(allRecords, config);
   const pendingDeferredSats =
-    pendingSnapshot != null
-      ? pendingSnapshot
-      : Math.max(0, grossProfitSatsLifetime - paidBackSatsLifetime);
+    pendingSnapshot != null ? pendingSnapshot : Math.max(0, grossProfitSatsLifetime - paidBackSatsLifetime);
   const pendingDeferredProvenance = pendingProvenanceFromLifetime(
     lifetimeProfitProvenance,
     pendingDeferredSats,
@@ -742,15 +774,19 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
   const operatingFloatSatsByChain = operatingFloatByChain(latestInventory, btcUsd);
 
   const rollingSnapshots = selectInventoryWindowSnapshots(store.treasuryInventory, rolling.startMs, rolling.nowMs);
-  const rollingStartSnapshot = earliestInventorySnapshot(rollingSnapshots) || earliestInventorySnapshot(store.treasuryInventory) || null;
+  const rollingStartSnapshot =
+    earliestInventorySnapshot(rollingSnapshots) || earliestInventorySnapshot(store.treasuryInventory) || null;
   const rollingEndSnapshot = latestInventory;
   const rollingStartFloatSats = totalFloatSats(rollingStartSnapshot, btcUsd);
   const rollingEndFloatSats = totalFloatSats(rollingEndSnapshot, btcUsd);
-  const recentPaybackWindowDays = finiteNonNegative(config?.recentPaybackWindowDays) ?? (finiteNonNegative(config?.rollingWindowDays) ?? DEFAULT_ROLLING_WINDOW_DAYS);
-  const recentPaybackWindowStartMs =
-    latestObservedMs > 0 ? latestObservedMs - (recentPaybackWindowDays * DAY_MS) : null;
-  const recentSettledPaybackRecords = paybackRecords.filter((item) =>
-    Number.isFinite(item.settledSats) && isWithinWindow(item.observedAtMs, recentPaybackWindowStartMs, rolling.nowMs),
+  const recentPaybackWindowDays =
+    finiteNonNegative(config?.recentPaybackWindowDays) ??
+    finiteNonNegative(config?.rollingWindowDays) ??
+    DEFAULT_ROLLING_WINDOW_DAYS;
+  const recentPaybackWindowStartMs = latestObservedMs > 0 ? latestObservedMs - recentPaybackWindowDays * DAY_MS : null;
+  const recentSettledPaybackRecords = paybackRecords.filter(
+    (item) =>
+      Number.isFinite(item.settledSats) && isWithinWindow(item.observedAtMs, recentPaybackWindowStartMs, rolling.nowMs),
   );
   const activePaybackDays = new Set(
     recentSettledPaybackRecords.map((item) => new Date(item.observedAtMs).toISOString().slice(0, 10)),
@@ -760,10 +796,9 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
       ? recentSettledPaybackRecords.reduce((sum, item) => sum + (item.settledSats || 0), 0) / activePaybackDays
       : 0;
   const initialRoundTripEntrySats = finiteNonNegative(config?.initialRoundTripEntrySats);
-  const remainingEntryRecoverySats =
-    Number.isFinite(initialRoundTripEntrySats)
-      ? Math.max(0, initialRoundTripEntrySats - paidBackSatsLifetime)
-      : 0;
+  const remainingEntryRecoverySats = Number.isFinite(initialRoundTripEntrySats)
+    ? Math.max(0, initialRoundTripEntrySats - paidBackSatsLifetime)
+    : 0;
   const daysToBreakeven =
     averageDailyPaybackSatsRecent > 0 && remainingEntryRecoverySats > 0
       ? remainingEntryRecoverySats / averageDailyPaybackSatsRecent
@@ -773,11 +808,12 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
     firstPresentPathValue(config, ["expansionReserveChain"]) || DEFAULT_EXPANSION_RESERVE_CHAIN;
   const expansionTargetEfficiency =
     finiteNumber(config?.expansionTargetEfficiency) ?? DEFAULT_EXPANSION_TARGET_EFFICIENCY;
-  const expansionConsecutiveRequired =
-    Math.max(1, Math.floor(
-      finiteNonNegative(config?.expansionConsecutivePeriodsRequired) ??
-        DEFAULT_EXPANSION_CONSECUTIVE_PERIODS_REQUIRED,
-    ));
+  const expansionConsecutiveRequired = Math.max(
+    1,
+    Math.floor(
+      finiteNonNegative(config?.expansionConsecutivePeriodsRequired) ?? DEFAULT_EXPANSION_CONSECUTIVE_PERIODS_REQUIRED,
+    ),
+  );
 
   const deliveredPaybackPeriods = paybackRecords
     .filter((item) => item.delivered)
@@ -794,16 +830,13 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
     const chainLower = String(item.chain || "").toLowerCase();
     const matchesExpansionChain = chainLower === expansionReserveChainLower;
     const efficiency =
-      Number.isFinite(gross) && gross > 0 && Number.isFinite(realizedCost)
-        ? (gross - realizedCost) / gross
-        : null;
+      Number.isFinite(gross) && gross > 0 && Number.isFinite(realizedCost) ? (gross - realizedCost) / gross : null;
     const meetsTarget = Number.isFinite(efficiency) ? efficiency >= expansionTargetEfficiency : false;
     return {
       index,
       periodId: item.periodId || null,
-      observedAt: Number.isFinite(item.observedAtMs) && item.observedAtMs > 0
-        ? new Date(item.observedAtMs).toISOString()
-        : null,
+      observedAt:
+        Number.isFinite(item.observedAtMs) && item.observedAtMs > 0 ? new Date(item.observedAtMs).toISOString() : null,
       chain: item.chain || null,
       matchesExpansionChain,
       grossProfitSats: Number.isFinite(gross) ? gross : null,
@@ -851,8 +884,11 @@ export default function snapshot(auditLogLines = [], receiptStore = {}, config =
     kpi: {
       byr_rolling12m: safeRatio(paidBackSatsRolling12m, rollingStartFloatSats),
       cg_rolling12m: safeRatio(rollingEndFloatSats, rollingStartFloatSats) - (rollingStartFloatSats > 0 ? 1 : 0),
-      tbr_rolling12m: safeRatio(paidBackSatsRolling12m + rollingEndFloatSats, rollingStartFloatSats) - (rollingStartFloatSats > 0 ? 1 : 0),
-      roundTripEfficiency_period: grossProfitSatsPeriod > 0 ? safeRatio(grossProfitSatsPeriod - offrampCostSatsPeriod, grossProfitSatsPeriod) : 0,
+      tbr_rolling12m:
+        safeRatio(paidBackSatsRolling12m + rollingEndFloatSats, rollingStartFloatSats) -
+        (rollingStartFloatSats > 0 ? 1 : 0),
+      roundTripEfficiency_period:
+        grossProfitSatsPeriod > 0 ? safeRatio(grossProfitSatsPeriod - offrampCostSatsPeriod, grossProfitSatsPeriod) : 0,
       daysToBreakeven,
     },
     paybackPeriodEfficiencies,
