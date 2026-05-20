@@ -60,6 +60,19 @@ function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function isNativeBtcDestination(quote, dstAsset) {
+  return quote?.route?.dstChain === "bitcoin" && (dstAsset?.ticker === "BTC" || dstAsset?.family === "btc");
+}
+
+function executableOutputUsdForDestination({ quote, dstAsset, outputUsd, dexOutputQuote }) {
+  if (Number.isFinite(dexOutputQuote?.netOutputValueUsd)) return dexOutputQuote.netOutputValueUsd;
+  if (Number.isFinite(dexOutputQuote?.outputValueUsd)) {
+    return dexOutputQuote.outputValueUsd - (dexOutputQuote.gasEstimateValueUsd || 0);
+  }
+  if (isNativeBtcDestination(quote, dstAsset) && Number.isFinite(outputUsd)) return outputUsd;
+  return null;
+}
+
 function exactGasGapForFailure(reason) {
   if (reason === "erc20_allowance_insufficient") return "exact_src_execution_gas_allowance_insufficient";
   if (reason === "erc20_balance_insufficient") return "exact_src_execution_gas_token_insufficient";
@@ -128,7 +141,11 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   if (nativeCostUsd === null && BigInt(quote.txValueWei || 0) > 0n) dataGaps.push("missing_tx_value_native_price");
 
   const gasSnapshotAgeMinutes = minutesBetween(options.gasObservedAt, options.now || new Date().toISOString());
-  if (options.gasObservedAt && gasSnapshotAgeMinutes !== null && gasSnapshotAgeMinutes > (options.maxGasSnapshotAgeMinutes ?? 30)) {
+  if (
+    options.gasObservedAt &&
+    gasSnapshotAgeMinutes !== null &&
+    gasSnapshotAgeMinutes > (options.maxGasSnapshotAgeMinutes ?? 30)
+  ) {
     dataGaps.push("stale_src_gas_snapshot");
   }
 
@@ -136,7 +153,11 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   if (quote.route.srcChain !== "bitcoin" && !Number.isFinite(executionGasUsd)) {
     dataGaps.push("missing_src_execution_gas");
   }
-  if (quote.route.srcChain !== "bitcoin" && options.requireExactExecutionGas && executionGasSource !== "eth_estimateGas") {
+  if (
+    quote.route.srcChain !== "bitcoin" &&
+    options.requireExactExecutionGas &&
+    executionGasSource !== "eth_estimateGas"
+  ) {
     dataGaps.push(exactGasGapForFailure(exactExecutionGasFailureReason));
   }
   if (hasNativeBitcoinLeg && !Number.isFinite(bitcoinFee?.estimatedFeeUsd)) {
@@ -147,7 +168,8 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   const gasShockBufferUsd = Number.isFinite(executionGasUsd)
     ? executionGasUsd * Math.max(0, gasBufferMultiplier - 1)
     : null;
-  const nativeBitcoinFeeUsd = hasNativeBitcoinLeg && Number.isFinite(bitcoinFee?.estimatedFeeUsd) ? bitcoinFee.estimatedFeeUsd : null;
+  const nativeBitcoinFeeUsd =
+    hasNativeBitcoinLeg && Number.isFinite(bitcoinFee?.estimatedFeeUsd) ? bitcoinFee.estimatedFeeUsd : null;
   const knownCostUsd =
     (nativeCostUsd || 0) +
     (Number.isFinite(executionGasUsd) ? executionGasUsd : 0) +
@@ -157,53 +179,78 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
   const treasuryReserveReplenishmentCostUsd = finiteOrNull(options.reserveReplenishmentExpectedCostUsd);
   const expectedFailureCostUsd = finiteOrNull(options.expectedFailureCostUsd);
   const capitalFragmentationDragUsd = finiteOrNull(options.capitalFragmentationDragUsd);
-  const treasuryAdjustedKnownCostUsd = knownCostUsd + (Number.isFinite(treasuryExecutionRefillCostUsd) ? treasuryExecutionRefillCostUsd : 0);
+  const treasuryAdjustedKnownCostUsd =
+    knownCostUsd + (Number.isFinite(treasuryExecutionRefillCostUsd) ? treasuryExecutionRefillCostUsd : 0);
   const effectiveSystemKnownCostUsd =
     Number.isFinite(treasuryExecutionRefillCostUsd) &&
     Number.isFinite(treasuryReserveReplenishmentCostUsd) &&
     Number.isFinite(expectedFailureCostUsd) &&
     Number.isFinite(capitalFragmentationDragUsd)
-      ? treasuryAdjustedKnownCostUsd + treasuryReserveReplenishmentCostUsd + expectedFailureCostUsd + capitalFragmentationDragUsd
+      ? treasuryAdjustedKnownCostUsd +
+        treasuryReserveReplenishmentCostUsd +
+        expectedFailureCostUsd +
+        capitalFragmentationDragUsd
       : null;
   const netEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - knownCostUsd : null;
-  const netEdgePct = Number.isFinite(netEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? netEdgeUsd / inputUsd : null;
-  const treasuryAdjustedNetEdgeUsd = Number.isFinite(tokenDeltaUsd) ? tokenDeltaUsd - treasuryAdjustedKnownCostUsd : null;
+  const netEdgePct =
+    Number.isFinite(netEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? netEdgeUsd / inputUsd : null;
+  const treasuryAdjustedNetEdgeUsd = Number.isFinite(tokenDeltaUsd)
+    ? tokenDeltaUsd - treasuryAdjustedKnownCostUsd
+    : null;
   const treasuryAdjustedNetEdgePct =
-    Number.isFinite(treasuryAdjustedNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? treasuryAdjustedNetEdgeUsd / inputUsd : null;
+    Number.isFinite(treasuryAdjustedNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0
+      ? treasuryAdjustedNetEdgeUsd / inputUsd
+      : null;
   const dexOutputQuoteAgeMinutes = minutesBetween(dexOutputQuote?.observedAt, options.now || new Date().toISOString());
-  if (dexOutputQuote && dexOutputQuoteAgeMinutes !== null && dexOutputQuoteAgeMinutes > (options.maxDexQuoteAgeMinutes ?? 30)) {
+  if (
+    dexOutputQuote &&
+    dexOutputQuoteAgeMinutes !== null &&
+    dexOutputQuoteAgeMinutes > (options.maxDexQuoteAgeMinutes ?? 30)
+  ) {
     dataGaps.push("stale_dex_output_quote");
   }
-  const executableOutputUsd = Number.isFinite(dexOutputQuote?.netOutputValueUsd)
-    ? dexOutputQuote.netOutputValueUsd
-    : Number.isFinite(dexOutputQuote?.outputValueUsd)
-      ? dexOutputQuote.outputValueUsd - (dexOutputQuote.gasEstimateValueUsd || 0)
-      : null;
-  const executableTokenDeltaUsd = Number.isFinite(inputUsd) && Number.isFinite(executableOutputUsd) ? executableOutputUsd - inputUsd : null;
+  const executableOutputUsd = executableOutputUsdForDestination({
+    quote,
+    dstAsset,
+    outputUsd,
+    dexOutputQuote,
+  });
+  const executableTokenDeltaUsd =
+    Number.isFinite(inputUsd) && Number.isFinite(executableOutputUsd) ? executableOutputUsd - inputUsd : null;
   const executableNetEdgeUsd = Number.isFinite(executableTokenDeltaUsd) ? executableTokenDeltaUsd - knownCostUsd : null;
   const executableNetEdgePct =
-    Number.isFinite(executableNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? executableNetEdgeUsd / inputUsd : null;
-  const treasuryAdjustedExecutableNetEdgeUsd =
-    Number.isFinite(executableTokenDeltaUsd) ? executableTokenDeltaUsd - treasuryAdjustedKnownCostUsd : null;
+    Number.isFinite(executableNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0
+      ? executableNetEdgeUsd / inputUsd
+      : null;
+  const treasuryAdjustedExecutableNetEdgeUsd = Number.isFinite(executableTokenDeltaUsd)
+    ? executableTokenDeltaUsd - treasuryAdjustedKnownCostUsd
+    : null;
   const treasuryAdjustedExecutableNetEdgePct =
     Number.isFinite(treasuryAdjustedExecutableNetEdgeUsd) && Number.isFinite(inputUsd) && inputUsd > 0
       ? treasuryAdjustedExecutableNetEdgeUsd / inputUsd
       : null;
-  const outputInputValueRatio = Number.isFinite(inputUsd) && inputUsd > 0 && Number.isFinite(outputUsd) ? outputUsd / inputUsd : null;
+  const outputInputValueRatio =
+    Number.isFinite(inputUsd) && inputUsd > 0 && Number.isFinite(outputUsd) ? outputUsd / inputUsd : null;
   if (
     Number.isFinite(outputInputValueRatio) &&
     inputUsd >= (options.minValueSanityInputUsd ?? 1) &&
-    (outputInputValueRatio > (options.maxPlausibleValueRatio ?? 1.5) || outputInputValueRatio < (options.minPlausibleValueRatio ?? 0.5))
+    (outputInputValueRatio > (options.maxPlausibleValueRatio ?? 1.5) ||
+      outputInputValueRatio < (options.minPlausibleValueRatio ?? 0.5))
   ) {
     dataGaps.push("implausible_quote_value_ratio");
   }
   const breakEvenPct = Number.isFinite(inputUsd) && inputUsd > 0 ? knownCostUsd / inputUsd : null;
   const treasuryAdjustedBreakEvenPct =
     Number.isFinite(inputUsd) && inputUsd > 0 ? treasuryAdjustedKnownCostUsd / inputUsd : null;
-  const effectiveSystemNetPnlUsd = finiteOrNull(options.effectiveSystemNetPnlUsd) ??
-    (Number.isFinite(tokenDeltaUsd) && Number.isFinite(effectiveSystemKnownCostUsd) ? tokenDeltaUsd - effectiveSystemKnownCostUsd : null);
+  const effectiveSystemNetPnlUsd =
+    finiteOrNull(options.effectiveSystemNetPnlUsd) ??
+    (Number.isFinite(tokenDeltaUsd) && Number.isFinite(effectiveSystemKnownCostUsd)
+      ? tokenDeltaUsd - effectiveSystemKnownCostUsd
+      : null);
   const effectiveSystemNetPnlPct =
-    Number.isFinite(effectiveSystemNetPnlUsd) && Number.isFinite(inputUsd) && inputUsd > 0 ? effectiveSystemNetPnlUsd / inputUsd : null;
+    Number.isFinite(effectiveSystemNetPnlUsd) && Number.isFinite(inputUsd) && inputUsd > 0
+      ? effectiveSystemNetPnlUsd / inputUsd
+      : null;
   const effectiveSystemBreakEvenPct =
     Number.isFinite(inputUsd) &&
     inputUsd > 0 &&
@@ -272,16 +319,17 @@ export function scoreGatewayQuote(quote, prices, options = {}) {
     dataGaps: [...new Set(dataGaps)],
     assumptions: [...new Set(assumptions)],
     routeStats,
-    bitcoinFee: hasNativeBitcoinLeg && bitcoinFee
-      ? {
-          observedAt: bitcoinFee.observedAt,
-          feeRateSatVb: bitcoinFee.selectedFeeRateSatVb,
-          vbytes: bitcoinFee.vbytes,
-          estimatedFeeSats: bitcoinFee.estimatedFeeSats,
-          estimatedFeeUsd: finiteOrNull(bitcoinFee.estimatedFeeUsd),
-          model: bitcoinFee.model,
-        }
-      : null,
+    bitcoinFee:
+      hasNativeBitcoinLeg && bitcoinFee
+        ? {
+            observedAt: bitcoinFee.observedAt,
+            feeRateSatVb: bitcoinFee.selectedFeeRateSatVb,
+            vbytes: bitcoinFee.vbytes,
+            estimatedFeeSats: bitcoinFee.estimatedFeeSats,
+            estimatedFeeUsd: finiteOrNull(bitcoinFee.estimatedFeeUsd),
+            model: bitcoinFee.model,
+          }
+        : null,
     dex: dexOutputQuote
       ? {
           provider: dexOutputQuote.provider,
