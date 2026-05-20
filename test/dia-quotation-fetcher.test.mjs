@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  diaQuotationToPriceSnapshot,
-  fetchDiaQuotationSnapshot,
-} from "../src/risk/dia-quotation-fetcher.mjs";
+import { diaQuotationToPriceSnapshot, fetchDiaQuotationSnapshot } from "../src/risk/dia-quotation-fetcher.mjs";
 
 function mockResponse(body, status = 200) {
   return {
@@ -19,6 +16,8 @@ test("diaQuotationToPriceSnapshot maps DIA quotations into price snapshot fields
     { Symbol: "cbBTC", Price: 101, Time: "2026-05-12T00:00:01Z" },
     { Symbol: "WETH", Price: 10, Time: "2026-05-12T00:00:02Z" },
     { Symbol: "USDC", Price: 1, Time: "2026-05-12T00:00:03Z" },
+    { Symbol: "PAXG", Price: 4500, Time: "2026-05-12T00:00:04Z" },
+    { Symbol: "XAUt", Price: 4510, Time: "2026-05-12T00:00:05Z" },
   ]);
 
   assert.equal(snapshot.btc, 100);
@@ -27,6 +26,8 @@ test("diaQuotationToPriceSnapshot maps DIA quotations into price snapshot fields
   assert.equal(snapshot.tokenByKey.cbbtc, 101);
   assert.equal(snapshot.tokenByKey.ethereum, 10);
   assert.equal(snapshot.tokenByKey.usd_stable, 1);
+  assert.equal(snapshot.tokenByKey.paxg, 4500);
+  assert.equal(snapshot.tokenByKey.xaut, 4510);
 });
 
 test("fetchDiaQuotationSnapshot omits failed symbols and audits outcomes", async () => {
@@ -46,6 +47,9 @@ test("fetchDiaQuotationSnapshot omits failed symbols and audits outcomes", async
   assert.equal(snapshot.tokenByKey.btc, 100);
   assert.equal(snapshot.source, "dia");
   assert.equal(auditRows.length, 2);
-  assert.deepEqual(auditRows.map((row) => row.status), [200, 404]);
+  assert.deepEqual(
+    auditRows.map((row) => row.status),
+    [200, 404],
+  );
   assert.equal(auditRows[0].paramsMasked.symbol, "BTC");
 });

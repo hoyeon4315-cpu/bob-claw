@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 
 const DEFAULT_DIA_BASE_URL = "https://api.diadata.org/v1";
-const DEFAULT_SYMBOLS = Object.freeze(["BTC", "cbBTC", "WETH", "USDC"]);
+const DEFAULT_SYMBOLS = Object.freeze(["BTC", "cbBTC", "WETH", "USDC", "PAXG", "XAUt"]);
 
 function finite(value) {
   const numeric = Number(value);
@@ -11,7 +11,9 @@ function finite(value) {
 }
 
 function responseHash(body) {
-  return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
+  return createHash("sha256")
+    .update(JSON.stringify(body ?? null))
+    .digest("hex");
 }
 
 async function appendAuditRow(row, auditLogPath) {
@@ -27,7 +29,10 @@ function symbolToPriceFields(symbol, price) {
   }
   if (normalized === "cbbtc") return { tokenByKey: { cbbtc: price } };
   if (normalized === "weth" || normalized === "eth") {
-    return { tokenByKey: { ethereum: price }, nativeByChain: { ethereum: price, base: price, bob: price, optimism: price, soneium: price, unichain: price } };
+    return {
+      tokenByKey: { ethereum: price },
+      nativeByChain: { ethereum: price, base: price, bob: price, optimism: price, soneium: price, unichain: price },
+    };
   }
   if (normalized === "usdc" || normalized === "usdt") return { tokenByKey: { usd_stable: price } };
   return { tokenByKey: { [normalized]: price } };
@@ -68,7 +73,10 @@ export async function fetchDiaQuotationSnapshot({
   for (const symbol of symbols) {
     const endpoint = `${baseUrl.replace(/\/$/, "")}/quotation/${encodeURIComponent(symbol)}`;
     try {
-      const response = await fetchFn(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+      const response = await fetchFn(endpoint, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
       const body = await response.json().catch(() => null);
       const auditRow = {
         ts: observedAt,

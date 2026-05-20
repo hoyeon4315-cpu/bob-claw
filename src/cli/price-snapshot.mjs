@@ -5,12 +5,17 @@ import { config } from "../config/env.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readJsonl } from "../lib/jsonl-read.mjs";
 import { writeTextIfChanged } from "../lib/file-write.mjs";
-import { buildPriceSnapshot, getCoinGeckoPricesUsd, latestPriceSnapshot, shouldPersistPriceSnapshot } from "../market/prices.mjs";
+import {
+  buildPriceSnapshot,
+  getMultiSourcePricesUsd,
+  latestPriceSnapshot,
+  shouldPersistPriceSnapshot,
+} from "../market/prices.mjs";
 
 export async function runPriceSnapshot({
   dataDir = config.dataDir,
   now = new Date(),
-  fetchPrices = getCoinGeckoPricesUsd,
+  fetchPrices = getMultiSourcePricesUsd,
   readJsonlImpl = readJsonl,
   store = new JsonlStore(dataDir),
   writeText = writeTextIfChanged,
@@ -18,7 +23,7 @@ export async function runPriceSnapshot({
   const observedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
   const snapshot = buildPriceSnapshot(await fetchPrices(), {
     observedAt,
-    source: "coingecko_or_fallback",
+    source: "multi_source_market_api",
   });
   const latestPath = join(dataDir, "price-snapshot.json");
   await writeText(latestPath, `${JSON.stringify(snapshot, null, 2)}\n`);
