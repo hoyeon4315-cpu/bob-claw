@@ -315,6 +315,69 @@ test("DEX output quote supplies executable net edge", () => {
   assert.equal(score.executableNetEdgeUsd, -0.09999999999999964);
 });
 
+test("native BTC destination uses Gateway output value as executable destination value", () => {
+  const route = { srcChain: "ethereum", dstChain: "bitcoin", srcToken: USDC_ETHEREUM, dstToken: ZERO_TOKEN };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      quoteType: "offramp",
+      inputAmount: "5000000",
+      outputAmount: "10050",
+    }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      priceHaircutBps: 0,
+      executionGasUsd: 0.01,
+      executionGasSource: "eth_estimateGas",
+      requireExactExecutionGas: true,
+      bitcoinFee: {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        selectedFeeRateSatVb: 4,
+        vbytes: 180,
+        estimatedFeeSats: 720,
+        estimatedFeeUsd: 0.02,
+        model: "estimated_single_input_single_output",
+      },
+    },
+  );
+
+  assert.equal(score.outputUsd, 5.025);
+  assert.equal(score.executableOutputUsd, 5.025);
+  assert.equal(score.executableNetEdgeUsd, -0.014999999999999646);
+  assert.equal(score.dataGaps.includes("bitcoin_network_fee_not_modelled"), false);
+});
+
+test("non-BTC destinations still require a DEX output quote for executable value", () => {
+  const route = { srcChain: "bitcoin", dstChain: "ethereum", srcToken: ZERO_TOKEN, dstToken: USDC_ETHEREUM };
+  const score = scoreGatewayQuote(
+    quote(route, {
+      quoteType: "onramp",
+      inputAmount: "10000",
+      outputAmount: "5000000",
+    }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      priceHaircutBps: 0,
+      bitcoinFee: {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        selectedFeeRateSatVb: 4,
+        vbytes: 180,
+        estimatedFeeSats: 720,
+        estimatedFeeUsd: 0.02,
+        model: "estimated_single_input_single_output",
+      },
+      allowEthereumL1Routes: true,
+    },
+  );
+
+  assert.equal(score.outputUsd, 5);
+  assert.equal(score.executableOutputUsd, null);
+  assert.equal(score.executableNetEdgeUsd, null);
+});
+
 test("treasury refill costs are surfaced alongside route economics", () => {
   const route = { srcChain: "bob", dstChain: "base", srcToken: WBTC_OFT, dstToken: WBTC_OFT };
   const score = scoreGatewayQuote(
