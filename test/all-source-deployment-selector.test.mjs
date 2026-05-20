@@ -1202,7 +1202,7 @@ test("position marks with merkl: positionId prefix but gateway/YO strategyId do 
           event: "position_marked",
           observedAt: "2026-05-19T05:00:00.000Z",
           positionId:
-            "merkl:base:13747891056392346282:0xa50505dd06e52687bd20e1eea350553cdea24f72f62ff3787080254ab0ddbc33",
+            "merkl:base:13747891056392346282:0xa50505dd06e52687bd20e1eea350553cdea24f72f62ff3787080254ab0ddbc33", // pragma: allowlist secret
           strategyId: "gateway_native_asset_conversion_sleeve",
           protocolId: "morpho",
           status: "open",
@@ -1213,7 +1213,7 @@ test("position marks with merkl: positionId prefix but gateway/YO strategyId do 
           event: "position_marked",
           observedAt: "2026-05-19T05:00:00.000Z",
           positionId:
-            "merkl:base:13747891056392346282:0x1e16bb07abe93231403b105f37ae1231bc48ad12458389942b3b7644ddd2807d",
+            "merkl:base:13747891056392346282:0x1e16bb07abe93231403b105f37ae1231bc48ad12458389942b3b7644ddd2807d", // pragma: allowlist secret
           strategyId: "gateway_native_asset_conversion_sleeve",
           protocolId: "yo",
           status: "open",
@@ -1333,7 +1333,7 @@ test("merkl claim economics from merklUserRewards do not attach to YO/Morpho NAV
           event: "position_marked",
           observedAt: "2026-05-19T05:00:00.000Z",
           positionId:
-            "merkl:base:13747891056392346282:0xa50505dd06e52687bd20e1eea350553cdea24f72f62ff3787080254ab0ddbc33",
+            "merkl:base:13747891056392346282:0xa50505dd06e52687bd20e1eea350553cdea24f72f62ff3787080254ab0ddbc33", // pragma: allowlist secret
           strategyId: "gateway_native_asset_conversion_sleeve",
           protocolId: "morpho",
           status: "open",
@@ -1463,7 +1463,7 @@ test("failed position mark emits HEALTH_CHECK_REQUIRED carrying exact failureKin
           event: "position_mark_failed",
           observedAt: "2026-05-19T05:00:00.000Z",
           positionId:
-            "merkl:base:13747891056392346282:0x1e16bb07abe93231403b105f37ae1231bc48ad12458389942b3b7644ddd2807d",
+            "merkl:base:13747891056392346282:0x1e16bb07abe93231403b105f37ae1231bc48ad12458389942b3b7644ddd2807d", // pragma: allowlist secret
           strategyId: "gateway_native_asset_conversion_sleeve",
           protocolId: "yo",
           bindingKind: "erc4626_vault_supply_withdraw",
