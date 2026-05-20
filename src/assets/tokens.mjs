@@ -458,6 +458,21 @@ export function isEthLikeAsset(asset) {
   return asset?.priceKey === "ethereum" && (asset?.ticker === "ETH" || asset?.family === "native_or_wrapped");
 }
 
+export function isStableAsset(asset) {
+  return asset?.family === "stablecoin";
+}
+
+const GOLD_TICKERS_SET = new Set(["XAUT", "PAXG"]);
+const GOLD_PRICE_KEYS_SET = new Set(["xaut", "paxg"]);
+
+export function isGoldAsset(asset) {
+  const ticker = String(asset?.ticker || "").toUpperCase();
+  if (GOLD_TICKERS_SET.has(ticker)) return true;
+  const priceKey = String(asset?.priceKey || "").toLowerCase();
+  if (GOLD_PRICE_KEYS_SET.has(priceKey)) return true;
+  return false;
+}
+
 export function assetPairKey(route) {
   const asset = routeAsset(route);
   return asset.ticker;
