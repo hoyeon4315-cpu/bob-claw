@@ -248,6 +248,25 @@ test("missing failure record (no reason) still falls back to not-estimated gap",
   assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), true);
 });
 
+test("failed_inner_call gas failure surfaces a specific failed-inner-call gap alongside the generic reverted parent", () => {
+  const score = exactGasFailureScore("failed_inner_call");
+  assert.equal(score.exactExecutionGasFailureReason, "failed_inner_call");
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_failed_inner_call"), true);
+  assert.equal(
+    score.dataGaps.includes("exact_src_execution_gas_reverted"),
+    true,
+    "parent reverted label must remain so canary-next-step and friends still trip",
+  );
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), false);
+});
+
+test("execution_reverted (control) still maps to generic reverted gap and not to failed_inner_call", () => {
+  const score = exactGasFailureScore("execution_reverted");
+  assert.equal(score.exactExecutionGasFailureReason, "execution_reverted");
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_reverted"), true);
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_failed_inner_call"), false);
+});
+
 test("missing decimals block net edge classification", () => {
   const route = {
     srcChain: "base",

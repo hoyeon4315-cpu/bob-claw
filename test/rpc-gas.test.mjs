@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyGasEstimateError, estimateGas, getGasSnapshot } from "../src/gas/rpc-gas.mjs";
+import { classifyGasEstimateError, estimateGas, getGasSnapshot, revertSelectorFromError } from "../src/gas/rpc-gas.mjs";
 
 function rpcResponse(result) {
   return {
@@ -50,7 +50,11 @@ test("gas snapshot reports all endpoint failures", async () => {
           rpcUrls: ["https://bad-a.example", "https://bad-b.example"],
           fallbackGasUnits: 260000,
         },
-        { fetchImpl: async () => { throw new Error("fetch failed"); } },
+        {
+          fetchImpl: async () => {
+            throw new Error("fetch failed");
+          },
+        },
       ),
     (error) => {
       assert.equal(error.name, "RpcFallbackError");
@@ -93,8 +97,68 @@ test("gas estimate normalizes transaction fields and reports gas units", async (
 });
 
 test("gas estimate errors are classified", () => {
-  assert.equal(classifyGasEstimateError({ message: "insufficient funds for gas * price + value" }), "insufficient_funds");
-  assert.equal(classifyGasEstimateError({ message: "execution reverted: ERC20: transfer amount exceeds allowance" }), "erc20_allowance_insufficient");
-  assert.equal(classifyGasEstimateError({ message: "execution reverted: ERC20: transfer amount exceeds balance" }), "erc20_balance_insufficient");
+  assert.equal(
+    classifyGasEstimateError({ message: "insufficient funds for gas * price + value" }),
+    "insufficient_funds",
+  );
+  assert.equal(
+    classifyGasEstimateError({ message: "execution reverted: ERC20: transfer amount exceeds allowance" }),
+    "erc20_allowance_insufficient",
+  );
+  assert.equal(
+    classifyGasEstimateError({ message: "execution reverted: ERC20: transfer amount exceeds balance" }),
+    "erc20_balance_insufficient",
+  );
   assert.equal(classifyGasEstimateError({ message: "execution reverted" }), "execution_reverted");
+});
+
+test("classifyGasEstimateError sub-classifies known revert selector 0x1425ea42 as failed_inner_call", () => {
+  const error = {
+    message: "All RPC endpoints failed gas estimate for chain: ethereum",
+    attempts: [
+      { rpcUrl: "https://a", name: "Error", message: "execution reverted", code: 3, data: "0x1425ea42" },
+      { rpcUrl: "https://b", name: "Error", message: "execution reverted", code: 3, data: "0x1425ea42" },
+    ],
+  };
+  assert.equal(classifyGasEstimateError(error), "failed_inner_call");
+  assert.equal(revertSelectorFromError(error), "0x1425ea42");
+});
+
+test("classifyGasEstimateError preserves generic execution_reverted for unknown selector (backward compat)", () => {
+  const error = {
+    message: "All RPC endpoints failed gas estimate for chain: base",
+    attempts: [{ rpcUrl: "https://a", name: "Error", message: "execution reverted", code: 3, data: "0xdeadbeef" }],
+  };
+  assert.equal(classifyGasEstimateError(error), "execution_reverted");
+  assert.equal(revertSelectorFromError(error), "0xdeadbeef");
+});
+
+test("classifyGasEstimateError preserves generic execution_reverted when no selector data present", () => {
+  const error = {
+    message: "All RPC endpoints failed gas estimate for chain: base",
+    attempts: [{ rpcUrl: "https://a", name: "Error", message: "execution reverted", code: 3, data: null }],
+  };
+  assert.equal(classifyGasEstimateError(error), "execution_reverted");
+  assert.equal(revertSelectorFromError(error), null);
+});
+
+test("classifyGasEstimateError sub-classifier does not override allowance/balance/funds reasons", () => {
+  const allowance = {
+    message: "execution reverted: ERC20: transfer amount exceeds allowance",
+    attempts: [{ rpcUrl: "https://a", message: "execution reverted", data: "0x1425ea42" }],
+  };
+  assert.equal(classifyGasEstimateError(allowance), "erc20_allowance_insufficient");
+  const funds = {
+    message: "insufficient funds for gas",
+    attempts: [{ rpcUrl: "https://a", message: "insufficient funds", data: "0x1425ea42" }],
+  };
+  assert.equal(classifyGasEstimateError(funds), "insufficient_funds");
+});
+
+test("revertSelectorFromError lowercases mixed-case data", () => {
+  const error = {
+    message: "execution reverted",
+    attempts: [{ rpcUrl: "https://a", data: "0x1425EA42abcd1234" }],
+  };
+  assert.equal(revertSelectorFromError(error), "0x1425ea42");
 });
