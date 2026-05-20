@@ -190,6 +190,64 @@ test("exact gas allowance reverts surface as an actionable data gap", () => {
   assert.equal(score.dataGaps.includes("exact_src_execution_gas_reverted"), false);
 });
 
+function exactGasFailureScore(reason) {
+  const route = { srcChain: "base", dstChain: "bitcoin", srcToken: USDC_BASE, dstToken: ZERO_TOKEN };
+  return scoreGatewayQuote(
+    quote(route, { quoteType: "offramp", inputAmount: "250000000", outputAmount: "329665" }),
+    prices,
+    {
+      srcAsset: tokenAsset(route.srcChain, route.srcToken),
+      dstAsset: tokenAsset(route.dstChain, route.dstToken),
+      executionGasUsd: 0.01,
+      executionGasSource: "fallback_gas_units",
+      exactExecutionGasFailureReason: reason,
+      requireExactExecutionGas: true,
+      bitcoinFee: {
+        observedAt: "2026-04-10T11:59:00.000Z",
+        selectedFeeRateSatVb: 4,
+        vbytes: 180,
+        estimatedFeeSats: 720,
+        estimatedFeeUsd: 0.52,
+        model: "estimated_single_input_single_output",
+      },
+    },
+  );
+}
+
+test("insufficient_funds gas failure surfaces a distinct funds-insufficient gap", () => {
+  const score = exactGasFailureScore("insufficient_funds");
+  assert.equal(score.exactExecutionGasFailureReason, "insufficient_funds");
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_funds_insufficient"), true);
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), false);
+});
+
+test("rpc_error gas failure surfaces a distinct rpc-error gap", () => {
+  const score = exactGasFailureScore("rpc_error");
+  assert.equal(score.exactExecutionGasFailureReason, "rpc_error");
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_rpc_error"), true);
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), false);
+});
+
+for (const payloadReason of ["missing_tx_data", "missing_tx_to", "missing_tx_target"]) {
+  test(`${payloadReason} gas failure surfaces a missing-tx-payload gap`, () => {
+    const score = exactGasFailureScore(payloadReason);
+    assert.equal(score.exactExecutionGasFailureReason, payloadReason);
+    assert.equal(score.dataGaps.includes("exact_src_execution_gas_missing_tx_payload"), true);
+    assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), false);
+  });
+}
+
+test("unknown failure reason still collapses to the catch-all not-estimated gap", () => {
+  const score = exactGasFailureScore("execution_quote_hydration_failed");
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), true);
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_funds_insufficient"), false);
+});
+
+test("missing failure record (no reason) still falls back to not-estimated gap", () => {
+  const score = exactGasFailureScore(null);
+  assert.equal(score.dataGaps.includes("exact_src_execution_gas_not_estimated"), true);
+});
+
 test("missing decimals block net edge classification", () => {
   const route = {
     srcChain: "base",
