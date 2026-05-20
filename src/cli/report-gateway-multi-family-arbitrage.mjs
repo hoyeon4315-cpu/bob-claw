@@ -88,18 +88,23 @@ function printSummary(summary) {
   console.log(`families=${summary.requestedFamilies.join(",")}`);
   console.log("");
   console.log(
-    "family | routes | exact | profitable | best.measuredLoopNetUsd | closest.routeKey | closest.amountGapPct",
+    "family | routes | exact | profit | freshProfit | stalePos | best.netUsd | bestFresh.netUsd | bestLoop.freshness | closest.routeKey | closest.amountGapPct",
   );
   for (const row of summary.families) {
     const best = row.bestLoop || null;
+    const bestFresh = row.bestFreshLoop || null;
     const closest = row.closestLoop || null;
     console.log(
       [
         row.family.padEnd(6),
         formatNumber(row.routeCount).padStart(6),
         formatNumber(row.exactAmountMatchCount).padStart(5),
-        formatNumber(row.profitableExactCount).padStart(10),
-        formatUsd(best?.measuredLoopNetUsd).padStart(24),
+        formatNumber(row.profitableExactCount).padStart(6),
+        formatNumber(row.freshProfitableExactCount).padStart(11),
+        formatNumber(row.stalePositiveLoopCount).padStart(8),
+        formatUsd(best?.measuredLoopNetUsd).padStart(12),
+        formatUsd(bestFresh?.measuredLoopNetUsd).padStart(16),
+        (row.bestLoopFreshnessStatus || "none").padEnd(20),
         (closest?.routeKey || "n/a").padEnd(40),
         formatPct(closest?.amountGapPct),
       ].join(" | "),

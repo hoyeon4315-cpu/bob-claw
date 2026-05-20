@@ -6,6 +6,44 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+const STALE_QUOTE_BLOCKER_PATTERN = /^gateway_stale_/;
+const DEFAULT_MAX_ENTRY_QUOTE_AGE_MINUTES = 30;
+
+function resolveFreshnessOptions(options = {}, scoreSnapshot = null) {
+  const maxEntryQuoteAgeMinutes = Number.isFinite(options.maxEntryQuoteAgeMinutes)
+    ? options.maxEntryQuoteAgeMinutes
+    : DEFAULT_MAX_ENTRY_QUOTE_AGE_MINUTES;
+  const nowSource = options.now || scoreSnapshot?.generatedAt || null;
+  return { maxEntryQuoteAgeMinutes, now: nowSource };
+}
+
+function classifyLoopFreshness(loop, { now, maxEntryQuoteAgeMinutes }) {
+  if (!loop) return "none";
+  if (!loop.entryQuoteObservedAt) return "no_entry_quote";
+  const blockers = Array.isArray(loop.blockers) ? loop.blockers : [];
+  if (blockers.some((code) => typeof code === "string" && STALE_QUOTE_BLOCKER_PATTERN.test(code))) {
+    return "stale_quote_blocker";
+  }
+  const observedMs = new Date(loop.entryQuoteObservedAt).valueOf();
+  if (!Number.isFinite(observedMs)) return "stale_quote_age";
+  const nowMs = now ? new Date(now).valueOf() : Date.now();
+  if (!Number.isFinite(nowMs)) return "fresh";
+  const ageMinutes = (nowMs - observedMs) / 60000;
+  if (!Number.isFinite(ageMinutes)) return "fresh";
+  if (ageMinutes > maxEntryQuoteAgeMinutes) return "stale_quote_age";
+  return "fresh";
+}
+
+function isFreshLoop(loop) {
+  return loop?.freshnessStatus === "fresh";
+}
+
+function isProfitableExactLoop(loop) {
+  return Boolean(
+    loop && loop.exactAmountMatch && Number.isFinite(loop.measuredLoopNetUsd) && loop.measuredLoopNetUsd > 0,
+  );
+}
+
 function latestEntryQuotes(dexQuotes = []) {
   const latest = new Map();
   for (const quote of filterTrustedExecutableDexQuotes(dexQuotes)) {
@@ -139,9 +177,12 @@ export function buildDexGatewayLoops({ scoreSnapshot = null, dexQuotes = [] } = 
   const scoreFilter = options.scoreFilter || eligibleBtc;
   const scores = (scoreSnapshot?.scores || []).filter(scoreFilter);
   const entryQuotes = latestEntryQuotes(dexQuotes);
-  const loops = scores.map((score) =>
-    summarizeLoop(score, entryQuotes.get(`${score.routeKey}|${score.amount}`) || null, amountTolerancePct),
-  );
+  const freshnessOptions = resolveFreshnessOptions(options, scoreSnapshot);
+  const loops = scores.map((score) => {
+    const loop = summarizeLoop(score, entryQuotes.get(`${score.routeKey}|${score.amount}`) || null, amountTolerancePct);
+    loop.freshnessStatus = classifyLoopFreshness(loop, freshnessOptions);
+    return loop;
+  });
 
   loops.sort(
     (left, right) =>
@@ -152,6 +193,7 @@ export function buildDexGatewayLoops({ scoreSnapshot = null, dexQuotes = [] } = 
 
   return {
     amountTolerancePct,
+    maxEntryQuoteAgeMinutes: freshnessOptions.maxEntryQuoteAgeMinutes,
     scores,
     entryQuotes,
     loops,
@@ -159,7 +201,7 @@ export function buildDexGatewayLoops({ scoreSnapshot = null, dexQuotes = [] } = 
 }
 
 export function buildDexGatewayArbitrageSummary({ scoreSnapshot = null, dexQuotes = [] } = {}, options = {}) {
-  const { amountTolerancePct, scores, entryQuotes, loops } = buildDexGatewayLoops(
+  const { amountTolerancePct, maxEntryQuoteAgeMinutes, scores, entryQuotes, loops } = buildDexGatewayLoops(
     { scoreSnapshot, dexQuotes },
     options,
   );
@@ -167,23 +209,30 @@ export function buildDexGatewayArbitrageSummary({ scoreSnapshot = null, dexQuote
     (score) => defaultDexQuoteProvider(score.srcChain) && defaultDexQuoteProvider(score.dstChain),
   );
 
+  const profitableExactLoops = loops.filter(isProfitableExactLoop);
+  const freshProfitableExactLoops = profitableExactLoops.filter(isFreshLoop);
+  const staleProfitableExactLoops = profitableExactLoops.filter((loop) => !isFreshLoop(loop));
+  const bestLoop = profitableExactLoops[0] || null;
+  const bestFreshLoop = freshProfitableExactLoops[0] || null;
+
   return {
     schemaVersion: 1,
     generatedAt: scoreSnapshot?.generatedAt || null,
     amountTolerancePct,
+    maxEntryQuoteAgeMinutes,
     routeCount: scores.length,
     bothDexSupportedRouteCount: bothDexSupportedRoutes.length,
     entryQuoteCount: entryQuotes.size,
     executableLoopCount: loops.filter((item) => Number.isFinite(item.destinationExecutableUsd)).length,
     exactAmountMatchCount: loops.filter((item) => item.exactAmountMatch).length,
     measuredNetLoopCount: loops.filter((item) => Number.isFinite(item.measuredLoopNetUsd)).length,
-    profitableExactCount: loops.filter(
-      (item) => item.exactAmountMatch && Number.isFinite(item.measuredLoopNetUsd) && item.measuredLoopNetUsd > 0,
-    ).length,
-    bestLoop:
-      loops.find(
-        (item) => item.exactAmountMatch && Number.isFinite(item.measuredLoopNetUsd) && item.measuredLoopNetUsd > 0,
-      ) || null,
+    profitableExactCount: profitableExactLoops.length,
+    freshProfitableExactCount: freshProfitableExactLoops.length,
+    staleProfitableExactCount: staleProfitableExactLoops.length,
+    stalePositiveLoopCount: staleProfitableExactLoops.length,
+    bestLoop,
+    bestLoopFreshnessStatus: bestLoop?.freshnessStatus || "none",
+    bestFreshLoop,
     closestLoop: loops[0] || null,
     loops: loops.slice(0, 10),
   };
@@ -255,14 +304,23 @@ export function buildMultiFamilyGatewayArbitrageSummary(args = {}, options = {})
       exactAmountMatchCount: summary.exactAmountMatchCount,
       measuredNetLoopCount: summary.measuredNetLoopCount,
       profitableExactCount: summary.profitableExactCount,
+      freshProfitableExactCount: summary.freshProfitableExactCount,
+      staleProfitableExactCount: summary.staleProfitableExactCount,
+      stalePositiveLoopCount: summary.stalePositiveLoopCount,
       bestLoop: summary.bestLoop,
+      bestLoopFreshnessStatus: summary.bestLoopFreshnessStatus,
+      bestFreshLoop: summary.bestFreshLoop,
       closestLoop: summary.closestLoop,
       amountTolerancePct: summary.amountTolerancePct,
+      maxEntryQuoteAgeMinutes: summary.maxEntryQuoteAgeMinutes,
     };
   });
 
   families.sort(
     (left, right) =>
+      (right.bestFreshLoop?.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) -
+        (left.bestFreshLoop?.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) ||
+      right.freshProfitableExactCount - left.freshProfitableExactCount ||
       (right.bestLoop?.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) -
         (left.bestLoop?.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) ||
       right.profitableExactCount - left.profitableExactCount ||

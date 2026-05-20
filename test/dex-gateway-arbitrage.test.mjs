@@ -385,3 +385,203 @@ test("multi-family arbitrage summary emits one row per requested family with sam
     true,
   );
 });
+
+function profitableScore(routeKey) {
+  return {
+    routeKey,
+    amount: "10000",
+    srcChain: "base",
+    dstChain: "bob",
+    srcAsset: { ticker: "WBTC", family: "wrapped_btc", decimals: 8 },
+    dstAsset: { ticker: "wBTC.OFT", family: "wrapped_btc", decimals: 8 },
+    inputAmount: 0.0001,
+    executableOutputUsd: 8.1,
+    knownCostUsd: 0.2,
+    tradeReadiness: "reject_no_net_edge",
+    dataGaps: [],
+    routeStats: { failureRate: 0.01 },
+  };
+}
+
+function negativeScore(routeKey) {
+  return {
+    ...profitableScore(routeKey),
+    executableOutputUsd: 6.5,
+  };
+}
+
+function entryQuote({ routeKey, observedAt, inputValueUsd = 7.5, outputAmount = "10000" }) {
+  return trustedOdosQuote({
+    observedAt,
+    source: "gateway_src_entry_leg",
+    chain: "base",
+    gatewayRouteKey: routeKey,
+    gatewayAmount: "10000",
+    inputValueUsd,
+    gasEstimateValueUsd: 0.02,
+    outputAmount,
+  });
+}
+
+test("comparator labels stale-positive loop as stale evidence and excludes from bestFreshLoop", () => {
+  const generatedAt = "2026-05-20T21:30:00.000Z";
+  const summary = buildDexGatewayArbitrageSummary(
+    {
+      scoreSnapshot: {
+        generatedAt,
+        scores: [profitableScore("base:0xstale->bob:0xstale")],
+      },
+      dexQuotes: [
+        entryQuote({
+          routeKey: "base:0xstale->bob:0xstale",
+          observedAt: "2026-04-18T08:00:00.000Z",
+        }),
+      ],
+    },
+    { now: generatedAt },
+  );
+
+  assert.equal(summary.routeCount, 1);
+  assert.equal(summary.profitableExactCount, 1);
+  assert.equal(summary.freshProfitableExactCount, 0);
+  assert.equal(summary.staleProfitableExactCount, 1);
+  assert.equal(summary.stalePositiveLoopCount, 1);
+  assert.ok(summary.bestLoop?.measuredLoopNetUsd > 0);
+  assert.equal(summary.bestLoop.freshnessStatus, "stale_quote_age");
+  assert.equal(summary.bestLoopFreshnessStatus, "stale_quote_age");
+  assert.equal(summary.bestFreshLoop, null);
+});
+
+test("comparator treats gateway_stale_dex_output_quote blocker as non-fresh regardless of entry quote age", () => {
+  const generatedAt = "2026-05-20T21:30:00.000Z";
+  const summary = buildDexGatewayArbitrageSummary(
+    {
+      scoreSnapshot: {
+        generatedAt,
+        scores: [
+          {
+            ...profitableScore("base:0xstalexit->bob:0xstalexit"),
+            dataGaps: ["stale_dex_output_quote"],
+          },
+        ],
+      },
+      dexQuotes: [
+        entryQuote({
+          routeKey: "base:0xstalexit->bob:0xstalexit",
+          observedAt: "2026-05-20T21:29:30.000Z",
+        }),
+      ],
+    },
+    { now: generatedAt },
+  );
+
+  assert.equal(summary.profitableExactCount, 1);
+  assert.equal(summary.freshProfitableExactCount, 0);
+  assert.equal(summary.staleProfitableExactCount, 1);
+  assert.equal(summary.bestLoop.freshnessStatus, "stale_quote_blocker");
+  assert.equal(summary.bestFreshLoop, null);
+  assert.equal(summary.bestLoop.blockers.includes("gateway_stale_dex_output_quote"), true);
+});
+
+test("comparator surfaces fresh-positive loop in bestFreshLoop and counts freshProfitableExactCount", () => {
+  const generatedAt = "2026-05-20T21:30:00.000Z";
+  const summary = buildDexGatewayArbitrageSummary(
+    {
+      scoreSnapshot: {
+        generatedAt,
+        scores: [profitableScore("base:0xfresh->bob:0xfresh")],
+      },
+      dexQuotes: [
+        entryQuote({
+          routeKey: "base:0xfresh->bob:0xfresh",
+          observedAt: "2026-05-20T21:29:45.000Z",
+        }),
+      ],
+    },
+    { now: generatedAt },
+  );
+
+  assert.equal(summary.freshProfitableExactCount, 1);
+  assert.equal(summary.staleProfitableExactCount, 0);
+  assert.equal(summary.bestLoop.freshnessStatus, "fresh");
+  assert.equal(summary.bestFreshLoop?.routeKey, "base:0xfresh->bob:0xfresh");
+  assert.equal(summary.bestLoopFreshnessStatus, "fresh");
+});
+
+test("comparator omits fresh-negative and stale-negative loops from profitable counts", () => {
+  const generatedAt = "2026-05-20T21:30:00.000Z";
+  const summary = buildDexGatewayArbitrageSummary(
+    {
+      scoreSnapshot: {
+        generatedAt,
+        scores: [negativeScore("base:0xfreshneg->bob:0xfreshneg"), negativeScore("base:0xstaleneg->bob:0xstaleneg")],
+      },
+      dexQuotes: [
+        entryQuote({
+          routeKey: "base:0xfreshneg->bob:0xfreshneg",
+          observedAt: "2026-05-20T21:29:45.000Z",
+          inputValueUsd: 7.5,
+        }),
+        entryQuote({
+          routeKey: "base:0xstaleneg->bob:0xstaleneg",
+          observedAt: "2026-04-18T08:00:00.000Z",
+          inputValueUsd: 7.5,
+        }),
+      ],
+    },
+    { now: generatedAt },
+  );
+
+  assert.equal(summary.profitableExactCount, 0);
+  assert.equal(summary.freshProfitableExactCount, 0);
+  assert.equal(summary.staleProfitableExactCount, 0);
+  assert.equal(summary.bestFreshLoop, null);
+  assert.equal(summary.bestLoop, null);
+  const freshNegLoop = summary.loops.find((loop) => loop.routeKey === "base:0xfreshneg->bob:0xfreshneg");
+  const staleNegLoop = summary.loops.find((loop) => loop.routeKey === "base:0xstaleneg->bob:0xstaleneg");
+  assert.equal(freshNegLoop.freshnessStatus, "fresh");
+  assert.equal(staleNegLoop.freshnessStatus, "stale_quote_age");
+});
+
+test("multi-family ordering prefers family with fresh-profitable over family with only stale-profitable", () => {
+  const generatedAt = "2026-05-20T21:30:00.000Z";
+  const scoreSnapshot = {
+    generatedAt,
+    scores: [
+      profitableScore("base:0xstalewbtc->bob:0xstalewbtc"),
+      {
+        ...profitableScore("bitcoin:0xfreshstable->base:0xfreshstable"),
+        srcAsset: { ticker: "BTC", family: "btc", decimals: 8 },
+        dstAsset: { ticker: "oUSDT", family: "stablecoin", decimals: 6, priceKey: "usd_stable" },
+        srcChain: "bitcoin",
+        dstChain: "base",
+      },
+    ],
+  };
+  const dexQuotes = [
+    entryQuote({
+      routeKey: "base:0xstalewbtc->bob:0xstalewbtc",
+      observedAt: "2026-04-18T08:00:00.000Z",
+    }),
+    entryQuote({
+      routeKey: "bitcoin:0xfreshstable->base:0xfreshstable",
+      observedAt: "2026-05-20T21:29:45.000Z",
+    }),
+  ];
+
+  const summary = buildMultiFamilyGatewayArbitrageSummary(
+    { scoreSnapshot, dexQuotes },
+    { now: generatedAt, families: ["wbtc", "stable"] },
+  );
+
+  const wbtcRow = summary.families.find((row) => row.family === "wbtc");
+  const stableRow = summary.families.find((row) => row.family === "stable");
+  assert.equal(wbtcRow.profitableExactCount, 1);
+  assert.equal(wbtcRow.freshProfitableExactCount, 0);
+  assert.equal(wbtcRow.stalePositiveLoopCount, 1);
+  assert.equal(wbtcRow.bestFreshLoop, null);
+  assert.equal(stableRow.profitableExactCount, 1);
+  assert.equal(stableRow.freshProfitableExactCount, 1);
+  assert.equal(stableRow.bestFreshLoop?.routeKey, "bitcoin:0xfreshstable->base:0xfreshstable");
+  assert.equal(summary.families[0].family, "stable");
+});
