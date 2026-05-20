@@ -77,6 +77,11 @@ function exactGasGapForFailure(reason) {
   if (reason === "erc20_allowance_insufficient") return "exact_src_execution_gas_allowance_insufficient";
   if (reason === "erc20_balance_insufficient") return "exact_src_execution_gas_token_insufficient";
   if (reason === "execution_reverted") return "exact_src_execution_gas_reverted";
+  if (reason === "insufficient_funds") return "exact_src_execution_gas_funds_insufficient";
+  if (reason === "rpc_error") return "exact_src_execution_gas_rpc_error";
+  if (reason === "missing_tx_data" || reason === "missing_tx_to" || reason === "missing_tx_target") {
+    return "exact_src_execution_gas_missing_tx_payload";
+  }
   return "exact_src_execution_gas_not_estimated";
 }
 
