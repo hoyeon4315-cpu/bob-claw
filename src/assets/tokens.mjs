@@ -378,6 +378,25 @@ export function isZeroToken(token) {
   return normalizeToken(token) === normalizeToken(ZERO_TOKEN);
 }
 
+// Reverse lookup: returns candidate token addresses (lowercased) for a given
+// asset ticker. Native-equivalent tickers (BTC on Bitcoin L1, ETH on EVM)
+// resolve to ZERO_TOKEN. The lookup is registry-driven; no chain/ticker
+// literal is special-cased in callers.
+export function tokensForTicker(ticker) {
+  const normalized = String(ticker || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return [];
+  if (normalized === "btc" || normalized === "eth" || normalized === "native") {
+    return [normalizeToken(ZERO_TOKEN)];
+  }
+  const matches = [];
+  for (const [token, def] of TOKEN_DEFINITIONS.entries()) {
+    if (String(def.ticker || "").toLowerCase() === normalized) matches.push(token);
+  }
+  return matches;
+}
+
 export function tokenAsset(chain, token, overrides = {}) {
   const normalized = normalizeToken(token);
   if (!normalized) {
@@ -437,6 +456,21 @@ export function gatewayBtcSettlementTokenForChain(chain) {
 
 export function isEthLikeAsset(asset) {
   return asset?.priceKey === "ethereum" && (asset?.ticker === "ETH" || asset?.family === "native_or_wrapped");
+}
+
+export function isStableAsset(asset) {
+  return asset?.family === "stablecoin";
+}
+
+const GOLD_TICKERS_SET = new Set(["XAUT", "PAXG"]);
+const GOLD_PRICE_KEYS_SET = new Set(["xaut", "paxg"]);
+
+export function isGoldAsset(asset) {
+  const ticker = String(asset?.ticker || "").toUpperCase();
+  if (GOLD_TICKERS_SET.has(ticker)) return true;
+  const priceKey = String(asset?.priceKey || "").toLowerCase();
+  if (GOLD_PRICE_KEYS_SET.has(priceKey)) return true;
+  return false;
 }
 
 export function assetPairKey(route) {

@@ -14,7 +14,15 @@ import {
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 import { readFile } from "node:fs/promises";
 import { readJsonl } from "../lib/jsonl-read.mjs";
-import { isBtcLikeAsset, isEthLikeAsset, tokenAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import {
+  isBtcLikeAsset,
+  isEthLikeAsset,
+  isGoldAsset,
+  isStableAsset,
+  normalizeToken,
+  tokenAsset,
+  unitsToDecimal,
+} from "../assets/tokens.mjs";
 import { latestPriceSnapshot, pricesFromSnapshot } from "../market/prices.mjs";
 
 const SCHEMA_VERSION = 2;
@@ -38,7 +46,9 @@ function parseArgs(argv) {
     routeKey: options["route-key"] || null,
     amount: options.amount || null,
     includeStableEntry: flags.has("--include-stable-entry"),
-    stableEntryBufferBps: options["stable-entry-buffer-bps"] ? Number(options["stable-entry-buffer-bps"]) : DEFAULT_STABLE_ENTRY_BUFFER_BPS,
+    stableEntryBufferBps: options["stable-entry-buffer-bps"]
+      ? Number(options["stable-entry-buffer-bps"])
+      : DEFAULT_STABLE_ENTRY_BUFFER_BPS,
     chains: options.chains
       ? options.chains
           .split(",")
@@ -110,16 +120,25 @@ function estimateStableEntryAmountUnits({ quote, score, stableEntryBufferBps, pr
   if (!stable || !Number.isInteger(stable.decimals) || !Number.isInteger(srcAsset.decimals)) return null;
   const scoreInputUsd = Number.isFinite(score?.inputUsd) ? score.inputUsd : null;
   const tokenAmount = unitsToDecimal(quote.inputAmount, srcAsset.decimals);
-  const marketPriceUsd = Number.isFinite(prices?.tokenByKey?.[srcAsset.priceKey]) ? prices.tokenByKey[srcAsset.priceKey] : null;
-  const estimatedUsd = scoreInputUsd ?? (Number.isFinite(tokenAmount) && Number.isFinite(marketPriceUsd) ? tokenAmount * marketPriceUsd : null);
+  const marketPriceUsd = Number.isFinite(prices?.tokenByKey?.[srcAsset.priceKey])
+    ? prices.tokenByKey[srcAsset.priceKey]
+    : null;
+  const estimatedUsd =
+    scoreInputUsd ??
+    (Number.isFinite(tokenAmount) && Number.isFinite(marketPriceUsd) ? tokenAmount * marketPriceUsd : null);
   if (!Number.isFinite(estimatedUsd) || estimatedUsd <= 0) return null;
   return decimalToUnits(estimatedUsd * (1 + Math.max(0, stableEntryBufferBps) / 10_000), stable.decimals);
+}
+
+function isEntryLegEligibleSrcAsset(asset) {
+  return isBtcLikeAsset(asset) || isEthLikeAsset(asset) || isGoldAsset(asset) || isStableAsset(asset);
 }
 
 function stableEntryLegFromGatewayQuote(quote, { scoresByKey, stableEntryBufferBps, prices }) {
   const stable = STABLE_QUOTE_TOKENS[quote?.route?.srcChain];
   const outputAsset = tokenAsset(quote?.route?.srcChain, quote?.route?.srcToken);
-  if (!stable || (!isBtcLikeAsset(outputAsset) && !isEthLikeAsset(outputAsset))) return null;
+  if (!stable || !isEntryLegEligibleSrcAsset(outputAsset)) return null;
+  if (normalizeToken(stable.token) === normalizeToken(quote?.route?.srcToken)) return null;
   const amount = estimateStableEntryAmountUnits({
     quote,
     score: scoresByKey.get(scoreKey(quote.routeKey, quote.amount)) || null,
@@ -175,12 +194,9 @@ function isPositiveAmount(value) {
   }
 }
 
-function isWrappedBtcLeg(leg) {
-  return tokenAsset(leg.chain, leg.outputToken || leg.inputToken).family === "wrapped_btc";
-}
-
-function isEthLikeLeg(leg) {
-  return isEthLikeAsset(tokenAsset(leg.chain, leg.outputToken || leg.inputToken));
+function isPriorityFamilyLeg(leg) {
+  const asset = tokenAsset(leg.chain, leg.outputToken || leg.inputToken);
+  return asset.family === "wrapped_btc" || isEthLikeAsset(asset) || isGoldAsset(asset) || isStableAsset(asset);
 }
 
 function dexSupportForLeg(leg) {
@@ -207,17 +223,15 @@ function appendLeg(selection, seen, leg, routeLimit) {
 }
 
 function prioritizeLegsForCoverage(legs, { routeLimit }) {
-  const ordered = [...legs].sort((left, right) => observedAtMs(right.gatewayObservedAt) - observedAtMs(left.gatewayObservedAt));
+  const ordered = [...legs].sort(
+    (left, right) => observedAtMs(right.gatewayObservedAt) - observedAtMs(left.gatewayObservedAt),
+  );
   const selection = [];
   const seen = new Set();
   const coveredChains = new Set();
 
   for (const leg of ordered) {
-    if (
-      !(isWrappedBtcLeg(leg) || isEthLikeLeg(leg)) ||
-      !dexSupportForLeg(leg).ok ||
-      coveredChains.has(leg.chain)
-    ) continue;
+    if (!isPriorityFamilyLeg(leg) || !dexSupportForLeg(leg).ok || coveredChains.has(leg.chain)) continue;
     appendLeg(selection, seen, leg, routeLimit);
     coveredChains.add(leg.chain);
   }
@@ -237,7 +251,16 @@ function prioritizeLegsForCoverage(legs, { routeLimit }) {
 
 export function selectCandidateLegs(
   quotes,
-  { routeKey = null, amount = null, chains = [], routeLimit = 24, includeStableEntry = false, scoreSnapshot = null, stableEntryBufferBps = DEFAULT_STABLE_ENTRY_BUFFER_BPS, prices = null } = {},
+  {
+    routeKey = null,
+    amount = null,
+    chains = [],
+    routeLimit = 24,
+    includeStableEntry = false,
+    scoreSnapshot = null,
+    stableEntryBufferBps = DEFAULT_STABLE_ENTRY_BUFFER_BPS,
+    prices = null,
+  } = {},
 ) {
   const selectedChains = new Set((chains || []).map((item) => String(item).toLowerCase()));
   const scoresByKey = scoreMap(scoreSnapshot);
@@ -282,7 +305,9 @@ async function main() {
   const client = new OdosClient();
   const store = new JsonlStore(config.dataDir);
   const quotes = latestByRouteAndAmount(await readJsonl(config.dataDir, "gateway-quotes"));
-  const scoreSnapshot = args.includeStableEntry ? await readJsonIfExists(resolve(config.dataDir, "gateway-scores.json")) : null;
+  const scoreSnapshot = args.includeStableEntry
+    ? await readJsonIfExists(resolve(config.dataDir, "gateway-scores.json"))
+    : null;
   const priceSnapshots = args.includeStableEntry ? await readJsonl(config.dataDir, "market-price-snapshots") : [];
   const prices = latestPriceSnapshot(priceSnapshots) ? pricesFromSnapshot(latestPriceSnapshot(priceSnapshots)) : null;
   const runId = `${new Date().toISOString()}-${Math.random().toString(16).slice(2)}`;
@@ -301,14 +326,15 @@ async function main() {
       ticker: outputAsset.ticker,
       decimals: outputAsset.decimals,
     });
-    const routing = support.provider === "odos"
-      ? odosRoutingConfig(leg.chain, { allowUnsafe: args.allowUnsafeSources })
-      : {
-          sourceWhitelist: null,
-          sourceBlacklist: null,
-          routingMode: null,
-          executionTrust: null,
-        };
+    const routing =
+      support.provider === "odos"
+        ? odosRoutingConfig(leg.chain, { allowUnsafe: args.allowUnsafeSources })
+        : {
+            sourceWhitelist: null,
+            sourceBlacklist: null,
+            routingMode: null,
+            executionTrust: null,
+          };
     if (!support.ok) {
       const failureReason = normalizeDexSupportReason(support.reason, leg.chain);
       const failure = {

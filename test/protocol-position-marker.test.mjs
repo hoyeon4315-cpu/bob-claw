@@ -10,9 +10,7 @@ import {
 } from "../src/treasury/protocol-position-marker.mjs";
 
 const OBSERVED_AT = "2026-05-03T12:00:00.000Z";
-const READ_INTERFACE = new Interface([
-  "function balanceOf(address) view returns (uint256)",
-]);
+const READ_INTERFACE = new Interface(["function balanceOf(address) view returns (uint256)"]);
 const WALLET_ADDRESS = "0x96262bE63AA687563789225c2fE898c27a3b0AE4";
 
 test("resolveProtocolPositionAdapter maps current Merkl ERC4626 bindings to erc4626 adapter", () => {
@@ -27,15 +25,9 @@ test("resolveProtocolPositionAdapter maps current Merkl ERC4626 bindings to erc4
 });
 
 test("resolveProtocolPositionAdapter maps current lending bindings", () => {
-  assert.equal(
-    resolveProtocolPositionAdapter({ bindingKind: "euler_evault_deposit_withdraw" }).id,
-    "erc4626",
-  );
+  assert.equal(resolveProtocolPositionAdapter({ bindingKind: "euler_evault_deposit_withdraw" }).id, "erc4626");
   assert.equal(resolveProtocolPositionAdapter({ bindingKind: "aave_v3_supply_withdraw" }).id, "aave-v3");
-  assert.equal(
-    resolveProtocolPositionAdapter({ bindingKind: "compound_v2_supply_withdraw" }).id,
-    "compound-v2",
-  );
+  assert.equal(resolveProtocolPositionAdapter({ bindingKind: "compound_v2_supply_withdraw" }).id, "compound-v2");
   assert.equal(resolveProtocolPositionAdapter({ bindingKind: "aave_v3_pool_supply_withdraw" }).id, "aave-v3");
   assert.equal(resolveProtocolPositionAdapter({ bindingKind: "unknown" }), null);
 });
@@ -137,7 +129,10 @@ test("markActiveProtocolPositions isolates adapter errors and sorts by positionI
     observedAt: OBSERVED_AT,
   });
 
-  assert.deepEqual(marks.map((mark) => mark.positionId), ["a-fail", "z-ok"]);
+  assert.deepEqual(
+    marks.map((mark) => mark.positionId),
+    ["a-fail", "z-ok"],
+  );
   assert.equal(marks[0].event, "position_mark_failed");
   assert.equal(marks[0].failureKind, "adapter_error");
   assert.match(marks[0].message, /rpc exploded/u);
@@ -169,8 +164,14 @@ test("createCachedRetryingContractReader retries transient read failures and cac
     return 42n;
   });
 
-  assert.equal(await reader({ chain: "base", address: "0xVault", functionName: "balanceOf", args: [WALLET_ADDRESS] }), 42n);
-  assert.equal(await reader({ chain: "base", address: "0xVault", functionName: "balanceOf", args: [WALLET_ADDRESS] }), 42n);
+  assert.equal(
+    await reader({ chain: "base", address: "0xVault", functionName: "balanceOf", args: [WALLET_ADDRESS] }),
+    42n,
+  );
+  assert.equal(
+    await reader({ chain: "base", address: "0xVault", functionName: "balanceOf", args: [WALLET_ADDRESS] }),
+    42n,
+  );
   assert.equal(calls, 2);
 });
 
@@ -207,33 +208,34 @@ test("runMarkProtocolPositionMarksCli refuses to write active positions without 
   const writes = [];
 
   await assert.rejects(
-    () => runMarkProtocolPositionMarksCli({
-      args: { write: true, json: true },
-      observedAt: OBSERVED_AT,
-      positionEvents: [
-        {
-          event: "position_opened",
-          status: "open",
-          observedAt: OBSERVED_AT,
-          positionId: "p-active",
-          chain: "base",
-          protocolId: "yo",
-          bindingKind: "erc4626_vault_supply_withdraw",
-          shareTokenAddress: "0xVault",
-          assetAddress: "0xAsset",
+    () =>
+      runMarkProtocolPositionMarksCli({
+        args: { write: true, json: true },
+        observedAt: OBSERVED_AT,
+        positionEvents: [
+          {
+            event: "position_opened",
+            status: "open",
+            observedAt: OBSERVED_AT,
+            positionId: "p-active",
+            chain: "base",
+            protocolId: "yo",
+            bindingKind: "erc4626_vault_supply_withdraw",
+            shareTokenAddress: "0xVault",
+            assetAddress: "0xAsset",
+          },
+        ],
+        walletAddress: null,
+        contractReader: async () => {
+          throw new Error("contractReader should not run before wallet guard");
         },
-      ],
-      walletAddress: null,
-      contractReader: async () => {
-        throw new Error("contractReader should not run before wallet guard");
-      },
-      priceReader: async () => 1,
-      store: {
-        append: async (name, event) => {
-          writes.push({ name, event });
+        priceReader: async () => 1,
+        store: {
+          append: async (name, event) => {
+            writes.push({ name, event });
+          },
         },
-      },
-    }),
+      }),
     /Cannot write protocol position marks without walletAddress/u,
   );
 
@@ -310,33 +312,36 @@ test("runMarkProtocolPositionMarksCli writes reader-backed logical marks with US
 
   assert.equal(summary.markedCount, 1);
   assert.equal(summary.failedCount, 0);
-  assert.equal(
-    summary.events[0].positionId,
-    "protocol:base:yo:yo-opportunity:erc4626_vault_supply_withdraw:0xvault",
-  );
+  assert.equal(summary.events[0].positionId, "protocol:base:yo:yo-opportunity:erc4626_vault_supply_withdraw:0xvault");
   assert.equal(summary.events[0].markSource, "protocol_reader");
   assert.equal(summary.events[0].valueUsd, 5.1);
+  // Non-Pendle reader-backed marks stay priced under the common mark
+  // valuation contract, preserving existing behavior.
+  assert.equal(summary.events[0].valuationKind, "priced");
+  assert.equal(summary.events[0].valuationProvenance, "current_position_onchain");
 });
 
 test("runMarkProtocolPositionMarksCli marks signer-confirmed Pendle entries through the live reader path", async () => {
-  const signerAuditRecords = [{
-    timestamp: "2026-05-13T10:24:44.361Z",
-    strategyId: "pendle-yt-canary",
-    chain: "base",
-    intentHash: "intent-hash",
-    intent: {
-      intentType: "pendle_yt_entry",
-      amountUsd: 5,
-      metadata: {
-        exposureAction: "open",
-        opportunityId: "pendle-direct:8453:0xmarket",
-        protocol: "pendle",
-        marketAddress: "0xMarket",
-        assetAddress: "0xAsset",
+  const signerAuditRecords = [
+    {
+      timestamp: "2026-05-13T10:24:44.361Z",
+      strategyId: "pendle-yt-canary",
+      chain: "base",
+      intentHash: "intent-hash",
+      intent: {
+        intentType: "pendle_yt_entry",
+        amountUsd: 5,
+        metadata: {
+          exposureAction: "open",
+          opportunityId: "pendle-direct:8453:0xmarket",
+          protocol: "pendle",
+          marketAddress: "0xMarket",
+          assetAddress: "0xAsset",
+        },
       },
+      lifecycle: { stage: "confirmed", txHash: "0xTx" },
     },
-    lifecycle: { stage: "confirmed", txHash: "0xTx" },
-  }];
+  ];
   const readerProviderFactory = ({ address }) => {
     const contracts = {
       "0xMarket": {
@@ -366,7 +371,17 @@ test("runMarkProtocolPositionMarksCli marks signer-confirmed Pendle entries thro
   assert.equal(summary.events[0].protocolId, "pendle");
   assert.equal(summary.events[0].bindingKind, "pendle_market_swap");
   assert.equal(summary.events[0].assetSymbol, "YT");
-  assert.equal(summary.events[0].valueUsd, 3);
+  // Per common mark valuation contract: Pendle YT has no coherent per-token
+  // USD price feed available, so the mark must declare itself unpriced and
+  // null out assetPriceUsd / valueUsd. Substituting the full underlying price
+  // (e.g. BTC) here would emit ~$77k-per-YT NAV that downstream EV producers
+  // would treat as evidenced.
+  assert.equal(summary.events[0].valuationKind, "unpriced");
+  assert.equal(summary.events[0].valuationProvenance, "unpriced_per_share_price_unavailable");
+  assert.equal(summary.events[0].priceUnavailableReason, "pendle_yt_pt_no_per_share_usd_price");
+  assert.equal(summary.events[0].assetPriceUsd, null);
+  assert.equal(summary.events[0].valueUsd, null);
+  assert.equal(summary.events[0].confidence, "unpriced_observation");
 });
 
 test("runMarkProtocolPositionMarksCli emits explicit failure when reader returns zero positions for active ledger entry", async () => {
@@ -434,7 +449,11 @@ test("runMarkProtocolPositionMarksCli supports aave_v3 pool bindings through the
     readerProviderFactory: ({ address }) => {
       if (address === "0xPool") {
         return {
-          getUserAccountData: async () => ({ healthFactor: 2_000000000000000000n, ltv: 7500n, currentLiquidationThreshold: 8000n }),
+          getUserAccountData: async () => ({
+            healthFactor: 2_000000000000000000n,
+            ltv: 7500n,
+            currentLiquidationThreshold: 8000n,
+          }),
         };
       }
       if (address === "0xAToken") {
@@ -531,20 +550,21 @@ test("runMarkProtocolPositionMarksCli uses persisted price snapshot for legacy a
       if (functionName === "exchangeRateStored") return 1_000_000_000_000_000_000n;
       throw new Error(functionName);
     },
-    readFileImpl: async () => JSON.stringify({
-      schemaVersion: 1,
-      observedAt: OBSERVED_AT,
-      btcUsd: 103000,
-      tokenByKey: {
-        btc: 103000,
-        wbtc: 103000,
-        ethereum: 2500,
-        usd_stable: 1,
-      },
-      nativeByChain: {
-        base: 2500,
-      },
-    }),
+    readFileImpl: async () =>
+      JSON.stringify({
+        schemaVersion: 1,
+        observedAt: OBSERVED_AT,
+        btcUsd: 103000,
+        tokenByKey: {
+          btc: 103000,
+          wbtc: 103000,
+          ethereum: 2500,
+          usd_stable: 1,
+        },
+        nativeByChain: {
+          base: 2500,
+        },
+      }),
     fetchPrices: async () => {
       fetched += 1;
       return {};

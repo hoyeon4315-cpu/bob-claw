@@ -440,19 +440,56 @@ function refillPreviewBlockedReason(result = {}) {
   );
 }
 
-function refillRouteAttemptReason(result = {}, { method = null } = {}) {
+export function refillRouteAttemptReason(result = {}, { method = null } = {}) {
   const blockedReason = refillPreviewBlockedReason(result);
   if (!blockedReason) return null;
+  const plan = result?.json?.preparation?.plan || null;
+  const quoteAmountFloor = plan?.quoteAmountFloor || null;
   return {
     method: method || refillSelectedMethod(result) || null,
     blockedReason,
-    planBlockedReason: result?.json?.preparation?.plan?.blockedReason || null,
+    planBlockedReason: plan?.blockedReason || null,
+    ...(quoteAmountFloor ? { quoteAmountFloor } : {}),
   };
 }
 
-function routeExhaustionDeferral(routeAttemptReasons = []) {
+const GATEWAY_INVALID_REQUEST_DEFERRAL_BY_SUBTYPE = Object.freeze({
+  invalid_request_recipient: {
+    routeDeferralReason: "bridge_request_invalid_recipient_format",
+    routeDeferralAction: "defer_until_recipient_address_matches_destination_chain_format",
+  },
+  invalid_request_amount_unit: {
+    routeDeferralReason: "bridge_request_invalid_amount_unit",
+    routeDeferralAction: "defer_until_amount_unit_matches_source_token_decimals",
+  },
+  invalid_request_token: {
+    routeDeferralReason: "bridge_request_invalid_token",
+    routeDeferralAction: "defer_until_source_or_destination_token_resolves_to_supported_asset",
+  },
+  invalid_request_route_param: {
+    routeDeferralReason: "bridge_request_invalid_route_param",
+    routeDeferralAction: "defer_until_route_param_matches_supported_chain_or_provider",
+  },
+  gateway_invalid_request_unknown: {
+    routeDeferralReason: "bridge_request_invalid_unknown",
+    routeDeferralAction: "defer_until_gateway_invalid_request_payload_is_diagnosed",
+  },
+});
+
+export function routeExhaustionDeferral(routeAttemptReasons = []) {
   const reasons = new Set((routeAttemptReasons || []).map((item) => item?.blockedReason).filter(Boolean));
   const methods = new Set((routeAttemptReasons || []).map((item) => item?.method).filter(Boolean));
+  if (reasons.size === 1) {
+    const onlyReason = [...reasons][0];
+    const invalidRequestDeferral = GATEWAY_INVALID_REQUEST_DEFERRAL_BY_SUBTYPE[onlyReason];
+    if (invalidRequestDeferral) return invalidRequestDeferral;
+  }
+  if (reasons.has("quote_amount_too_low") && reasons.size === 1) {
+    return {
+      routeDeferralReason: "bridge_quote_amount_below_minimum",
+      routeDeferralAction: "defer_until_input_amount_meets_route_minimum_or_consolidate_inventory",
+    };
+  }
   if (reasons.has("dex_quote_failed") && reasons.has("no_route")) {
     return {
       routeDeferralReason: "native_bootstrap_unavailable_dex_quote_failed_gateway_no_route",
@@ -641,6 +678,7 @@ function refillPreviewRetryable(result = {}, { activeMethod = null } = {}) {
     "insufficient_funds",
     "insufficient_native_gas_balance",
     "executor_output_below_refill_target",
+    "quote_amount_too_low",
   ].includes(reason);
 }
 
@@ -684,6 +722,67 @@ function refillExecutionRetryable(result = {}, { activeMethod = null } = {}) {
   ].includes(reason);
 }
 
+function collectQuoteAmountFloorFromRouteAttempts(routeAttemptReasons = []) {
+  if (!Array.isArray(routeAttemptReasons)) return null;
+  for (const item of routeAttemptReasons) {
+    if (item?.quoteAmountFloor) return item.quoteAmountFloor;
+  }
+  return null;
+}
+
+function resolveQuoteAmountFloor(preview) {
+  const plan = preview?.json?.preparation?.plan;
+  if (plan?.quoteAmountFloor) return plan.quoteAmountFloor;
+  return collectQuoteAmountFloorFromRouteAttempts(preview?.json?.preparation?.routeAttemptReasons);
+}
+
+const NEXT_OPERATOR_ACTION_BY_TAXONOMY = Object.freeze({
+  system_wide_safety_blocker: "review_system_safety_before_retry",
+  real_negative_ev: "do_not_retry_until_positive_realized_net_evidence",
+  unknown_or_unapproved_asset: "commit_asset_registry_or_whitelist_review_before_retry",
+  inventory_or_gas_gap: "restore_scoped_inventory_or_gas_then_retry_dry_run",
+  missing_executor_capability: "patch_executor_capability_or_select_supported_method",
+  missing_price_or_freshness_evidence: "refresh_price_inventory_evidence_then_retry_dry_run",
+});
+
+function resolveNextOperatorAction(taxonomy, primaryBlocker) {
+  const direct = NEXT_OPERATOR_ACTION_BY_TAXONOMY[taxonomy];
+  if (direct) return direct;
+  if (taxonomy === "route_specific_failure_lock" || taxonomy === "method_specific_failure_lock") {
+    return primaryBlocker === "max_consecutive_failures_reached"
+      ? "operator_review_then_scoped_failure_reset_if_false_or_stale"
+      : "retry_after_route_provider_or_quote_state_changes";
+  }
+  return "operator_review_required";
+}
+
+function resolveJobOwnerId(job) {
+  return job.strategyId || job.strategy || job.familyId || null;
+}
+
+function resolveScopedSafeResetCommand(job, taxonomy, primaryBlocker, resetReasonScope) {
+  const eligibleTaxonomy =
+    taxonomy === "false_or_stale_blocker" || primaryBlocker === "max_consecutive_failures_reached";
+  const ownerId = resolveJobOwnerId(job);
+  if (!eligibleTaxonomy || !ownerId) return null;
+  return `npm run executor:reset-consecutive-failures -- --strategy-id=${ownerId} --chain=${job.chain} --reason=${resetReasonScope}`;
+}
+
+function buildBlockerScope({ taxonomy, job, selectedExecutionMethod, sourceChain, sourceAsset }) {
+  if (!taxonomy) return null;
+  return {
+    scopeType: refillScopeType(taxonomy),
+    strategyId: resolveJobOwnerId(job),
+    chain: job.chain || null,
+    targetAsset: job.asset || null,
+    sourceAsset,
+    sourceChain,
+    selectedMethod: selectedExecutionMethod || null,
+    executorFamily: refillExecutorFamily(selectedExecutionMethod),
+    routeFamily: refillRouteFamily(selectedExecutionMethod),
+  };
+}
+
 function compactRefillExecution(job, preview, execution = null) {
   const executionStatus = execution ? refillExecutionStatus(execution) : null;
   const delivered = refillDeliveredStatus(executionStatus);
@@ -706,32 +805,11 @@ function compactRefillExecution(job, preview, execution = null) {
   const resetReasonScope = ["operator_reviewed_scoped_refill_blocker", job.chain, job.asset, selectedExecutionMethod]
     .filter(Boolean)
     .join("_");
-  const scopedSafeResetCommand =
-    (taxonomy === "false_or_stale_blocker" || primaryBlocker === "max_consecutive_failures_reached") &&
-    (job.strategyId || job.strategy || job.familyId)
-      ? `npm run executor:reset-consecutive-failures -- --strategy-id=${job.strategyId || job.strategy || job.familyId} --chain=${job.chain} --reason=${resetReasonScope}`
-      : null;
-  const nextOperatorAction =
-    taxonomy === "system_wide_safety_blocker"
-      ? "review_system_safety_before_retry"
-      : taxonomy === "real_negative_ev"
-        ? "do_not_retry_until_positive_realized_net_evidence"
-        : taxonomy === "unknown_or_unapproved_asset"
-          ? "commit_asset_registry_or_whitelist_review_before_retry"
-          : taxonomy === "inventory_or_gas_gap"
-            ? "restore_scoped_inventory_or_gas_then_retry_dry_run"
-            : taxonomy === "missing_executor_capability"
-              ? "patch_executor_capability_or_select_supported_method"
-              : taxonomy === "missing_price_or_freshness_evidence"
-                ? "refresh_price_inventory_evidence_then_retry_dry_run"
-                : taxonomy === "route_specific_failure_lock" || taxonomy === "method_specific_failure_lock"
-                  ? primaryBlocker === "max_consecutive_failures_reached"
-                    ? "operator_review_then_scoped_failure_reset_if_false_or_stale"
-                    : "retry_after_route_provider_or_quote_state_changes"
-                  : "operator_review_required";
+  const scopedSafeResetCommand = resolveScopedSafeResetCommand(job, taxonomy, primaryBlocker, resetReasonScope);
+  const nextOperatorAction = resolveNextOperatorAction(taxonomy, primaryBlocker);
   return {
     jobId: job.jobId,
-    strategyId: job.strategyId || job.strategy || job.familyId || null,
+    strategyId: resolveJobOwnerId(job),
     refillSource: job.autopilotRefillSource || job.jobSourceStore || null,
     chain: job.chain,
     asset: job.asset,
@@ -748,24 +826,13 @@ function compactRefillExecution(job, preview, execution = null) {
     routeAttemptReasons: preview?.json?.preparation?.routeAttemptReasons || [],
     routeDeferralReason: preview?.json?.preparation?.routeDeferralReason || null,
     routeDeferralAction: preview?.json?.preparation?.routeDeferralAction || null,
+    quoteAmountFloor: resolveQuoteAmountFloor(preview),
     attempted: Boolean(execution),
     executed: delivered,
     executionStatus,
     executionBlockedReason,
     blockerTaxonomy: taxonomy,
-    blockerScope: taxonomy
-      ? {
-          scopeType: refillScopeType(taxonomy),
-          strategyId: job.strategyId || job.strategy || job.familyId || null,
-          chain: job.chain || null,
-          targetAsset: job.asset || null,
-          sourceAsset,
-          sourceChain,
-          selectedMethod: selectedExecutionMethod || null,
-          executorFamily: refillExecutorFamily(selectedExecutionMethod),
-          routeFamily: refillRouteFamily(selectedExecutionMethod),
-        }
-      : null,
+    blockerScope: buildBlockerScope({ taxonomy, job, selectedExecutionMethod, sourceChain, sourceAsset }),
     improvementType: refillImprovementType(taxonomy),
     waitingHelps: waitingHelpsForRefillBlocker(taxonomy, primaryBlocker),
     dryRunCommand,

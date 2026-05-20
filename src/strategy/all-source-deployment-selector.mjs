@@ -7,8 +7,52 @@ import { buildFundingSourcePlan } from "../treasury/funding-source-planner.mjs";
 import { buildDefaultTreasuryPolicy, validateTreasuryPolicy } from "../treasury/policy.mjs";
 import { evaluateIntentPolicies } from "../executor/policy/index.mjs";
 import { resolveKillSwitchPath } from "../executor/policy/kill-switch.mjs";
-import { resolveExitExecutor, resolveIntentType } from "../executor/protocol-binding-registry.mjs";
+import {
+  isSupportedBindingKind,
+  resolveExitExecutor,
+  resolveIntentType,
+} from "../executor/protocol-binding-registry.mjs";
 import { evaluatePendleYtEv } from "./pendle-yt-ev.mjs";
+import { nextLegalCapitalAction } from "./next-legal-capital-action.mjs";
+import { buildLifecycleEvidence } from "./lifecycle-evidence.mjs";
+import { buildFamilyActionTable } from "./family-action-classification.mjs";
+import { buildDryRunRemediationPlan } from "./dry-run-remediation-planner.mjs";
+import { buildLaneHandlerReport } from "./lane-handler-framework.mjs";
+import { buildLaneIntentCandidateReport } from "./remediation-lane-intent-candidate.mjs";
+
+function attachLifecycleEvidence(candidates, options, now) {
+  const protocolPositionMarks = Array.isArray(options.protocolPositionMarks) ? options.protocolPositionMarks : [];
+  for (const candidate of candidates) {
+    const { evidence: lifecycleEvidence } = buildLifecycleEvidence({
+      candidate,
+      protocolPositionMarks,
+      pendleYtDryRun: options.pendleYtDryRun || null,
+      pendleYtExitFromPosition: options.pendleYtExitFromPosition || null,
+      merklUserRewards: options.merklUserRewards || null,
+      walletAddress: options.walletAddress || null,
+      now,
+    });
+    candidate.lifecycleEvidence = lifecycleEvidence;
+  }
+}
+
+function attachNextLegalCapitalAction(candidates) {
+  for (const candidate of candidates) {
+    const mergedBlockers = [
+      ...new Set([
+        ...(Array.isArray(candidate.blockers) ? candidate.blockers : []),
+        ...(Array.isArray(candidate.capResult?.blockers) ? candidate.capResult.blockers : []),
+        ...(Array.isArray(candidate.policyResult?.blockers) ? candidate.policyResult.blockers : []),
+      ]),
+    ];
+    candidate.nextLegalCapitalAction = nextLegalCapitalAction({
+      blockers: mergedBlockers,
+      capResult: candidate.capResult,
+      expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
+      lifecycleEvidence: candidate.lifecycleEvidence,
+    });
+  }
+}
 
 export const ALL_SOURCE_DEPLOYMENT_SOURCES = Object.freeze([
   "pendle",
@@ -18,6 +62,7 @@ export const ALL_SOURCE_DEPLOYMENT_SOURCES = Object.freeze([
   "stable_carry",
   "btc_wrapper_lending",
   "radar_campaign",
+  "aggressive_velocity",
   "strategy_catalog",
 ]);
 
@@ -32,8 +77,34 @@ export const DEPLOYMENT_SELECTOR_FAMILIES = Object.freeze([
   "btc_wrapper_lending",
   "tokenized_gold_reserve",
   "radar",
+  "aggressive",
   "strategy_catalog",
+  // Position marks whose strategyId/protocolId do not map to any of the strategy-universe
+  // action lanes above land here instead of being silently bled into a lane via regex.
+  // gateway_native_asset_conversion_sleeve / YO vault / NAV-only marks are the canonical
+  // occupants — they have no strategy-universe action producer and must not pollute
+  // merkl claim economics, pendle YT, stable_carry, or btc_wrapper_lending rows.
+  "ambiguous_position_family",
 ]);
+
+// Authoritative strategyId → family map. strategyId comes from the position producer
+// itself (pendle YT canary, gateway sleeve, etc.) and is the only durable classifier
+// for active marks. Regex over JSON.stringify(mark) historically bled USDC marks into
+// stable_carry, "merkl:" prefix into merkl, etc.; this map removes that ambiguity.
+const STRATEGY_ID_TO_MARK_FAMILY = Object.freeze({
+  "pendle-yt-canary": "pendle",
+  "pendle-direct-canary": "pendle",
+  pendle_yt: "pendle",
+  pendle: "pendle",
+  gateway_native_asset_conversion_sleeve: "ambiguous_position_family",
+});
+
+// Fallback only when strategyId is absent. protocolId still does not disambiguate
+// between strategy-universe lanes (morpho/yo serve multiple sleeves), so anything that
+// reaches this fallback without a mapped strategyId remains ambiguous on purpose.
+const PROTOCOL_ID_TO_MARK_FAMILY = Object.freeze({
+  pendle: "pendle",
+});
 
 function finiteNumber(value, fallback = null) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -166,9 +237,10 @@ function makeCandidate(fields, { activeCapitalUsd = null } = {}) {
   return candidate;
 }
 
-function campaignByOpportunity(campaignAware = {}) {
+function campaignByOpportunity(campaignAware) {
   const map = new Map();
-  for (const candidate of array(campaignAware.candidates)) {
+  const source = campaignAware ?? {};
+  for (const candidate of array(source.candidates)) {
     if (candidate?.opportunityId) map.set(String(candidate.opportunityId), candidate);
   }
   return map;
@@ -721,12 +793,16 @@ function resizeTinyCanary({
 }
 
 function normalizeMerklCandidates({
-  merklQueue = {},
-  merklOpportunities = {},
-  campaignAware = {},
-  capitalManagerRefill = {},
+  merklQueue: rawMerklQueue,
+  merklOpportunities: rawMerklOpportunities,
+  campaignAware: rawCampaignAware,
+  capitalManagerRefill: rawCapitalManagerRefill,
   activeCapitalUsd = null,
 }) {
+  const merklQueue = rawMerklQueue ?? {};
+  const merklOpportunities = rawMerklOpportunities ?? {};
+  const campaignAware = rawCampaignAware ?? {};
+  const capitalManagerRefill = rawCapitalManagerRefill ?? {};
   const campaigns = campaignByOpportunity(campaignAware);
   const opportunities = merklOpportunityById(merklOpportunities);
   return array(merklQueue.queue).map((item) => {
@@ -1043,6 +1119,167 @@ function normalizeBtcWrapperCandidates({ allocatorCore = {}, activeCapitalUsd = 
         { activeCapitalUsd },
       ),
     );
+}
+
+function aggressiveDescriptor(exec, top, status) {
+  return {
+    chain: exec?.chain || top?.chain || status.chain || "base",
+    asset: exec?.assetSymbol || status.assetSymbol || "aggressive_yield_asset",
+    protocol: exec?.protocol || top?.protocol || status.protocol || "aggressive_velocity",
+    opportunityId: exec?.opportunityId || `aggressive:${status.strategyId}`,
+  };
+}
+
+function aggressiveBlockers(status, liveReady, ladder) {
+  const bottleneck = !liveReady && ladder.bottleneckStage ? `aggressive_bottleneck_${ladder.bottleneckStage}` : null;
+  const reason = status.reason && !status.currentLiveEligible ? status.reason : null;
+  return unique([...array(status.liveAdmissionBlockers), bottleneck, reason]);
+}
+
+function aggressiveBindings(status, exec, liveReady) {
+  const state = liveReady ? "ready" : "missing";
+  return {
+    executor: emptyBinding(state, {
+      bindingKind: exec?.bindingKind || null,
+      executorBound: status.executorBound === true,
+      autoExecute: status.autoExecute === true,
+    }),
+    route: emptyBinding(state, {
+      reason: liveReady ? null : "aggressive_no_executable_candidate",
+    }),
+  };
+}
+
+function aggressiveMetadata(status, ladder, expectedNetBtcProfit) {
+  return {
+    candidateLadder: ladder,
+    bottleneckStage: status.bottleneckStage || ladder.bottleneckStage || null,
+    selectedCount: finiteNumber(status.selectedCount, 0),
+    totalQualified: finiteNumber(status.totalQualified, 0),
+    rawCandidateCount: finiteNumber(ladder.rawCandidateCount, 0),
+    credibleExitCount: finiteNumber(ladder.credibleExitCount, 0),
+    velocityCandidateCount: finiteNumber(ladder.velocityCandidateCount, 0),
+    expectedNetBtcProfit,
+    status: status.status || null,
+    reason: status.reason || null,
+    liveCapable: status.liveCapable === true,
+    currentLiveEligible: status.currentLiveEligible === true,
+  };
+}
+
+function normalizeAggressiveVelocityCandidates({ aggressiveStatus = null, activeCapitalUsd = null }) {
+  if (!aggressiveStatus || !aggressiveStatus.strategyId) return [];
+  const exec = aggressiveStatus.executableCandidate || null;
+  const top = array(aggressiveStatus.topCandidates)[0] || null;
+  const ladder = aggressiveStatus.candidateLadder || {};
+  const liveReady = aggressiveStatus.currentLiveEligible === true && exec && exec.bindingKind;
+  const descriptor = aggressiveDescriptor(exec, top, aggressiveStatus);
+  const expectedNetBtcProfit = finiteNumber(
+    exec?.expectedNetBtcProfit ?? top?.expectedNetBtcProfit ?? aggressiveStatus.totalExpectedNetBtcProfit,
+    null,
+  );
+  const expectedNetUsd = finiteNumber(aggressiveStatus.projectedNetUsd, null);
+  const bindings = aggressiveBindings(aggressiveStatus, exec, liveReady);
+  const candidate = makeCandidate(
+    {
+      source: "aggressive_velocity",
+      strategyId: aggressiveStatus.strategyId,
+      chain: descriptor.chain,
+      asset: descriptor.asset,
+      protocol: descriptor.protocol,
+      opportunityId: descriptor.opportunityId,
+      executorBinding: bindings.executor,
+      routeRefillBinding: bindings.route,
+      notionalUsd: finiteNumber(exec?.amountUsd ?? aggressiveStatus.notionalUsd, 0),
+      holdPeriodDays: finiteNumber(aggressiveStatus.expectedHoldDays, null),
+      expectedGrossYieldUsd: expectedNetUsd,
+      refillBridgeGasSlippageClaimSwapExitCostUsd: finiteNumber(aggressiveStatus.totalRoundtripCostUsd, null),
+      p90CostFloorUsd: finiteNumber(aggressiveStatus.p90RoundTripCostUsd, null),
+      expectedRealizedNetUsd: expectedNetUsd,
+      blockers: aggressiveBlockers(aggressiveStatus, liveReady, ladder),
+      metadata: aggressiveMetadata(aggressiveStatus, ladder, expectedNetBtcProfit),
+    },
+    { activeCapitalUsd },
+  );
+  return [candidate];
+}
+
+function buildClaimHarvestSummary({ merklUserRewards = null } = {}) {
+  if (!merklUserRewards || !merklUserRewards.claimPlan) return null;
+  const plan = merklUserRewards.claimPlan;
+  const chains = array(plan.chains);
+  const allBlockers = unique(chains.flatMap((entry) => array(entry?.blockers)));
+  const topBlocker = first(allBlockers, null);
+  const status =
+    plan.status ||
+    (finiteNumber(plan.readyChainCount, 0) > 0
+      ? "ready"
+      : finiteNumber(plan.blockedChainCount, 0) > 0
+        ? "blocked"
+        : "no_rewards");
+  return {
+    observedAt: merklUserRewards.observedAt || merklUserRewards.generatedAt || null,
+    status,
+    readyChainCount: finiteNumber(plan.readyChainCount, 0),
+    blockedChainCount: finiteNumber(plan.blockedChainCount, 0),
+    totalReadyClaimableUsd: finiteNumber(plan.totalReadyClaimableUsd, 0),
+    totalClaimableUsd: finiteNumber(merklUserRewards.totalClaimableUsd, 0),
+    totalPendingUsd: finiteNumber(merklUserRewards.totalPendingUsd, 0),
+    topBlocker,
+    blockers: allBlockers,
+    chains: chains.map((entry) => ({
+      chainId: entry?.chainId ?? null,
+      chainName: entry?.chainName ?? null,
+      status: entry?.status ?? null,
+      claimableUsd: finiteNumber(entry?.claimableUsd, 0),
+      pendingUsd: finiteNumber(entry?.pendingUsd, 0),
+      rewardCount: finiteNumber(entry?.rewardCount, 0),
+      blockers: array(entry?.blockers),
+    })),
+  };
+}
+
+function firstDefined(values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
+function buildPaybackAttributionSummary({ paybackStatus = null } = {}) {
+  if (!paybackStatus) return null;
+  const decision = paybackStatus.decision || {};
+  const runway = paybackStatus.runway || {};
+  const payback = paybackStatus.payback || {};
+  const runwayCurrent = runway.current || {};
+  const snapshot = decision.snapshot || {};
+  const profitProvenance = snapshot.profitSatsProvenance || payback.profitSatsProvenance || null;
+  return {
+    observedAt: paybackStatus.observedAt || paybackStatus.generatedAt || null,
+    decisionStatus: decision.status || null,
+    decisionReason: decision.reason || null,
+    grossProfitSatsPeriod: finiteNumber(
+      firstDefined([
+        snapshot.grossProfitSats_period,
+        payback.grossProfitSatsPeriod,
+        runwayCurrent.grossProfitSatsPeriod,
+      ]),
+      0,
+    ),
+    accumulatorPendingSats: finiteNumber(
+      firstDefined([payback.accumulatorPendingSats, runwayCurrent.accumulatorPendingSats]),
+      0,
+    ),
+    paidBackSatsLifetime: finiteNumber(
+      firstDefined([snapshot.paidBackSats_lifetime, payback.paidBackSatsLifetime, runwayCurrent.paidBackSatsLifetime]),
+      0,
+    ),
+    minPaybackSats: finiteNumber(runwayCurrent.minPaybackSats, 0),
+    satsToMinimumPayback: finiteNumber(runwayCurrent.satsToMinimumPayback, null),
+    progressToMinimumRatio: finiteNumber(runwayCurrent.progressToMinimumRatio, null),
+    profitSatsProvenance: profitProvenance,
+    runwayStatus: runway.status || null,
+  };
 }
 
 function normalizeRadarCandidates({ radarBoard = {}, activeCapitalUsd = null }) {
@@ -1373,28 +1610,39 @@ function candidateRank(left, right) {
 }
 
 function buildNoTradeTable(candidates) {
-  const rows = candidates.map((candidate) => ({
-    source: candidate.source,
-    strategyId: candidate.strategyId,
-    chain: candidate.chain,
-    asset: candidate.asset,
-    protocol: candidate.protocol,
-    opportunityId: candidate.opportunityId,
-    notionalUsd: candidate.notionalUsd,
-    expectedGrossUsd: candidate.expectedGrossYieldUsd,
-    totalCostUsd: candidate.p90CostFloorUsd,
-    expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
-    capStatus: candidate.capResult?.status || null,
-    policyDecision: candidate.policyResult?.decision || null,
-    blockers: unique([
+  const rows = candidates.map((candidate) => {
+    const blockers = unique([
       ...array(candidate.blockers),
       ...array(candidate.capResult?.blockers),
       ...array(candidate.policyResult?.blockers),
-    ]),
-  }));
+    ]);
+    return {
+      source: candidate.source,
+      strategyId: candidate.strategyId,
+      chain: candidate.chain,
+      asset: candidate.asset,
+      protocol: candidate.protocol,
+      opportunityId: candidate.opportunityId,
+      notionalUsd: candidate.notionalUsd,
+      expectedGrossUsd: candidate.expectedGrossYieldUsd,
+      totalCostUsd: candidate.p90CostFloorUsd,
+      expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
+      capStatus: candidate.capResult?.status || null,
+      policyDecision: candidate.policyResult?.decision || null,
+      blockers,
+      lifecycleEvidence: candidate.lifecycleEvidence || null,
+      nextLegalCapitalAction: nextLegalCapitalAction({
+        blockers,
+        capResult: candidate.capResult,
+        expectedRealizedNetUsd: candidate.expectedRealizedNetUsd,
+        lifecycleEvidence: candidate.lifecycleEvidence,
+      }),
+    };
+  });
   const seenSources = new Set(rows.map((row) => row.source));
   for (const source of ALL_SOURCE_DEPLOYMENT_SOURCES) {
     if (!seenSources.has(source)) {
+      const blockers = [`${source}_candidate_missing`];
       rows.push({
         source,
         strategyId: null,
@@ -1408,22 +1656,56 @@ function buildNoTradeTable(candidates) {
         expectedRealizedNetUsd: null,
         capStatus: null,
         policyDecision: null,
-        blockers: [`${source}_candidate_missing`],
+        blockers,
+        nextLegalCapitalAction: nextLegalCapitalAction({ blockers }),
       });
     }
   }
   return rows;
 }
 
+function refillJobsFromOptions(options) {
+  return array(options?.refillPlan?.jobs);
+}
+
+function computeFamilyActionTable(familyCoverage, candidates, options) {
+  return buildFamilyActionTable(familyCoverage, {
+    nextLegalDistByFamily: nextLegalActionsByFamily(candidates),
+    refillJobs: refillJobsFromOptions(options),
+  });
+}
+
+function nextLegalActionsByFamily(candidates) {
+  const counts = {};
+  for (const candidate of array(candidates)) {
+    const action = candidate?.nextLegalCapitalAction?.action;
+    if (!action) continue;
+    const families = familySetForSurface(candidate);
+    for (const family of families) {
+      if (!counts[family]) counts[family] = {};
+      counts[family][action] = (counts[family][action] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
 function sourceCoverage(candidates) {
   return ALL_SOURCE_DEPLOYMENT_SOURCES.map((source) => {
     const rows = candidates.filter((candidate) => candidate.source === source);
+    const actions = rows.map((candidate) => candidate.nextLegalCapitalAction?.action).filter(Boolean);
+    const actionCounts = {};
+    for (const action of actions) actionCounts[action] = (actionCounts[action] || 0) + 1;
+    const topAction =
+      Object.entries(actionCounts).sort((left, right) => right[1] - left[1])[0]?.[0] ||
+      (rows.length === 0 ? "no_trade_safety" : null);
     return {
       source,
       candidateCount: rows.length,
       evPositiveCount: rows.filter((candidate) => finiteNumber(candidate.expectedRealizedNetUsd, -1) > 0).length,
       policyAttemptedCount: rows.filter((candidate) => candidate.policyResult).length,
       topBlockers: unique(rows.flatMap((candidate) => candidate.blockers)).slice(0, 8),
+      nextLegalCapitalActionCounts: actionCounts,
+      topNextLegalCapitalAction: topAction,
     };
   });
 }
@@ -1438,16 +1720,22 @@ function lowerText(value) {
   }
 }
 
+const SOURCE_TO_EXCLUSIVE_FAMILY = Object.freeze({
+  defillama: "defillama",
+  radar_campaign: "radar",
+  aggressive_velocity: "aggressive",
+});
+
 function familySetForSurface(surface = {}) {
+  const exclusive = SOURCE_TO_EXCLUSIVE_FAMILY[surface.source];
+  if (exclusive) return [exclusive];
   const text = lowerText(surface);
   const families = new Set();
-  if (surface.source === "defillama") return ["defillama"];
-  if (surface.source === "radar_campaign") return ["radar"];
   if (surface.source === "pendle" || surface.pendleYt || /pendle|pendle-yt|yt-canary/.test(text)) {
     families.add("pendle");
   }
   if (surface.source === "merkl" || /merkl/.test(text)) families.add("merkl");
-  if (surface.source === "defillama" || /defillama/.test(text)) families.add("defillama");
+  if (/defillama/.test(text)) families.add("defillama");
   if (surface.source === "stable_carry" || /stablecarry|stable_treasury_carry|stablecoin|usdc|usdt|dai/.test(text)) {
     families.add("stable_carry");
   }
@@ -1457,9 +1745,166 @@ function familySetForSurface(surface = {}) {
   if (surface.source === "tokenized_gold_reserve" || /tokenized.*(gold|reserve)|xaut|paxg|reserve_sleeve/.test(text)) {
     families.add("tokenized_gold_reserve");
   }
-  if (surface.source === "radar_campaign" || /radar/.test(text)) families.add("radar");
+  if (/radar/.test(text)) families.add("radar");
+  if (/aggressive[-_]?velocity|aggressive_yield/.test(text)) families.add("aggressive");
   if (surface.source === "strategy_catalog" || surface.catalogSurface === true) families.add("strategy_catalog");
   return [...families].filter((family) => DEPLOYMENT_SELECTOR_FAMILIES.includes(family));
+}
+
+function emptyUnreconciledBySource() {
+  return {
+    transactionNoReceipt: 0,
+    broadcastBucketNoReceipt: 0,
+    reconciliationStatus: 0,
+    signerAuditRecord: 0,
+    issueRecord: 0,
+  };
+}
+
+// Action-decision codes for active positions. Replaces the legacy generic
+// POSITION_HEALTHY_NO_ACTION_PRODUCER catch-all with a deterministic per-position decision
+// derived only from structured mark fields (no substring/JSON regex). The producer is
+// `derivePositionActionDecision(mark)` and runs once per deduped position mark.
+//
+//   HEALTH_CHECK_REQUIRED   — event=position_mark_failed; on-chain state unreadable.
+//                             reason carries the exact failureKind (adapter_error,
+//                             zero_position_observed, rpc_failed, …).
+//   UNSUPPORTED_BINDING     — event=position_marked but mark.bindingKind is not in
+//                             protocol-binding-registry. reason carries the missing
+//                             bindingKind plus protocolId so the gap is auditable.
+//   CLAIM_READY             — claim summary (merkl-user-rewards) has ready claimable usd.
+//                             Only emitted on the merkl row via claim-economics join.
+//   CLAIM_BLOCKED           — claim summary has pending or dust claimable. reason carries
+//                             the upstream claim blocker (claimable_below_min_usd, …).
+//   HOLD_NOOP               — event=position_marked, binding supported, no claim/harvest/
+//                             exit producer joined for this row. Concrete "do nothing
+//                             until a producer is added" verdict.
+//
+// activeActionEconomics fields:
+//   markFailedCount, markedHealthyCount   — split by `event`
+//   markFailureKinds                       — {adapter_error, rpc_failed, …}
+//   totalActiveValueUsd                    — sum of mark.valueUsd for active marks
+//   claimReadyUsd, claimPendingUsd         — from merklUserRewards.claimPlan
+//   claimChainReadyCount, claimTopBlocker  — claim-plan plumbing
+//   perPositionDecisions[]                 — one entry per deduped active mark
+//   topActiveActionReason                  — highest-priority code across the row
+const POSITION_ACTION_PRIORITY = Object.freeze([
+  "HEALTH_CHECK_REQUIRED",
+  "UNSUPPORTED_BINDING",
+  "CLAIM_READY",
+  "CLAIM_BLOCKED",
+  "HOLD_NOOP",
+]);
+
+function bindingKeyOf(protocolId, bindingKind) {
+  if (!bindingKind) return `${protocolId || "unknown"}:<missing_binding_kind>`;
+  return `${protocolId || "unknown"}:${bindingKind}`;
+}
+
+// executableActionPath surfaces the producer-level truth for the *next legal
+// action* on this position. Five fields, common across families:
+//   action               — primary legal action: health_check|exit|hold|claim
+//   bindingKey           — `${protocol}:${bindingKind}` or null
+//   producer             — resolved executor function name (string) or null
+//   dispatchEligibility  — ready|hold_no_action_required|unsupported_binding
+//                          |position_unhealthy|exit_producer_not_resolved
+//   blocker              — structured blocker key (null if dispatch is ready
+//                          or hold-with-no-required-action)
+function deriveExecutableActionPath(mark, decision) {
+  const protocolId = mark.protocolId || null;
+  const bindingKind = mark.bindingKind || null;
+  if (decision.actionDecision === "HEALTH_CHECK_REQUIRED") {
+    return {
+      action: "health_check",
+      bindingKey: bindingKind ? bindingKeyOf(protocolId, bindingKind) : null,
+      producer: null,
+      dispatchEligibility: "position_unhealthy",
+      blocker: decision.actionReason,
+    };
+  }
+  if (decision.actionDecision === "UNSUPPORTED_BINDING") {
+    return {
+      action: "exit",
+      bindingKey: decision.missingBindingKey,
+      producer: null,
+      dispatchEligibility: "unsupported_binding",
+      blocker: "binding_kind_not_registered",
+    };
+  }
+  if (decision.actionDecision === "HOLD_NOOP") {
+    const exitFn = resolveExitExecutor(bindingKind);
+    return {
+      action: "hold",
+      bindingKey: bindingKeyOf(protocolId, bindingKind),
+      producer: exitFn?.name || null,
+      dispatchEligibility: exitFn ? "hold_no_action_required" : "exit_producer_not_resolved",
+      blocker: exitFn ? null : "exit_producer_not_resolved",
+    };
+  }
+  return null;
+}
+
+function derivePositionActionDecision(mark = {}) {
+  const positionId = mark.positionId || null;
+  const strategyId = mark.strategyId || null;
+  const protocolId = mark.protocolId || null;
+  const bindingKind = mark.bindingKind || null;
+  const valueUsd = finiteNumber(mark.valueUsd, 0);
+  let decision;
+  if (mark.event === "position_mark_failed") {
+    const failureKind = String(mark.failureKind || "unknown_failure").toLowerCase();
+    decision = {
+      positionId,
+      strategyId,
+      protocolId,
+      bindingKind,
+      valueUsd: 0,
+      actionDecision: "HEALTH_CHECK_REQUIRED",
+      actionReason: `position_mark_failed:${failureKind}`,
+      missingBindingKey: null,
+    };
+  } else if (mark.event !== "position_marked") {
+    return null;
+  } else if (!bindingKind || !isSupportedBindingKind(bindingKind)) {
+    decision = {
+      positionId,
+      strategyId,
+      protocolId,
+      bindingKind,
+      valueUsd,
+      actionDecision: "UNSUPPORTED_BINDING",
+      actionReason: "binding_kind_not_registered",
+      missingBindingKey: bindingKeyOf(protocolId, bindingKind),
+    };
+  } else {
+    decision = {
+      positionId,
+      strategyId,
+      protocolId,
+      bindingKind,
+      valueUsd,
+      actionDecision: "HOLD_NOOP",
+      actionReason: "no_claim_harvest_exit_producer_joined",
+      missingBindingKey: null,
+    };
+  }
+  decision.executableActionPath = deriveExecutableActionPath(mark, decision);
+  return decision;
+}
+
+function emptyActiveActionEconomics() {
+  return {
+    markFailedCount: 0,
+    markedHealthyCount: 0,
+    markFailureKinds: {},
+    totalActiveValueUsd: 0,
+    claimReadyUsd: 0,
+    claimPendingUsd: 0,
+    claimChainReadyCount: 0,
+    claimTopBlocker: null,
+    perPositionDecisions: [],
+    topActiveActionReason: null,
+  };
 }
 
 function emptyFamilyCoverageRow(family) {
@@ -1468,6 +1913,8 @@ function emptyFamilyCoverageRow(family) {
     discoveredCandidateCount: 0,
     activePositionCount: 0,
     unreconciledBroadcastCount: 0,
+    unreconciledBySource: emptyUnreconciledBySource(),
+    activeActionEconomics: emptyActiveActionEconomics(),
     evPositiveCandidateCount: 0,
     policyEligibleCandidateCount: 0,
     signerIntentReadyCount: 0,
@@ -1487,12 +1934,44 @@ function addAction(row, action) {
   if (action && !row.actionCandidates.includes(action)) row.actionCandidates.push(action);
 }
 
+function mergeUnreconciledBySource(rowBySource, inputBySource) {
+  if (!inputBySource || typeof inputBySource !== "object") return;
+  for (const [sourceKey, increment] of Object.entries(inputBySource)) {
+    if (!Object.prototype.hasOwnProperty.call(rowBySource, sourceKey)) continue;
+    rowBySource[sourceKey] += finiteNumber(increment, 0);
+  }
+}
+
+function mergeActiveActionEconomics(econ, input) {
+  econ.markFailedCount += finiteNumber(input.markFailedCount, 0);
+  econ.markedHealthyCount += finiteNumber(input.markedHealthyCount, 0);
+  econ.totalActiveValueUsd += finiteNumber(input.totalActiveValueUsd, 0);
+  econ.claimReadyUsd += finiteNumber(input.claimReadyUsd, 0);
+  econ.claimPendingUsd += finiteNumber(input.claimPendingUsd, 0);
+  econ.claimChainReadyCount += finiteNumber(input.claimChainReadyCount, 0);
+  if (input.claimTopBlocker && !econ.claimTopBlocker) econ.claimTopBlocker = input.claimTopBlocker;
+  if (input.markFailureKinds && typeof input.markFailureKinds === "object") {
+    for (const [kind, count] of Object.entries(input.markFailureKinds)) {
+      econ.markFailureKinds[kind] = (econ.markFailureKinds[kind] || 0) + finiteNumber(count, 0);
+    }
+  }
+  if (Array.isArray(input.perPositionDecisions)) {
+    for (const decision of input.perPositionDecisions) {
+      if (decision && typeof decision === "object") econ.perPositionDecisions.push(decision);
+    }
+  }
+}
+
 function addFamilySurface(rows, family, fields = {}) {
   const row = rows.get(family);
   if (!row) return;
   row.discoveredCandidateCount += finiteNumber(fields.discoveredCandidateCount, 0);
   row.activePositionCount += finiteNumber(fields.activePositionCount, 0);
   row.unreconciledBroadcastCount += finiteNumber(fields.unreconciledBroadcastCount, 0);
+  mergeUnreconciledBySource(row.unreconciledBySource, fields.unreconciledBySource);
+  if (fields.activeActionEconomics && typeof fields.activeActionEconomics === "object") {
+    mergeActiveActionEconomics(row.activeActionEconomics, fields.activeActionEconomics);
+  }
   row.evPositiveCandidateCount += finiteNumber(fields.evPositiveCandidateCount, 0);
   row.policyEligibleCandidateCount += finiteNumber(fields.policyEligibleCandidateCount, 0);
   row.signerIntentReadyCount += finiteNumber(fields.signerIntentReadyCount, 0);
@@ -1569,8 +2048,9 @@ function addMerklQueueFamilyCoverage(rows, merklQueue = {}) {
   }
 }
 
-function addCampaignAwareFamilyCoverage(rows, campaignAware = {}) {
-  for (const candidate of array(campaignAware.candidates)) {
+function addCampaignAwareFamilyCoverage(rows, campaignAware) {
+  const source = campaignAware ?? {};
+  for (const candidate of array(source.candidates)) {
     const families = familySetForSurface(candidate);
     for (const family of families) {
       addFamilySurface(rows, family, {
@@ -1635,9 +2115,33 @@ function addRadarFamilyCoverage(rows, radarBoard = {}) {
   }
 }
 
+// Receipt-reconciliation evidence must come from explicit reconciliation fields,
+// not from a derived `broadcast.txHash && !record.receipt` heuristic. Signer audit
+// records by schema never carry an inline `receipt` field, so the derived form
+// flagged ~37k signer rows as unreconciled regardless of whether the ledger had
+// actually settled them (join bug between signer audit and capitalAudit.transactions).
+// Source-of-truth lifecycle is `capitalAudit.transactions[].result` (per-tx) and
+// `capitalAudit.broadcastBreakdown[].result` (per-bucket); both expose `no_receipt`
+// when the ledger join failed to find a confirmed receipt. `reconciliationStatus`
+// is an explicit downstream tag if a producer adds one. Everything else is silence,
+// not evidence.
 function unreconciledSurface(record) {
-  const text = lowerText(record);
-  return /no_receipt|unreconciled|unmatched/.test(text) || (record?.broadcast?.txHash && !record?.receipt);
+  if (record?.result === "no_receipt") return true;
+  if (record?.result === "unreconciled" || record?.result === "unmatched") return true;
+  if (typeof record?.reconciliationStatus === "string") {
+    const status = record.reconciliationStatus.toLowerCase();
+    if (status === "unreconciled" || status === "unmatched" || status === "no_receipt") return true;
+  }
+  return false;
+}
+
+function unreconciledSourceKey(surface, sourceKind) {
+  if (typeof surface?.reconciliationStatus === "string") return "reconciliationStatus";
+  if (sourceKind === "transaction") return "transactionNoReceipt";
+  if (sourceKind === "broadcastBucket") return "broadcastBucketNoReceipt";
+  if (sourceKind === "signer") return "signerAuditRecord";
+  if (sourceKind === "issue") return "issueRecord";
+  return null;
 }
 
 function activePositionSurface(record) {
@@ -1645,40 +2149,151 @@ function activePositionSurface(record) {
   return /active|open|verified_current|position_open/.test(text) && /position|protocol|mark|vault/.test(text);
 }
 
-function addAuditAndPositionFamilyCoverage(
-  rows,
-  { capitalAudit = {}, signerAuditRecords = [], protocolPositionMarks = [] },
-) {
+// Strict, structured classifier for protocolPositionMarks. Only consults explicit
+// producer fields (strategyId → protocolId), never regex over JSON.stringify(mark).
+// Returns exactly one family. Marks that do not match a known strategy-universe lane
+// are routed to `ambiguous_position_family`, not silently bled into merkl/pendle/etc.
+function familySetForPositionMark(mark = {}) {
+  const strategyId = String(mark.strategyId || "").toLowerCase();
+  if (strategyId && STRATEGY_ID_TO_MARK_FAMILY[strategyId]) {
+    return [STRATEGY_ID_TO_MARK_FAMILY[strategyId]];
+  }
+  const protocolId = String(mark.protocolId || "").toLowerCase();
+  if (protocolId && PROTOCOL_ID_TO_MARK_FAMILY[protocolId]) {
+    return [PROTOCOL_ID_TO_MARK_FAMILY[protocolId]];
+  }
+  return ["ambiguous_position_family"];
+}
+
+// Mark records are appended one per scanner poll, so the same positionId appears
+// thousands of times. The active-position summary must dedup to the latest mark per
+// positionId before counting/summing, otherwise activePositionCount and
+// totalActiveValueUsd both inflate by the poll count (the pendle $26.8M YT position
+// reported $72.6B = 26.8M × ~2706 polls before this dedup).
+function latestMarksByPositionId(marks = []) {
+  const latest = new Map();
+  for (const mark of marks) {
+    if (!mark || typeof mark !== "object") continue;
+    const positionId = mark.positionId;
+    if (!positionId) continue;
+    const prior = latest.get(positionId);
+    if (!prior) {
+      latest.set(positionId, mark);
+      continue;
+    }
+    const priorTs = Date.parse(prior.observedAt || "") || 0;
+    const currentTs = Date.parse(mark.observedAt || "") || 0;
+    if (currentTs >= priorTs) latest.set(positionId, mark);
+  }
+  return [...latest.values()];
+}
+
+function addAuditSurfaceCoverage(rows, capitalAudit, signerAuditRecords) {
   const auditSurfaces = [
-    ...array(capitalAudit.issues),
-    ...array(capitalAudit.transactions),
-    ...array(capitalAudit.broadcastBreakdown),
-    ...array(signerAuditRecords),
+    ...array(capitalAudit.issues).map((surface) => ({ surface, sourceKind: "issue" })),
+    ...array(capitalAudit.transactions).map((surface) => ({ surface, sourceKind: "transaction" })),
+    ...array(capitalAudit.broadcastBreakdown).map((surface) => ({ surface, sourceKind: "broadcastBucket" })),
+    ...array(signerAuditRecords).map((surface) => ({ surface, sourceKind: "signer" })),
   ];
-  for (const surface of auditSurfaces) {
+  for (const { surface, sourceKind } of auditSurfaces) {
     const families = familySetForSurface(surface);
     for (const family of families) {
       const unreconciled = unreconciledSurface(surface);
+      const sourceKey = unreconciled ? unreconciledSourceKey(surface, sourceKind) : null;
       addFamilySurface(rows, family, {
         discoveredCandidateCount: 1,
         unreconciledBroadcastCount: unreconciled ? 1 : 0,
+        unreconciledBySource: sourceKey ? { [sourceKey]: 1 } : null,
         blockingReason: unreconciled ? "NO_RECEIPT_RECONCILIATION" : firstCandidateBlocker(surface),
         actionCandidates: unreconciled ? ["reconcile_receipt"] : ["hold"],
       });
     }
   }
-  for (const mark of array(protocolPositionMarks)) {
-    const families = familySetForSurface(mark);
+}
+
+function buildActiveMarkEconomics(mark, active) {
+  if (!active) return null;
+  const markFailed = mark?.event === "position_mark_failed";
+  const markedHealthy = mark?.event === "position_marked";
+  const failureKindKey = markFailed ? String(mark.failureKind || "unknown_failure").toLowerCase() : null;
+  const decision = derivePositionActionDecision(mark);
+  return {
+    markFailedCount: markFailed ? 1 : 0,
+    markedHealthyCount: markedHealthy ? 1 : 0,
+    markFailureKinds: failureKindKey ? { [failureKindKey]: 1 } : {},
+    totalActiveValueUsd: finiteNumber(mark?.valueUsd, 0),
+    perPositionDecisions: decision ? [decision] : [],
+  };
+}
+
+function addPositionMarkCoverage(rows, protocolPositionMarks) {
+  // Dedup marks to the latest entry per positionId, then classify with the strict
+  // structured classifier. This is the only place the active-position summary should
+  // increment activePositionCount / totalActiveValueUsd from marks; raw mark stream
+  // bypasses inflation by poll count.
+  const dedupedMarks = latestMarksByPositionId(array(protocolPositionMarks));
+  for (const mark of dedupedMarks) {
+    const families = familySetForPositionMark(mark);
+    const active = activePositionSurface(mark);
+    const economics = buildActiveMarkEconomics(mark, active);
     for (const family of families) {
-      const active = activePositionSurface(mark);
       addFamilySurface(rows, family, {
         discoveredCandidateCount: 1,
         activePositionCount: active ? 1 : 0,
         blockingReason: active ? "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED" : firstCandidateBlocker(mark),
         actionCandidates: active ? ["hold", "exit", "unwind", "claim"] : ["reconcile_receipt"],
+        activeActionEconomics: economics,
       });
     }
   }
+}
+
+function addAuditAndPositionFamilyCoverage(
+  rows,
+  { capitalAudit = {}, signerAuditRecords = [], protocolPositionMarks = [] },
+) {
+  addAuditSurfaceCoverage(rows, capitalAudit, signerAuditRecords);
+  addPositionMarkCoverage(rows, protocolPositionMarks);
+}
+
+function applyClaimEconomicsToFamilyRows(rows, options = {}) {
+  const summary = buildClaimHarvestSummary(options);
+  if (!summary) return;
+  // Today only the merkl-user-rewards producer carries a structured claimPlan,
+  // so the join only applies to the merkl family row. When a per-family claim
+  // producer is added for pendle/stable_carry/btc_wrapper_lending, this is the
+  // single place to extend the join (still common-structure only).
+  const merklRow = rows.get("merkl");
+  if (!merklRow) return;
+  addFamilySurface(rows, "merkl", {
+    activeActionEconomics: {
+      claimReadyUsd: finiteNumber(summary.totalReadyClaimableUsd, 0),
+      claimPendingUsd: finiteNumber(summary.totalPendingUsd, 0),
+      claimChainReadyCount: finiteNumber(summary.readyChainCount, 0),
+      claimTopBlocker: summary.topBlocker || null,
+    },
+  });
+}
+
+function deriveTopActiveActionReason(row) {
+  const econ = row.activeActionEconomics;
+  if (!econ) return null;
+  const claimReady = finiteNumber(econ.claimReadyUsd, 0) > 0;
+  const claimPending = finiteNumber(econ.claimPendingUsd, 0) > 0 && econ.claimTopBlocker;
+  const codeCounts = new Map();
+  for (const decision of array(econ.perPositionDecisions)) {
+    if (!decision || !decision.actionDecision) continue;
+    codeCounts.set(decision.actionDecision, (codeCounts.get(decision.actionDecision) || 0) + 1);
+  }
+  if (claimReady) codeCounts.set("CLAIM_READY", (codeCounts.get("CLAIM_READY") || 0) + 1);
+  if (claimPending && !claimReady) codeCounts.set("CLAIM_BLOCKED", (codeCounts.get("CLAIM_BLOCKED") || 0) + 1);
+  for (const code of POSITION_ACTION_PRIORITY) {
+    if (codeCounts.has(code)) {
+      if (code === "CLAIM_BLOCKED" && econ.claimTopBlocker) return econ.claimTopBlocker;
+      return code;
+    }
+  }
+  return null;
 }
 
 function finalizeFamilyCoverage(rows, selectedCandidate) {
@@ -1695,7 +2310,9 @@ function finalizeFamilyCoverage(rows, selectedCandidate) {
       row.firstBlockingReason = "NO_RECEIPT_RECONCILIATION";
     } else if (row.activePositionCount > 0 && row.policyEligibleCandidateCount === 0) {
       row.selectedAction = "hold_or_health_action";
-      row.firstBlockingReason = "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED";
+      const derived = deriveTopActiveActionReason(row);
+      row.activeActionEconomics.topActiveActionReason = derived || "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED";
+      row.firstBlockingReason = derived || "NO_NEW_ENTRY_BUT_ACTIVE_POSITION_ACTION_REQUIRED";
     } else if (row.policyEligibleCandidateCount > 0) {
       row.selectedAction = "policy_attempt_ready";
     } else if (row.evPositiveCandidateCount > 0) {
@@ -1717,6 +2334,7 @@ function buildFamilyCoverage(candidates, options = {}, selectedCandidate = null)
   addAllocatorFamilyCoverage(rows, options.allocatorCore);
   addRadarFamilyCoverage(rows, options.radarBoard);
   addAuditAndPositionFamilyCoverage(rows, options);
+  applyClaimEconomicsToFamilyRows(rows, options);
   applyTopEvCandidateBlockers(rows, candidates);
   applyFreshRadarZeroEvidence(rows, options.radarBoard);
   return finalizeFamilyCoverage(rows, selectedCandidate);
@@ -1780,6 +2398,64 @@ function capitalUtilization({ capitalAudit = {}, unifiedCapital = {} }) {
   };
 }
 
+function buildLaneHandlerPilotReport({ now, actionLaneQueue, options, activeCapitalUsd = null }) {
+  return buildLaneHandlerReport({
+    selectorReport: {
+      generatedAt: now,
+      actionLaneQueue,
+    },
+    refillPlannerReport: options.capitalManagerRefill || {},
+    receiptReport: options.receiptLedger || {},
+    auditRecords: Array.isArray(options.auditRecords)
+      ? options.auditRecords
+      : Array.isArray(options.signerAuditRecords)
+        ? options.signerAuditRecords
+        : null,
+    receiptRecords: Array.isArray(options.receiptRecords) ? options.receiptRecords : null,
+    evCostModel: options.evCostModel || null,
+    activeCapitalUsd,
+    now,
+  });
+}
+
+function laneHandlerPilotSummary(laneHandlerReport) {
+  return {
+    status: laneHandlerReport.status,
+    selectedPilotLane: laneHandlerReport.selectedPilotLane,
+    reportOnly: laneHandlerReport.reportOnly,
+    canLive: laneHandlerReport.canLive,
+    runtimeAuthority: laneHandlerReport.runtimeAuthority,
+    allowedToExecuteLive: laneHandlerReport.allowedToExecuteLive,
+    liveExecutionAuthority: laneHandlerReport.liveExecutionAuthority,
+    handlerResults: laneHandlerReport.handlerResults,
+    handlerBacklog: laneHandlerReport.handlerBacklog,
+    safety: laneHandlerReport.safety,
+  };
+}
+
+function buildRemediationLifecycleBundle({ now, dryRunRemediationPlan, options, activeCapitalUsd = null }) {
+  const laneHandlerReport = buildLaneHandlerPilotReport({
+    now,
+    actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    options,
+    activeCapitalUsd,
+  });
+  const laneIntentCandidateReport = buildLaneIntentCandidateReport({
+    selectorReport: {
+      generatedAt: now,
+      actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    },
+    laneHandlerReport,
+    readinessReport: options.readiness || {},
+    now,
+  });
+  return {
+    laneHandlerReport,
+    laneHandlerPilot: laneHandlerPilotSummary(laneHandlerReport),
+    laneIntentCandidateReport,
+  };
+}
+
 export async function buildAllSourceDeploymentSelectorReport(options = {}) {
   const now = options.now || new Date().toISOString();
   const activeCapitalUsd = finiteNumber(
@@ -1795,6 +2471,7 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
     ...normalizeStableCarryCandidates({ merklCandidates, activeCapitalUsd }),
     ...normalizeBtcWrapperCandidates({ ...options, activeCapitalUsd }),
     ...normalizeRadarCandidates({ ...options, activeCapitalUsd }),
+    ...normalizeAggressiveVelocityCandidates({ ...options, activeCapitalUsd }),
     ...normalizeStrategyCatalogCandidates({ ...options, activeCapitalUsd }),
   ];
 
@@ -1836,7 +2513,9 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
     if (index >= 0) candidates[index] = selectedCandidate;
   }
 
+  attachLifecycleEvidence(candidates, options, now);
   const noTradeTable = buildNoTradeTable(candidates);
+  attachNextLegalCapitalAction(candidates);
   const policyAttempted = selectedCandidate !== null;
   const noBroadcastReason = policyAttempted
     ? selectedCandidate.policyResult?.decision === "ALLOW"
@@ -1844,12 +2523,48 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       : `policy_blocked:${first(selectedCandidate.policyResult?.blockers, "unknown")}`
     : "no_positive_ev_policy_eligible_candidate";
   const familyCoverage = buildFamilyCoverage(candidates, options, selectedCandidate);
+  const claimHarvestSummary = buildClaimHarvestSummary(options);
+  const paybackAttributionSummary = buildPaybackAttributionSummary(options);
+  const familyActionTable = computeFamilyActionTable(familyCoverage, candidates, options);
+  const dryRunRemediationPlan = buildDryRunRemediationPlan({
+    selectorReport: {
+      generatedAt: now,
+      familyActionTable,
+    },
+  });
+  const { laneHandlerPilot, laneIntentCandidateReport } = buildRemediationLifecycleBundle({
+    now,
+    dryRunRemediationPlan,
+    options,
+    activeCapitalUsd,
+  });
 
   return {
     generatedAt: now,
     status: policyAttempted ? "POLICY_ATTEMPTED" : "NO_TRADE",
     sourceCoverage: sourceCoverage(candidates),
     familyCoverage,
+    familyActionTable,
+    actionLaneQueue: dryRunRemediationPlan.actionLaneQueue,
+    actionLaneSummary: {
+      status: dryRunRemediationPlan.status,
+      laneCounts: dryRunRemediationPlan.laneCounts,
+      familyCount: dryRunRemediationPlan.familyCount,
+      actionItemCount: dryRunRemediationPlan.actionItemCount,
+      familiesAssignedExactlyOnce: dryRunRemediationPlan.familiesAssignedExactlyOnce,
+      safety: dryRunRemediationPlan.safety,
+    },
+    laneHandlerPilot,
+    laneIntentCandidateSummary: laneIntentCandidateReport.laneIntentCandidateSummary,
+    laneIntentCandidates: laneIntentCandidateReport.laneIntentCandidates,
+    laneBacklog: laneIntentCandidateReport.laneBacklog,
+    laneWaitlist: laneIntentCandidateReport.laneWaitlist,
+    laneHandlerCoverage: laneIntentCandidateReport.laneHandlerCoverage,
+    laneSafetyProof: laneIntentCandidateReport.laneSafetyProof,
+    futureHandlerBacklog: laneIntentCandidateReport.futureHandlerBacklog,
+    laneIntentCandidateReport,
+    claimHarvestSummary,
+    paybackAttributionSummary,
     capitalTruth: {
       capitalAuditGeneratedAt: options.capitalAudit?.generatedAt || null,
       currentNativeBtcSats: options.capitalAudit?.summary?.currentNativeBtcSats ?? null,

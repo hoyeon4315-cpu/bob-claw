@@ -4,12 +4,12 @@
   "configPath": ".jscpd.json",
   "scope": ["src", "scripts", "test", "dashboard/public"],
   "summary": {
-    "sources": 1556,
-    "lines": 321876,
-    "tokens": 3212503,
-    "clones": 453,
-    "duplicateFingerprintCount": 453,
-    "percentage": 3.34
+    "sources": 1617,
+    "lines": 348278,
+    "tokens": 3445318,
+    "clones": 464,
+    "duplicateFingerprintCount": 464,
+    "percentage": 3.2
   },
   "duplicates": [
     {
@@ -243,14 +243,6 @@
       "fragmentHash": "sha1-d1d073e2-d8552cf3-f280c331-c47c4796-d322e766"
     },
     {
-      "fingerprint": "javascript:14:sha1-e4348a7b-350eae80-1ae147dd-f5c3921b-391f9a67:src/strategy/berachain-bend-bex-adapter.mjs::src/strategy/defillama-yield-adapter.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 14,
-      "files": ["src/strategy/berachain-bend-bex-adapter.mjs", "src/strategy/defillama-yield-adapter.mjs"],
-      "fragmentHash": "sha1-e4348a7b-350eae80-1ae147dd-f5c3921b-391f9a67"
-    },
-    {
       "fingerprint": "javascript:14:sha1-efe74aed-4d2c9118-00a1ba60-d5000b3e-3505edaf:src/cli/collect-quote-lag.mjs::src/cli/watch-canary-readiness.mjs",
       "count": 1,
       "format": "javascript",
@@ -310,6 +302,14 @@
       "fragmentHash": "sha1-1968f753-4152a22a-35932525-e37b0ed2-778dbfbb"
     },
     {
+      "fingerprint": "javascript:15:sha1-1c8ef049-64dc4b29-02965bdc-41b0eb09-953f3aff:src/cli/run-wrapped-btc-loop-live.mjs::src/cli/validate-wrapped-btc-loop-bindings.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 15,
+      "files": ["src/cli/run-wrapped-btc-loop-live.mjs", "src/cli/validate-wrapped-btc-loop-bindings.mjs"],
+      "fragmentHash": "sha1-1c8ef049-64dc4b29-02965bdc-41b0eb09-953f3aff"
+    },
+    {
       "fingerprint": "javascript:15:sha1-2a592d03-58673a70-916a5154-3d4fc080-0b5cb2df:src/cli/ingest-execution-receipt.mjs::src/cli/run-refill-job-stub.mjs",
       "count": 1,
       "format": "javascript",
@@ -345,14 +345,6 @@
       "fragmentHash": "sha1-33b10b7f-20f299bf-761a0d0c-3084928b-c170a21a"
     },
     {
-      "fingerprint": "javascript:15:sha1-3bd99586-4fd00f73-293e9c39-7ef5140d-3c8e91e1:src/cli/run-wrapped-btc-loop-live.mjs::src/cli/send-executor-intent.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 15,
-      "files": ["src/cli/run-wrapped-btc-loop-live.mjs", "src/cli/send-executor-intent.mjs"],
-      "fragmentHash": "sha1-3bd99586-4fd00f73-293e9c39-7ef5140d-3c8e91e1"
-    },
-    {
       "fingerprint": "javascript:15:sha1-5b46c605-c12f8d19-3b1b50fe-a85f9446-5f3aea04:src/cli/verify-gateway.mjs::src/cli/watch-canary-readiness.mjs",
       "count": 1,
       "format": "javascript",
@@ -375,6 +367,14 @@
       "lines": 15,
       "files": ["src/cli/inventory-whole-wallet.mjs", "src/cli/run-prelive-simulation-loop.mjs"],
       "fragmentHash": "sha1-6219c307-9d1a2233-c6d7c98d-08aea8b1-e54bc8e7"
+    },
+    {
+      "fingerprint": "javascript:15:sha1-660db033-e3606798-8411d59a-6ff6003a-8cd61425:src/cli/monitor-first-payback-cycle.mjs::src/cli/preflight-broadcast.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 15,
+      "files": ["src/cli/monitor-first-payback-cycle.mjs", "src/cli/preflight-broadcast.mjs"],
+      "fragmentHash": "sha1-660db033-e3606798-8411d59a-6ff6003a-8cd61425"
     },
     {
       "fingerprint": "javascript:15:sha1-6b20d391-6bcd514d-22291922-3af0882c-24b4b8e3:src/cli/snapshot-btc-oracles.mjs::src/cli/validate-wrapped-btc-loop-bindings.mjs",
@@ -564,6 +564,14 @@
       "fragmentHash": "sha1-1af58845-b45435ed-e20cd766-a584d76e-945585ab"
     },
     {
+      "fingerprint": "javascript:16:sha1-27bc786a-16edfb2a-5a2843a6-5059cf5c-700df3f4:src/cli/report-operational-artifact-retention.mjs::src/cli/validate-wrapped-btc-loop-bindings.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 16,
+      "files": ["src/cli/report-operational-artifact-retention.mjs", "src/cli/validate-wrapped-btc-loop-bindings.mjs"],
+      "fragmentHash": "sha1-27bc786a-16edfb2a-5a2843a6-5059cf5c-700df3f4"
+    },
+    {
       "fingerprint": "javascript:16:sha1-2f520373-e0b10d2a-69cb74c2-ec57aa7c-8664b69a:test/dashboard-live-slices.test.mjs::test/dashboard-live-slices.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -724,6 +732,17 @@
       "fragmentHash": "sha1-788e936d-0643a82e-82b2efc2-fdf95259-d1569314"
     },
     {
+      "fingerprint": "javascript:16:sha1-79fc35da-a5eafb6c-50c80947-5cc9aede-b09d82cd:src/executor/helpers/wrapped-btc-loop-handoff.mjs::src/executor/strategies/wrapped-btc-loop-live.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 16,
+      "files": [
+        "src/executor/helpers/wrapped-btc-loop-handoff.mjs",
+        "src/executor/strategies/wrapped-btc-loop-live.mjs"
+      ],
+      "fragmentHash": "sha1-79fc35da-a5eafb6c-50c80947-5cc9aede-b09d82cd"
+    },
+    {
       "fingerprint": "javascript:16:sha1-7c4dbc92-b8243985-22af4d48-c3bfdd2b-cf291cef:src/cli/report-final-operator-explainer.mjs::src/cli/report-wrapped-btc-loop-oos-evidence.mjs",
       "count": 1,
       "format": "javascript",
@@ -876,6 +895,14 @@
       "fragmentHash": "sha1-df5918a0-e817185a-f0d4686f-7266d2e2-102a09c3"
     },
     {
+      "fingerprint": "javascript:16:sha1-df899a3a-bea73333-f8d9af0f-5cd2b87d-23240b35:test/dashboard-live-slices.test.mjs::test/refill-blocker-planner-method-supersession.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 16,
+      "files": ["test/dashboard-live-slices.test.mjs", "test/refill-blocker-planner-method-supersession.test.mjs"],
+      "fragmentHash": "sha1-df899a3a-bea73333-f8d9af0f-5cd2b87d-23240b35"
+    },
+    {
       "fingerprint": "javascript:16:sha1-e15d0a88-a4a4e788-769d9c74-69790bfd-a6234cc6:test/shadow-cycle.test.mjs::test/shadow-cycle.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -933,6 +960,14 @@
         "test/destination-economics-observation-flow.test.mjs"
       ],
       "fragmentHash": "sha1-ffe8d742-9c1f5ce6-1b196d9b-2b2c9247-30ff2256"
+    },
+    {
+      "fingerprint": "javascript:17:sha1-01550740-656a5faf-69390932-7c6fffe2-9506b271:src/strategy/beefy-folding-adapter.mjs::src/strategy/berachain-bend-bex-adapter.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 17,
+      "files": ["src/strategy/beefy-folding-adapter.mjs", "src/strategy/berachain-bend-bex-adapter.mjs"],
+      "fragmentHash": "sha1-01550740-656a5faf-69390932-7c6fffe2-9506b271"
     },
     {
       "fingerprint": "javascript:17:sha1-0354bbee-417c28b0-88291648-5f5ebb11-80b9a3e4:src/cli/run-erc4626-protocol-canary.mjs::src/cli/run-merkl-portfolio-orchestrator.mjs",
@@ -1007,14 +1042,6 @@
       "fragmentHash": "sha1-752d582a-782e9bc2-4eb3fed5-cd53b89a-c0e57d2f"
     },
     {
-      "fingerprint": "javascript:17:sha1-7730f235-4d89f277-6423addb-f0cb4b03-1b882b20:src/protocol-readers/readers/pendle.mjs::src/protocol-readers/readers/venus.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 17,
-      "files": ["src/protocol-readers/readers/pendle.mjs", "src/protocol-readers/readers/venus.mjs"],
-      "fragmentHash": "sha1-7730f235-4d89f277-6423addb-f0cb4b03-1b882b20"
-    },
-    {
       "fingerprint": "javascript:17:sha1-773b2107-5e5587e3-18d60d1f-e2d72120-7387a7f6:src/cli/gate-refill-job.mjs::src/cli/ingest-execution-receipt.mjs",
       "count": 1,
       "format": "javascript",
@@ -1045,14 +1072,6 @@
       "lines": 17,
       "files": ["src/cli/run-shadow-refresh-batch.mjs", "src/cli/run-shadow-refresh-queue.mjs"],
       "fragmentHash": "sha1-90410cf0-33d54aab-606a7c16-a9f60cc7-cdd4e085"
-    },
-    {
-      "fingerprint": "javascript:17:sha1-927e51eb-7f689b3e-5ad7d0cd-dae5cf74-69094ab1:src/protocol-readers/readers/aave-v3.mjs::src/protocol-readers/readers/venus.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 17,
-      "files": ["src/protocol-readers/readers/aave-v3.mjs", "src/protocol-readers/readers/venus.mjs"],
-      "fragmentHash": "sha1-927e51eb-7f689b3e-5ad7d0cd-dae5cf74-69094ab1"
     },
     {
       "fingerprint": "javascript:17:sha1-9b1ea818-9e9854c1-4e9cfbbc-4ae17b9f-0a32e95e:src/cli/report-recursive-lending-loop-dry-run.mjs::src/cli/report-recursive-lending-loop.mjs",
@@ -1320,14 +1339,6 @@
       "fragmentHash": "sha1-b2c391ec-d53c5b6b-0b4c9c73-fac8f8a8-0b9a6ad2"
     },
     {
-      "fingerprint": "javascript:18:sha1-cc8cfba4-e69513b2-3852a7e7-9fbd1770-5b4ed2b4:src/cli/monitor-first-payback-cycle.mjs::src/cli/preflight-broadcast.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 18,
-      "files": ["src/cli/monitor-first-payback-cycle.mjs", "src/cli/preflight-broadcast.mjs"],
-      "fragmentHash": "sha1-cc8cfba4-e69513b2-3852a7e7-9fbd1770-5b4ed2b4"
-    },
-    {
       "fingerprint": "javascript:18:sha1-cd9a346f-de5e9016-4ccd6013-62e1e44d-1ef11607:src/cli/report-live-ops-handoff.mjs::src/cli/report-tiny-live-canary-rollout.mjs",
       "count": 1,
       "format": "javascript",
@@ -1358,14 +1369,6 @@
       "lines": 19,
       "files": ["src/cli/report-current-route-prelive-pass.mjs", "src/cli/report-gateway-update-autopilot.mjs"],
       "fragmentHash": "sha1-01934d18-668d63c4-1a5c6f52-50e3c2bf-14c5ca5f"
-    },
-    {
-      "fingerprint": "javascript:19:sha1-0b0824c6-737e359f-79c1e69e-235c9e84-26db3530:src/strategy/recursive-lending-loop-slice.mjs::src/strategy/wrapped-btc-lending-loop-slice.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 19,
-      "files": ["src/strategy/recursive-lending-loop-slice.mjs", "src/strategy/wrapped-btc-lending-loop-slice.mjs"],
-      "fragmentHash": "sha1-0b0824c6-737e359f-79c1e69e-235c9e84-26db3530"
     },
     {
       "fingerprint": "javascript:19:sha1-13494d2d-1355215d-fb6026fc-95b2c4c6-259c667e:src/cli/report-allocator-core.mjs::src/cli/report-wrapped-btc-loop-dry-run.mjs",
@@ -1518,14 +1521,6 @@
       "fragmentHash": "sha1-9e112c13-e1df1c5b-0675aee5-2bec4889-635c2fce"
     },
     {
-      "fingerprint": "javascript:19:sha1-a2391656-5679065a-0748ef73-5ccf3b2e-6ba62017:src/cli/manage-alpha-to-canary-launchd.mjs::src/cli/manage-self-healing-watchdogs.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 19,
-      "files": ["src/cli/manage-alpha-to-canary-launchd.mjs", "src/cli/manage-self-healing-watchdogs.mjs"],
-      "fragmentHash": "sha1-a2391656-5679065a-0748ef73-5ccf3b2e-6ba62017"
-    },
-    {
       "fingerprint": "javascript:19:sha1-a424bdf2-4925f4aa-aca84130-cf231e77-2b40b2b8:src/cli/report-deterministic-strategy-candidates.mjs::src/cli/report-wrapped-btc-loop-dry-run.mjs",
       "count": 1,
       "format": "javascript",
@@ -1656,14 +1651,6 @@
       "lines": 20,
       "files": ["src/cli/report-phase3-strategy-validation.mjs", "src/cli/report-wrapped-btc-loop-dry-run.mjs"],
       "fragmentHash": "sha1-017f20f1-bdc76093-f614b062-e6c1dd10-fe58c8b1"
-    },
-    {
-      "fingerprint": "javascript:20:sha1-08542e9b-ad6b8fd3-00f72c85-e66bea42-820d5ad5:src/cli/fix-dashboard-launchd.mjs::src/cli/manage-self-healing-watchdogs.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 20,
-      "files": ["src/cli/fix-dashboard-launchd.mjs", "src/cli/manage-self-healing-watchdogs.mjs"],
-      "fragmentHash": "sha1-08542e9b-ad6b8fd3-00f72c85-e66bea42-820d5ad5"
     },
     {
       "fingerprint": "javascript:20:sha1-133fe791-ba96518f-308f9dd4-0654eee3-44853e3e:src/cli/run-merkl-canary-autopilot.mjs::src/cli/run-merkl-portfolio-orchestrator.mjs",
@@ -1957,6 +1944,14 @@
       "fragmentHash": "sha1-53f2d32a-a3870bf0-f948266c-3d42f861-102a8c3e"
     },
     {
+      "fingerprint": "javascript:22:sha1-54bb02f6-6f31b8d5-bc709b3c-330ee74e-171356ed:src/cli/report-pendle-yt-exit-from-position.mjs::src/cli/report-stable-loop-executor.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 22,
+      "files": ["src/cli/report-pendle-yt-exit-from-position.mjs", "src/cli/report-stable-loop-executor.mjs"],
+      "fragmentHash": "sha1-54bb02f6-6f31b8d5-bc709b3c-330ee74e-171356ed"
+    },
+    {
       "fingerprint": "javascript:22:sha1-6a549931-e9a9b466-6b3a04a0-184acf5b-e52c6d1e:test/gateway-btc-consolidation.test.mjs::test/gateway-btc-consolidation.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -2005,6 +2000,14 @@
       "fragmentHash": "sha1-bcf4fb87-ebd3edda-30bc2d62-18810758-f58544b5"
     },
     {
+      "fingerprint": "javascript:22:sha1-bd78326b-6b52ae68-51e7797f-af016c51-f1427377:src/executor/helpers/native-dex-experiment.mjs::src/executor/helpers/token-dex-experiment.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 22,
+      "files": ["src/executor/helpers/native-dex-experiment.mjs", "src/executor/helpers/token-dex-experiment.mjs"],
+      "fragmentHash": "sha1-bd78326b-6b52ae68-51e7797f-af016c51-f1427377"
+    },
+    {
       "fingerprint": "javascript:22:sha1-e0d56ac2-5fa0cb1a-d656b667-49c12cc5-1ab48af6:src/cli/report-native-btc-opportunity-surface.mjs::src/cli/report-stable-loop-executor.mjs",
       "count": 1,
       "format": "javascript",
@@ -2019,14 +2022,6 @@
       "lines": 22,
       "files": ["test/executor-runtime-readiness.test.mjs", "test/executor-runtime-readiness.test.mjs"],
       "fragmentHash": "sha1-ec0beaad-212fc79a-ea359d1c-d61d7e27-3dd22b86"
-    },
-    {
-      "fingerprint": "javascript:22:sha1-eca99b5c-3bae60f5-da1f24d8-0c5916c0-4625f30c:src/protocol-readers/readers/beefy.mjs::src/protocol-readers/readers/venus.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 22,
-      "files": ["src/protocol-readers/readers/beefy.mjs", "src/protocol-readers/readers/venus.mjs"],
-      "fragmentHash": "sha1-eca99b5c-3bae60f5-da1f24d8-0c5916c0-4625f30c"
     },
     {
       "fingerprint": "javascript:22:sha1-f6d4225e-c3ebe29f-c364068b-35a502dc-058d9f9d:src/cli/report-prelive-readiness.mjs::src/cli/validate-prelive-readiness.mjs",
@@ -2176,6 +2171,14 @@
       "fragmentHash": "sha1-28fd957d-ba057073-4da38c1c-73dc4244-cf1b140a"
     },
     {
+      "fingerprint": "javascript:24:sha1-3555777c-0b36b5d9-e52a4d4f-150d53ec-2d33c4cd:test/strategy-execution-surfaces.test.mjs::test/strategy-execution-surfaces.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 24,
+      "files": ["test/strategy-execution-surfaces.test.mjs", "test/strategy-execution-surfaces.test.mjs"],
+      "fragmentHash": "sha1-3555777c-0b36b5d9-e52a4d4f-150d53ec-2d33c4cd"
+    },
+    {
       "fingerprint": "javascript:24:sha1-8d340fe6-50cf0672-2c5d7b2e-411e08c2-39b2f943:test/protocol-position-marker.test.mjs::test/protocol-position-marker.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -2280,6 +2283,14 @@
       "fragmentHash": "sha1-7da0aaac-bfd62470-c301eeaf-2b6c7166-b7bd6712"
     },
     {
+      "fingerprint": "javascript:25:sha1-9ff37f32-e8b15540-96aba47d-3bebe191-8e4dc452:test/cli-executor-parse.test.mjs::test/cli-executor-parse.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 25,
+      "files": ["test/cli-executor-parse.test.mjs", "test/cli-executor-parse.test.mjs"],
+      "fragmentHash": "sha1-9ff37f32-e8b15540-96aba47d-3bebe191-8e4dc452"
+    },
+    {
       "fingerprint": "javascript:25:sha1-a685f47d-7fd176bb-8b3cc70c-9e5e7cc7-0928fb25:src/strategy/recursive-lending-loop-dry-run.mjs::src/strategy/wrapped-btc-lending-loop-dry-run.mjs",
       "count": 1,
       "format": "javascript",
@@ -2302,14 +2313,6 @@
       "lines": 25,
       "files": ["src/strategy/beefy-folding-adapter.mjs", "src/strategy/tokenized-reserve-sleeve-adapter.mjs"],
       "fragmentHash": "sha1-ba6704ec-ad84a10c-744252fc-d0906a86-a994c34e"
-    },
-    {
-      "fingerprint": "javascript:25:sha1-be534b01-24901616-374d3f83-152b058c-4cc14bf3:src/strategy/beefy-folding-adapter.mjs::src/strategy/defillama-yield-adapter.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 25,
-      "files": ["src/strategy/beefy-folding-adapter.mjs", "src/strategy/defillama-yield-adapter.mjs"],
-      "fragmentHash": "sha1-be534b01-24901616-374d3f83-152b058c-4cc14bf3"
     },
     {
       "fingerprint": "javascript:25:sha1-d25a0e17-1318c1c7-799a305d-3ac12cb5-9ccf426f:src/cli/build-prelive-review-package.mjs::src/cli/validate-prelive-readiness.mjs",
@@ -2523,6 +2526,14 @@
       "fragmentHash": "sha1-4165b56e-eee0ec72-e6ea066f-9c081597-db3df6ad"
     },
     {
+      "fingerprint": "javascript:27:sha1-465410cd-8e0b5fde-7b7000c2-552cf11a-95fbaefb:src/protocol-readers/readers/erc4626.mjs::src/protocol-readers/readers/venus.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 27,
+      "files": ["src/protocol-readers/readers/erc4626.mjs", "src/protocol-readers/readers/venus.mjs"],
+      "fragmentHash": "sha1-465410cd-8e0b5fde-7b7000c2-552cf11a-95fbaefb"
+    },
+    {
       "fingerprint": "javascript:27:sha1-52206aef-51418a59-ef48491e-1872e79f-f2dee66e:test/all-chain-autopilot.test.mjs::test/all-chain-autopilot.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -2556,6 +2567,14 @@
         "src/treasury/protocol-position-adapters/erc4626.mjs"
       ],
       "fragmentHash": "sha1-b43b8991-c08dd558-80ea3b0d-a928f8dd-d61cc97a"
+    },
+    {
+      "fingerprint": "javascript:27:sha1-bd9ad741-30d50667-40a55745-291ac7c0-bb30fb9a:scripts/check-skills-config.mjs::scripts/check-skills-config.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 27,
+      "files": ["scripts/check-skills-config.mjs", "scripts/check-skills-config.mjs"],
+      "fragmentHash": "sha1-bd9ad741-30d50667-40a55745-291ac7c0-bb30fb9a"
     },
     {
       "fingerprint": "javascript:27:sha1-c5331c92-4cdcf89b-34db6994-71c7d573-c692a796:src/treasury/protocol-position-adapters/aave-v3.mjs::src/treasury/protocol-position-adapters/erc4626.mjs",
@@ -2663,6 +2682,14 @@
       "lines": 28,
       "files": ["test/token-dex-experiment.test.mjs", "test/token-dex-experiment.test.mjs"],
       "fragmentHash": "sha1-8a2c03c0-658e7419-8a7a235a-8a5153f9-2fba8bb7"
+    },
+    {
+      "fingerprint": "javascript:28:sha1-8bf17b9a-d4c63589-da1d1102-e5b94705-59b4fcfb:src/strategy/recursive-lending-loop-slice.mjs::src/strategy/wrapped-btc-lending-loop-slice.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 28,
+      "files": ["src/strategy/recursive-lending-loop-slice.mjs", "src/strategy/wrapped-btc-lending-loop-slice.mjs"],
+      "fragmentHash": "sha1-8bf17b9a-d4c63589-da1d1102-e5b94705-59b4fcfb"
     },
     {
       "fingerprint": "javascript:28:sha1-b19b88db-32eb6b42-abccd299-c5333410-1b500081:src/cli/report-destination-economics-packet.mjs::src/cli/report-destination-promotion-gate.mjs",
@@ -2876,6 +2903,14 @@
       "fragmentHash": "sha1-da7c0b62-ed5e57dd-f5d4d9ff-734f73d0-772eec68"
     },
     {
+      "fingerprint": "javascript:29:sha1-fe4d6f7c-3530cf41-92271d8b-4530239b-84d80c6f:src/executor/helpers/native-dex-experiment.mjs::src/executor/helpers/token-dex-experiment.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 29,
+      "files": ["src/executor/helpers/native-dex-experiment.mjs", "src/executor/helpers/token-dex-experiment.mjs"],
+      "fragmentHash": "sha1-fe4d6f7c-3530cf41-92271d8b-4530239b-84d80c6f"
+    },
+    {
       "fingerprint": "javascript:30:sha1-01fe8993-e99d975a-afa358e2-67d96828-2c9f9686:src/cli/report-destination-economics-queue.mjs::src/cli/report-destination-promotion-gate.mjs",
       "count": 1,
       "format": "javascript",
@@ -3036,14 +3071,6 @@
       "fragmentHash": "sha1-f59a8768-1555cfa9-9b1d2156-b0dee00b-3329dc1a"
     },
     {
-      "fingerprint": "javascript:31:sha1-0fec811a-91c72f81-e01d82c6-e67c48ff-bb99c558:src/strategy/recursive-lending-loop-slice.mjs::src/strategy/wrapped-btc-lending-loop-slice.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 31,
-      "files": ["src/strategy/recursive-lending-loop-slice.mjs", "src/strategy/wrapped-btc-lending-loop-slice.mjs"],
-      "fragmentHash": "sha1-0fec811a-91c72f81-e01d82c6-e67c48ff-bb99c558"
-    },
-    {
       "fingerprint": "javascript:31:sha1-4823e31a-95c1c7f1-2684ef82-a43240d4-4e4c5711:src/executor/helpers/aave-protocol-canary.mjs::src/executor/helpers/compound-v3-supply-canary.mjs",
       "count": 1,
       "format": "javascript",
@@ -3151,14 +3178,6 @@
       "fragmentHash": "sha1-6a490114-0dd8819a-9f09d772-b7a36257-e41d436a"
     },
     {
-      "fingerprint": "javascript:33:sha1-6ddf770c-8223f1ba-1800856a-ba5482ba-1ce78731:src/executor/helpers/native-dex-experiment.mjs::src/executor/helpers/token-dex-experiment.mjs",
-      "count": 1,
-      "format": "javascript",
-      "lines": 33,
-      "files": ["src/executor/helpers/native-dex-experiment.mjs", "src/executor/helpers/token-dex-experiment.mjs"],
-      "fragmentHash": "sha1-6ddf770c-8223f1ba-1800856a-ba5482ba-1ce78731"
-    },
-    {
       "fingerprint": "javascript:33:sha1-8de635f5-5f2514c2-474b4a2f-40b68e1d-cdb6a7b9:src/cli/manage-executor-launchd.mjs::src/cli/manage-research-launchd.mjs",
       "count": 1,
       "format": "javascript",
@@ -3207,6 +3226,14 @@
       "fragmentHash": "sha1-0dd653b3-169e2137-d11b2953-fed7f2e1-02ce0922"
     },
     {
+      "fingerprint": "javascript:34:sha1-31a83ef0-75e543be-88715ae3-59081718-556a92a2:src/executor/helpers/native-dex-experiment.mjs::src/executor/helpers/token-dex-experiment.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 34,
+      "files": ["src/executor/helpers/native-dex-experiment.mjs", "src/executor/helpers/token-dex-experiment.mjs"],
+      "fragmentHash": "sha1-31a83ef0-75e543be-88715ae3-59081718-556a92a2"
+    },
+    {
       "fingerprint": "javascript:34:sha1-6f4ab41b-d7d96b15-94e605a8-d45f59f0-ecc6a134:test/gateway-btc-offramp.test.mjs::test/gateway-btc-offramp.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -3237,6 +3264,14 @@
       "lines": 34,
       "files": ["src/config/merkl-opportunity-policy.mjs", "src/config/merkl-opportunity-policy.mjs"],
       "fragmentHash": "sha1-b80ae614-1bf2ce20-7d59ebf3-f07081c1-34d6fe1e"
+    },
+    {
+      "fingerprint": "javascript:35:sha1-03756b84-2ae53194-de9c9f48-157a73e8-a4d2ca0d:test/cli-executor-parse.test.mjs::test/cli-executor-parse.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 35,
+      "files": ["test/cli-executor-parse.test.mjs", "test/cli-executor-parse.test.mjs"],
+      "fragmentHash": "sha1-03756b84-2ae53194-de9c9f48-157a73e8-a4d2ca0d"
     },
     {
       "fingerprint": "javascript:35:sha1-1ccfa421-5897ffc4-1ef2fdbd-8293ea61-8275b85d:test/payback-dashboard.test.mjs::test/payback-dashboard.test.mjs",
@@ -3279,6 +3314,14 @@
       "fragmentHash": "sha1-9bc566ae-2e991c6c-add9b520-8d62257b-b4c0f1b5"
     },
     {
+      "fingerprint": "javascript:35:sha1-9fdd04ed-53fc9ea5-d42fd3f5-1169a9a9-89e17061:src/protocol-readers/readers/pendle.mjs::src/protocol-readers/readers/venus.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 35,
+      "files": ["src/protocol-readers/readers/pendle.mjs", "src/protocol-readers/readers/venus.mjs"],
+      "fragmentHash": "sha1-9fdd04ed-53fc9ea5-d42fd3f5-1169a9a9-89e17061"
+    },
+    {
       "fingerprint": "javascript:35:sha1-e0738947-573724fd-f244298f-fc8f431b-e5f6fa07:test/token-dex-experiment.test.mjs::test/wrapped-btc-loop-handoff.test.mjs",
       "count": 1,
       "format": "javascript",
@@ -3311,12 +3354,28 @@
       "fragmentHash": "sha1-a453767b-b8809399-fd25ecad-1d821221-46bf6e62"
     },
     {
+      "fingerprint": "javascript:36:sha1-ab4b5566-d959f4f2-91e50e34-b67f1781-ce20061c:test/execution-receipt-ingest.test.mjs::test/execution-receipt-ingest.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 36,
+      "files": ["test/execution-receipt-ingest.test.mjs", "test/execution-receipt-ingest.test.mjs"],
+      "fragmentHash": "sha1-ab4b5566-d959f4f2-91e50e34-b67f1781-ce20061c"
+    },
+    {
       "fingerprint": "javascript:36:sha1-bc2f5560-7646952d-585e4095-7774a954-25648c23:src/cli/run-across-bridge.mjs::src/cli/run-gateway-btc-consolidation.mjs",
       "count": 1,
       "format": "javascript",
       "lines": 36,
       "files": ["src/cli/run-across-bridge.mjs", "src/cli/run-gateway-btc-consolidation.mjs"],
       "fragmentHash": "sha1-bc2f5560-7646952d-585e4095-7774a954-25648c23"
+    },
+    {
+      "fingerprint": "javascript:36:sha1-cd163b0e-9f8bbde7-a128499e-0f4a13ab-09f91951:src/protocol-readers/readers/aerodrome-nft-enumerator.mjs::src/protocol-readers/readers/venus.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 36,
+      "files": ["src/protocol-readers/readers/aerodrome-nft-enumerator.mjs", "src/protocol-readers/readers/venus.mjs"],
+      "fragmentHash": "sha1-cd163b0e-9f8bbde7-a128499e-0f4a13ab-09f91951"
     },
     {
       "fingerprint": "javascript:36:sha1-d1aa8a97-97d5c76d-2958d03e-99eb91ca-d8cf6822:test/submit-prelive-fork-execution.test.mjs::test/submit-prelive-fork-execution.test.mjs",
@@ -3333,6 +3392,14 @@
       "lines": 36,
       "files": ["test/strategy-execution-surfaces.test.mjs", "test/strategy-execution-surfaces.test.mjs"],
       "fragmentHash": "sha1-e254ab23-7a06a893-40620150-aef772af-c1db22f8"
+    },
+    {
+      "fingerprint": "javascript:37:sha1-3802a94e-9f36b139-dcc31193-498820d4-691c4e57:test/cli-executor-parse.test.mjs::test/cli-executor-parse.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 37,
+      "files": ["test/cli-executor-parse.test.mjs", "test/cli-executor-parse.test.mjs"],
+      "fragmentHash": "sha1-3802a94e-9f36b139-dcc31193-498820d4-691c4e57"
     },
     {
       "fingerprint": "javascript:37:sha1-8f53cfcd-3d01ca49-59f300f7-edd8c270-3324c450:test/prelive-review-package.test.mjs::test/prelive-review-package.test.mjs",
@@ -3463,6 +3530,14 @@
       "fragmentHash": "sha1-ee822d0a-93d066ea-0c14c94c-4634d6ab-6ba2ddc3"
     },
     {
+      "fingerprint": "javascript:41:sha1-8b77feed-ba911ef5-467e62e3-456e64cf-5a16201b:test/aggressive-velocity-live-execution.test.mjs::test/aggressive-velocity-live-execution.test.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 41,
+      "files": ["test/aggressive-velocity-live-execution.test.mjs", "test/aggressive-velocity-live-execution.test.mjs"],
+      "fragmentHash": "sha1-8b77feed-ba911ef5-467e62e3-456e64cf-5a16201b"
+    },
+    {
       "fingerprint": "javascript:41:sha1-8c76379a-404881bc-dc6f3296-189dee7d-4d2e0f9d:src/cli/manage-dashboard-live-launchd.mjs::src/cli/manage-strategy-automation-launchd.mjs",
       "count": 1,
       "format": "javascript",
@@ -3543,6 +3618,14 @@
       "fragmentHash": "sha1-59460061-f6f0cd91-d03a278a-36a478ec-7e073903"
     },
     {
+      "fingerprint": "javascript:45:sha1-858f55e1-2994d6a7-f5e1c606-7cd2f6c4-7f305a93:src/protocol-readers/readers/aave-v3.mjs::src/protocol-readers/readers/venus.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 45,
+      "files": ["src/protocol-readers/readers/aave-v3.mjs", "src/protocol-readers/readers/venus.mjs"],
+      "fragmentHash": "sha1-858f55e1-2994d6a7-f5e1c606-7cd2f6c4-7f305a93"
+    },
+    {
       "fingerprint": "javascript:45:sha1-a46c3078-49856521-09a412bd-49678ea5-b184c3fe:src/executor/helpers/native-dex-experiment.mjs::src/executor/helpers/token-dex-experiment.mjs",
       "count": 1,
       "format": "javascript",
@@ -3584,6 +3667,14 @@
       "lines": 48,
       "files": ["test/strategy-execution-surfaces.test.mjs", "test/strategy-execution-surfaces.test.mjs"],
       "fragmentHash": "sha1-c26cd92a-a91aa650-a4b29af7-0dc6c8d3-a8dd8b77"
+    },
+    {
+      "fingerprint": "javascript:50:sha1-ebe0f860-c5e65326-d1517678-19acdd22-335409cc:src/protocol-readers/readers/beefy.mjs::src/protocol-readers/readers/venus.mjs",
+      "count": 1,
+      "format": "javascript",
+      "lines": 50,
+      "files": ["src/protocol-readers/readers/beefy.mjs", "src/protocol-readers/readers/venus.mjs"],
+      "fragmentHash": "sha1-ebe0f860-c5e65326-d1517678-19acdd22-335409cc"
     },
     {
       "fingerprint": "javascript:51:sha1-0d2f5fbd-9d0049b2-4873a9d5-9b71cd70-097ca94e:src/executor/helpers/moonwell-intent-builder.mjs::src/executor/helpers/swap-intent-builder.mjs",

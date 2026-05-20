@@ -1,4 +1,4 @@
-import { isBtcLikeAsset, isEthLikeAsset, unitsToDecimal } from "../assets/tokens.mjs";
+import { isBtcLikeAsset, isEthLikeAsset, isGoldAsset, isStableAsset, unitsToDecimal } from "../assets/tokens.mjs";
 import { defaultDexQuoteProvider, filterTrustedExecutableDexQuotes } from "../dex/odos.mjs";
 import { hasEthereumL1PhaseBlock } from "../risk/ethereum-l1-policy.mjs";
 
@@ -29,9 +29,13 @@ function loopBlockers({ score, exactAmountMatch, measuredLoopNetUsd, hasEntryQuo
   if (!hasEntryQuote) blockers.push("missing_source_entry_quote");
   if (!exactAmountMatch) blockers.push("entry_amount_mismatch");
   if (!Number.isFinite(score?.executableOutputUsd)) blockers.push("missing_destination_exit_quote");
-  if (Number.isFinite(score?.routeStats?.failureRate) && score.routeStats.failureRate > 0.1) blockers.push("high_failure_rate");
+  if (Number.isFinite(score?.routeStats?.failureRate) && score.routeStats.failureRate > 0.1)
+    blockers.push("high_failure_rate");
   for (const gap of score?.dataGaps || []) blockers.push(`gateway_${gap}`);
-  if (hasEthereumL1PhaseBlock(score) || (score?.tradeReadiness && String(score.tradeReadiness).startsWith("observe_only_"))) {
+  if (
+    hasEthereumL1PhaseBlock(score) ||
+    (score?.tradeReadiness && String(score.tradeReadiness).startsWith("observe_only_"))
+  ) {
     blockers.push(`gateway_${score.tradeReadiness}`);
   }
   if (!(measuredLoopNetUsd > 0)) blockers.push("non_positive_loop_net_edge");
@@ -103,12 +107,41 @@ function eligibleEth(score) {
   return isEthLikeAsset(score?.srcAsset) && isEthLikeAsset(score?.dstAsset);
 }
 
+function isBtcEndpoint(asset) {
+  return isBtcLikeAsset(asset) || asset?.family === "btc";
+}
+
+function eligibleStable(score) {
+  const src = score?.srcAsset;
+  const dst = score?.dstAsset;
+  return (isStableAsset(src) && isBtcEndpoint(dst)) || (isBtcEndpoint(src) && isStableAsset(dst));
+}
+
+function eligibleGold(score) {
+  const src = score?.srcAsset;
+  const dst = score?.dstAsset;
+  return (isGoldAsset(src) && isBtcEndpoint(dst)) || (isBtcEndpoint(src) && isGoldAsset(dst));
+}
+
+export const ASSET_FAMILY_SCORE_FILTERS = Object.freeze({
+  wbtc: eligibleBtc,
+  eth: eligibleEth,
+  stable: eligibleStable,
+  gold: eligibleGold,
+});
+
+export function resolveScoreFilter(familyKey) {
+  return ASSET_FAMILY_SCORE_FILTERS[familyKey] || eligibleBtc;
+}
+
 export function buildDexGatewayLoops({ scoreSnapshot = null, dexQuotes = [] } = {}, options = {}) {
   const amountTolerancePct = Number.isFinite(options.amountTolerancePct) ? options.amountTolerancePct : 0.02;
   const scoreFilter = options.scoreFilter || eligibleBtc;
   const scores = (scoreSnapshot?.scores || []).filter(scoreFilter);
   const entryQuotes = latestEntryQuotes(dexQuotes);
-  const loops = scores.map((score) => summarizeLoop(score, entryQuotes.get(`${score.routeKey}|${score.amount}`) || null, amountTolerancePct));
+  const loops = scores.map((score) =>
+    summarizeLoop(score, entryQuotes.get(`${score.routeKey}|${score.amount}`) || null, amountTolerancePct),
+  );
 
   loops.sort(
     (left, right) =>
@@ -126,8 +159,13 @@ export function buildDexGatewayLoops({ scoreSnapshot = null, dexQuotes = [] } = 
 }
 
 export function buildDexGatewayArbitrageSummary({ scoreSnapshot = null, dexQuotes = [] } = {}, options = {}) {
-  const { amountTolerancePct, scores, entryQuotes, loops } = buildDexGatewayLoops({ scoreSnapshot, dexQuotes }, options);
-  const bothDexSupportedRoutes = scores.filter((score) => defaultDexQuoteProvider(score.srcChain) && defaultDexQuoteProvider(score.dstChain));
+  const { amountTolerancePct, scores, entryQuotes, loops } = buildDexGatewayLoops(
+    { scoreSnapshot, dexQuotes },
+    options,
+  );
+  const bothDexSupportedRoutes = scores.filter(
+    (score) => defaultDexQuoteProvider(score.srcChain) && defaultDexQuoteProvider(score.dstChain),
+  );
 
   return {
     schemaVersion: 1,
@@ -139,8 +177,13 @@ export function buildDexGatewayArbitrageSummary({ scoreSnapshot = null, dexQuote
     executableLoopCount: loops.filter((item) => Number.isFinite(item.destinationExecutableUsd)).length,
     exactAmountMatchCount: loops.filter((item) => item.exactAmountMatch).length,
     measuredNetLoopCount: loops.filter((item) => Number.isFinite(item.measuredLoopNetUsd)).length,
-    profitableExactCount: loops.filter((item) => item.exactAmountMatch && Number.isFinite(item.measuredLoopNetUsd) && item.measuredLoopNetUsd > 0).length,
-    bestLoop: loops.find((item) => item.exactAmountMatch && Number.isFinite(item.measuredLoopNetUsd) && item.measuredLoopNetUsd > 0) || null,
+    profitableExactCount: loops.filter(
+      (item) => item.exactAmountMatch && Number.isFinite(item.measuredLoopNetUsd) && item.measuredLoopNetUsd > 0,
+    ).length,
+    bestLoop:
+      loops.find(
+        (item) => item.exactAmountMatch && Number.isFinite(item.measuredLoopNetUsd) && item.measuredLoopNetUsd > 0,
+      ) || null,
     closestLoop: loops[0] || null,
     loops: loops.slice(0, 10),
   };
@@ -158,4 +201,79 @@ export function buildEthGatewayArbitrageSummary(args = {}, options = {}) {
     ...options,
     scoreFilter: eligibleEth,
   });
+}
+
+export function buildStableGatewayLoops(args = {}, options = {}) {
+  return buildDexGatewayLoops(args, {
+    ...options,
+    scoreFilter: eligibleStable,
+  });
+}
+
+export function buildStableGatewayArbitrageSummary(args = {}, options = {}) {
+  return buildDexGatewayArbitrageSummary(args, {
+    ...options,
+    scoreFilter: eligibleStable,
+  });
+}
+
+export function buildGoldGatewayLoops(args = {}, options = {}) {
+  return buildDexGatewayLoops(args, {
+    ...options,
+    scoreFilter: eligibleGold,
+  });
+}
+
+export function buildGoldGatewayArbitrageSummary(args = {}, options = {}) {
+  return buildDexGatewayArbitrageSummary(args, {
+    ...options,
+    scoreFilter: eligibleGold,
+  });
+}
+
+const FAMILY_SUMMARY_BUILDERS = Object.freeze({
+  wbtc: buildDexGatewayArbitrageSummary,
+  eth: buildEthGatewayArbitrageSummary,
+  stable: buildStableGatewayArbitrageSummary,
+  gold: buildGoldGatewayArbitrageSummary,
+});
+
+export function buildMultiFamilyGatewayArbitrageSummary(args = {}, options = {}) {
+  const requestedFamilies =
+    Array.isArray(options.families) && options.families.length
+      ? options.families.filter((key) => FAMILY_SUMMARY_BUILDERS[key])
+      : ["wbtc", "stable", "gold"];
+
+  const families = requestedFamilies.map((familyKey) => {
+    const summary = FAMILY_SUMMARY_BUILDERS[familyKey](args, options);
+    return {
+      family: familyKey,
+      routeCount: summary.routeCount,
+      bothDexSupportedRouteCount: summary.bothDexSupportedRouteCount,
+      entryQuoteCount: summary.entryQuoteCount,
+      executableLoopCount: summary.executableLoopCount,
+      exactAmountMatchCount: summary.exactAmountMatchCount,
+      measuredNetLoopCount: summary.measuredNetLoopCount,
+      profitableExactCount: summary.profitableExactCount,
+      bestLoop: summary.bestLoop,
+      closestLoop: summary.closestLoop,
+      amountTolerancePct: summary.amountTolerancePct,
+    };
+  });
+
+  families.sort(
+    (left, right) =>
+      (right.bestLoop?.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) -
+        (left.bestLoop?.measuredLoopNetUsd ?? Number.NEGATIVE_INFINITY) ||
+      right.profitableExactCount - left.profitableExactCount ||
+      right.exactAmountMatchCount - left.exactAmountMatchCount ||
+      String(left.family).localeCompare(String(right.family)),
+  );
+
+  return {
+    schemaVersion: 1,
+    generatedAt: args?.scoreSnapshot?.generatedAt || null,
+    requestedFamilies,
+    families,
+  };
 }

@@ -52,7 +52,7 @@ test("security review report redacts secret-like values and writes readable arti
     assert.equal(report.summary.byScanner["static-analysis"], 1);
 
     for (const finding of report.findings) {
-      assert.equal(JSON.stringify(finding).includes("1234567890:abcdefghijklmnopqrstuvwxyzABCDEFGHI"), false);
+      assert.equal(JSON.stringify(finding).includes("1234567890:abcdefghijklmnopqrstuvwxyzABCDEFGHI"), false); // pragma: allowlist secret
     }
 
     const outputDir = join(rootDir, "security-reports");

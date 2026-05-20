@@ -2,7 +2,14 @@ import { WBTC_OFT_TOKEN, ZERO_TOKEN, isBtcLikeAsset, tokenAsset } from "../../as
 import { config } from "../../config/env.mjs";
 import { assertStrategyCaps } from "../../config/strategy-caps.mjs";
 import { executionEvFallbackCostUsd, tinyCanarySameChainRoundTripCostUsd } from "../../config/sizing.mjs";
-import { GatewayClient, GatewayError, classifyGatewayBlockedReason, isDeterministicGatewayBlock, parseGatewayOrder } from "../../gateway/client.mjs";
+import {
+  GatewayClient,
+  GatewayError,
+  classifyGatewayBlockedReason,
+  gatewayQuoteAmountFloor,
+  isDeterministicGatewayBlock,
+  parseGatewayOrder,
+} from "../../gateway/client.mjs";
 import { buildGatewayQuoteParams } from "../../gateway/quote-params.mjs";
 import { getCoinGeckoPricesUsd } from "../../market/prices.mjs";
 import { appendSignerAuditRecord, buildSignerAuditRecord } from "../signer/audit-log.mjs";
@@ -129,6 +136,7 @@ export async function buildGatewayBtcOnrampPlan({
   let order = null;
   let blockedReason = null;
   let gatewayError = null;
+  let quoteAmountFloor = null;
   try {
     quoteResult = await client.getQuote(quoteParams);
     quote = normalizeOnrampQuoteBody(quoteResult.body);
@@ -136,6 +144,7 @@ export async function buildGatewayBtcOnrampPlan({
     if (isDeterministicGatewayBlock(error)) {
       blockedReason = classifyGatewayBlockedReason(error);
       gatewayError = serializeGatewayError(error);
+      quoteAmountFloor = gatewayQuoteAmountFloor(error);
     } else {
       throw error;
     }
@@ -159,6 +168,7 @@ export async function buildGatewayBtcOnrampPlan({
       } else if (isDeterministicGatewayBlock(error)) {
         blockedReason = classifyGatewayBlockedReason(error);
         gatewayError = serializeGatewayError(error);
+        quoteAmountFloor = gatewayQuoteAmountFloor(error);
       } else {
         throw error;
       }
@@ -171,9 +181,7 @@ export async function buildGatewayBtcOnrampPlan({
     const outputDecimals = dstAsset.decimals ?? 6;
     const outputAmountRaw = Number(quote.outputAmount?.amount || 0);
     const outputTokenAmount = outputAmountRaw / 10 ** outputDecimals;
-    const outputAmountUsd = isBtcLikeAsset(dstAsset)
-      ? outputTokenAmount * btcUsd
-      : outputTokenAmount;
+    const outputAmountUsd = isBtcLikeAsset(dstAsset) ? outputTokenAmount * btcUsd : outputTokenAmount;
     const bridgeCostUsd = executionEvFallbackCostUsd({ chain: dstChain });
     const gasCostUsd = tinyCanarySameChainRoundTripCostUsd({ chain: dstChain });
     const slippageReserveUsd = outputAmountUsd * 0.005;
@@ -186,6 +194,7 @@ export async function buildGatewayBtcOnrampPlan({
     planStatus: order ? "ready" : "blocked",
     blockedReason,
     gatewayError,
+    quoteAmountFloor,
     strategyId,
     senderAddress,
     recipient,
@@ -199,55 +208,55 @@ export async function buildGatewayBtcOnrampPlan({
     order,
     intent: order
       ? {
-      strategyId,
-      chain: "bitcoin",
-      family: "btc",
-      intentType: "gateway_btc_onramp",
-      amountUsd,
-      mode: "live",
-      observedAt: now,
-      executionReason: "strategy_execution",
-      quote: {
-        observedAt: now,
-        route: {
-          srcChain: "bitcoin",
-          dstChain,
-          srcToken: BITCOIN_ZERO_TOKEN,
-          dstToken: normalizedDstToken,
-        },
-        quoteType: "onramp",
-        inputAmount: quote.inputAmount,
-        outputAmount: quote.outputAmount,
-        fees: quote.fees,
-        executionFees: quote.executionFees,
-        feeBreakdown: quote.feeBreakdown || null,
-        estimatedTimeInSecs: quote.estimatedTimeInSecs ?? null,
-        signedQuoteData: quote.signedQuoteData,
-        strategyAddress: quote.strategyAddress || null,
-        strategyMessage: quote.strategyMessage || null,
-        recipient,
-        sender: senderAddress,
-        orderId: order.orderId,
-        depositAddress: order.address,
-      },
-      btc: {
-        psbtHex: order.psbtHex,
-        orderId: order.orderId,
-        depositAddress: order.address,
-        opReturnData: order.opReturnData,
-      },
-      strategyConfig: {
-        intentTtlMs: strategyCaps.intentTtlMs,
-      },
-      metadata: {
-        skipAutoIngest: true,
-        gatewayOrderId: order.orderId,
-        gatewayDepositAddress: order.address,
-        gatewayDstToken: normalizedDstToken,
-        ...(expectedNetUsd !== null ? { expectedNetUsd } : {}),
-        ...(normalizedGasRefill ? { gatewayGasRefill: normalizedGasRefill } : {}),
-      },
-    }
+          strategyId,
+          chain: "bitcoin",
+          family: "btc",
+          intentType: "gateway_btc_onramp",
+          amountUsd,
+          mode: "live",
+          observedAt: now,
+          executionReason: "strategy_execution",
+          quote: {
+            observedAt: now,
+            route: {
+              srcChain: "bitcoin",
+              dstChain,
+              srcToken: BITCOIN_ZERO_TOKEN,
+              dstToken: normalizedDstToken,
+            },
+            quoteType: "onramp",
+            inputAmount: quote.inputAmount,
+            outputAmount: quote.outputAmount,
+            fees: quote.fees,
+            executionFees: quote.executionFees,
+            feeBreakdown: quote.feeBreakdown || null,
+            estimatedTimeInSecs: quote.estimatedTimeInSecs ?? null,
+            signedQuoteData: quote.signedQuoteData,
+            strategyAddress: quote.strategyAddress || null,
+            strategyMessage: quote.strategyMessage || null,
+            recipient,
+            sender: senderAddress,
+            orderId: order.orderId,
+            depositAddress: order.address,
+          },
+          btc: {
+            psbtHex: order.psbtHex,
+            orderId: order.orderId,
+            depositAddress: order.address,
+            opReturnData: order.opReturnData,
+          },
+          strategyConfig: {
+            intentTtlMs: strategyCaps.intentTtlMs,
+          },
+          metadata: {
+            skipAutoIngest: true,
+            gatewayOrderId: order.orderId,
+            gatewayDepositAddress: order.address,
+            gatewayDstToken: normalizedDstToken,
+            ...(expectedNetUsd !== null ? { expectedNetUsd } : {}),
+            ...(normalizedGasRefill ? { gatewayGasRefill: normalizedGasRefill } : {}),
+          },
+        }
       : null,
   };
   return plan;

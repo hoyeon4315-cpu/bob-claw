@@ -1,6 +1,11 @@
 import { config } from "../config/env.mjs";
+import { chainAddressFamily } from "../config/chains.mjs";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+export function verifyAddressForChain(chain) {
+  return chainAddressFamily(chain) === "btc" ? config.verifyBtcRecipient : config.verifyRecipient;
+}
 
 export function normalizeGatewayAffiliateId(value) {
   if (value == null) return null;

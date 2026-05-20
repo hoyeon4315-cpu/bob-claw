@@ -73,11 +73,12 @@ export class GatewayClient {
 
     if (!response.ok) {
       const bodyCode = body && typeof body === "object" ? body.code || body.error || null : null;
-      const reason = response.status === 429
-        ? `HTTP 429 ${bodyCode || "RATE_LIMITED"}`
-        : bodyCode
-          ? `HTTP ${response.status} ${bodyCode}`
-          : `HTTP ${response.status}`;
+      const reason =
+        response.status === 429
+          ? `HTTP 429 ${bodyCode || "RATE_LIMITED"}`
+          : bodyCode
+            ? `HTTP ${response.status} ${bodyCode}`
+            : `HTTP ${response.status}`;
       throw new GatewayError(`Gateway request failed: ${reason}`, {
         url,
         status: response.status,
@@ -113,6 +114,42 @@ export function gatewayErrorCode(error) {
   return error.details?.body?.code || error.details?.body?.error || null;
 }
 
+const INVALID_REQUEST_SUBTYPE_RULES = Object.freeze([
+  {
+    subtype: "invalid_request_recipient",
+    keywords: ["recipient", "bitcoin address", "evm address", "btc address", "sender address"],
+  },
+  {
+    subtype: "invalid_request_amount_unit",
+    keywords: ["amount", "decimals", "wei", "satoshi", "sats", "unit"],
+  },
+  {
+    subtype: "invalid_request_token",
+    keywords: ["token", "asset", "src token", "dst token", "srctoken", "dsttoken"],
+  },
+  {
+    subtype: "invalid_request_route_param",
+    keywords: ["route", "chain", "srcchain", "dstchain", "slippage", "affiliate", "unsupported"],
+  },
+]);
+
+export function classifyGatewayInvalidRequestSubtype(error) {
+  if (!(error instanceof GatewayError)) return null;
+  const body = error.details?.body;
+  if (!body) return null;
+  const code = normalizeGatewayCode(body.code || body.error);
+  if (code !== "invalid_request") return null;
+  const messageSource = [body.error, body.message, body.details?.reason, body.details?.message]
+    .filter((part) => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+  if (!messageSource) return "gateway_invalid_request_unknown";
+  for (const rule of INVALID_REQUEST_SUBTYPE_RULES) {
+    if (rule.keywords.some((keyword) => messageSource.includes(keyword))) return rule.subtype;
+  }
+  return "gateway_invalid_request_unknown";
+}
+
 export function classifyGatewayBlockedReason(error) {
   if (!(error instanceof GatewayError)) return null;
   const code = gatewayErrorCode(error);
@@ -120,9 +157,14 @@ export function classifyGatewayBlockedReason(error) {
     const normalizedCode = normalizeGatewayCode(code);
     if (normalizedCode === "global_limit_exceeded") return "gateway_global_rate_limited";
     if (normalizedCode === "exceeded_limit") {
-      const limit = String(error.details?.body?.details?.limit || "").trim().toLowerCase();
+      const limit = String(error.details?.body?.details?.limit || "")
+        .trim()
+        .toLowerCase();
       if (limit === "0 btc") return "gateway_zero_btc_limit";
       return "gateway_route_limit_exceeded";
+    }
+    if (normalizedCode === "invalid_request") {
+      return classifyGatewayInvalidRequestSubtype(error) || "gateway_invalid_request_unknown";
     }
     return normalizedCode;
   }
@@ -137,6 +179,23 @@ export function isDeterministicGatewayBlock(error) {
   if (!(error instanceof GatewayError)) return false;
   const status = Number(error.details?.status);
   return Number.isFinite(status) && status >= 400 && status < 500;
+}
+
+function normalizeAmountString(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text;
+}
+
+export function gatewayQuoteAmountFloor(error) {
+  if (!(error instanceof GatewayError)) return null;
+  if (classifyGatewayBlockedReason(error) !== "quote_amount_too_low") return null;
+  const body = error.details?.body;
+  const minimum = normalizeAmountString(body?.details?.minimum ?? body?.minimum);
+  const actual = normalizeAmountString(body?.details?.actual ?? body?.actual);
+  if (!minimum && !actual) return null;
+  return { minimum, actual };
 }
 
 export function routeKey(route) {

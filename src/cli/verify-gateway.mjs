@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import {
   assetPairKey,
@@ -11,12 +13,23 @@ import {
 } from "../assets/tokens.mjs";
 import { hydrateOfframpExecutionFromGatewayBody } from "../gateway/executable-quote.mjs";
 import { GatewayClient, routeKey, summarizeRoutes } from "../gateway/client.mjs";
-import { buildGatewayQuoteParams } from "../gateway/quote-params.mjs";
+import { buildGatewayQuoteParams, verifyAddressForChain } from "../gateway/quote-params.mjs";
 import { JsonlStore } from "../lib/jsonl-store.mjs";
 
 const SCHEMA_VERSION = 4;
 const DEFAULT_BTC_TOKEN = WBTC_OFT_TOKEN;
-const LOW_COST_CHAIN_ORDER = ["base", "bob", "bsc", "sonic", "unichain", "soneium", "avalanche", "bera", "ethereum", "bitcoin"];
+const LOW_COST_CHAIN_ORDER = [
+  "base",
+  "bob",
+  "bsc",
+  "sonic",
+  "unichain",
+  "soneium",
+  "avalanche",
+  "bera",
+  "ethereum",
+  "bitcoin",
+];
 
 function parseArgs(argv) {
   const flags = new Set(argv);
@@ -43,7 +56,47 @@ function parseArgs(argv) {
     dstChain: options["dst-chain"] || null,
     chain: options.chain || null,
     routeKey: options["route-key"] || null,
-    amounts: options.amounts ? options.amounts.split(",").map((item) => item.trim()).filter(Boolean) : null,
+    amounts: options.amounts
+      ? options.amounts
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : null,
+    timeBudgetMs: options["time-budget-ms"] ? Number(options["time-budget-ms"]) : null,
+  };
+}
+
+export function shouldAbortForBudget({ elapsedMs, budgetMs }) {
+  if (budgetMs === null || budgetMs === undefined) return false;
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) return false;
+  return elapsedMs >= budgetMs;
+}
+
+export function buildBudgetExceededDiagnostic({
+  schemaVersion,
+  runId,
+  startedAt,
+  elapsedMs,
+  budgetMs,
+  routeSummary,
+  checkedRoutes,
+  completedRouteCount,
+  records,
+}) {
+  return {
+    schemaVersion,
+    runId,
+    observedAt: new Date().toISOString(),
+    startedAt,
+    elapsedMs,
+    status: "diagnostic_failure",
+    failureReason: "time_budget_exceeded_before_completion",
+    budgetMs,
+    routeSummary,
+    checkedRoutes,
+    plannedRouteCount: checkedRoutes.length,
+    completedRouteCount,
+    records,
   };
 }
 
@@ -123,7 +176,8 @@ function dedupeOnePerAssetPair(routes) {
     }
   }
   return [...byAssetPair.values()].sort(
-    (left, right) => assetPairKey(left).localeCompare(assetPairKey(right)) || preferCoverageRoute(left) - preferCoverageRoute(right),
+    (left, right) =>
+      assetPairKey(left).localeCompare(assetPairKey(right)) || preferCoverageRoute(left) - preferCoverageRoute(right),
   );
 }
 
@@ -177,13 +231,14 @@ function quoteParamsFor(route, amount) {
   return buildGatewayQuoteParams({
     route,
     amount,
-    sender: config.verifyRecipient,
-    recipient: route.dstChain === "bitcoin" ? config.verifyBtcRecipient : config.verifyRecipient,
+    sender: verifyAddressForChain(route.srcChain),
+    recipient: verifyAddressForChain(route.dstChain),
   });
 }
 
 function extractQuoteMetrics(route, amount, quoteResult, executable = {}) {
-  const quoteType = executable.quoteType ||
+  const quoteType =
+    executable.quoteType ||
     (quoteResult.body.onramp
       ? "onramp"
       : quoteResult.body.offramp
@@ -191,11 +246,7 @@ function extractQuoteMetrics(route, amount, quoteResult, executable = {}) {
         : quoteResult.body.layerZero
           ? "layerZero"
           : "unknown");
-  const quote =
-    quoteResult.body.onramp ||
-    quoteResult.body.offramp ||
-    quoteResult.body.layerZero ||
-    quoteResult.body;
+  const quote = quoteResult.body.onramp || quoteResult.body.offramp || quoteResult.body.layerZero || quoteResult.body;
   const inputAmount = BigInt(quote.inputAmount?.amount || amount);
   const outputAmount = BigInt(quote.outputAmount?.amount || 0);
   const fees = BigInt(quote.fees?.amount || 0);
@@ -267,6 +318,126 @@ function printQuoteMetric(metric) {
   );
 }
 
+async function tryRetryQuote({ client, route, retryAmount, originalAmount, runId, store, records, json }) {
+  try {
+    const quoteResult = await client.getQuote(quoteParamsFor(route, retryAmount));
+    const executable = await hydrateOfframpExecutionFromGatewayBody(quoteResult.body, { client });
+    const metric = extractQuoteMetrics(route, retryAmount, quoteResult, executable);
+    metric.runId = runId;
+    metric.retryReason = "QUOTE_AMOUNT_TOO_LOW";
+    metric.retryOfAmount = originalAmount;
+    records.push({ ok: true, metric });
+    await store.append("gateway-quotes", metric);
+    if (!json) printQuoteMetric(metric);
+    return { ok: true };
+  } catch (retryError) {
+    return { ok: false, error: retryError };
+  }
+}
+
+async function recordQuoteFailure({ runId, route, amount, error, store, records, json }) {
+  const failure = {
+    schemaVersion: SCHEMA_VERSION,
+    runId,
+    observedAt: new Date().toISOString(),
+    route,
+    routeKey: routeKey(route),
+    amount,
+    ok: false,
+    error: {
+      name: error.name,
+      message: error.message,
+      details: error.details || null,
+    },
+  };
+  records.push(failure);
+  await store.append("gateway-quote-failures", failure);
+  if (!json) {
+    console.log(`quote failed ${route.srcChain}->${route.dstChain} amount=${amount}: ${error.message}`);
+  }
+}
+
+async function processQuoteAttempt({ client, route, amount, args, runId, store, records }) {
+  try {
+    const quoteResult = await client.getQuote(quoteParamsFor(route, amount));
+    const executable = await hydrateOfframpExecutionFromGatewayBody(quoteResult.body, { client });
+    const metric = extractQuoteMetrics(route, amount, quoteResult, executable);
+    metric.runId = runId;
+    records.push({ ok: true, metric });
+    await store.append("gateway-quotes", metric);
+    if (!args.json) printQuoteMetric(metric);
+    return;
+  } catch (error) {
+    const retryAmount = args.retryMinimum ? minimumQuoteAmount(error) : null;
+    if (retryAmount && retryAmount !== amount) {
+      const retry = await tryRetryQuote({
+        client,
+        route,
+        retryAmount,
+        originalAmount: amount,
+        runId,
+        store,
+        records,
+        json: args.json,
+      });
+      if (retry.ok) return;
+      await recordQuoteFailure({ runId, route, amount, error: retry.error, store, records, json: args.json });
+      return;
+    }
+    await recordQuoteFailure({ runId, route, amount, error, store, records, json: args.json });
+  }
+}
+
+async function processRouteAmounts({ client, route, args, runId, store, records }) {
+  const configuredAmounts = args.amounts || config.sampleSats;
+  const amounts = args.once ? configuredAmounts.slice(0, 1) : configuredAmounts;
+  for (let index = 0; index < amounts.length; index += 1) {
+    await processQuoteAttempt({ client, route, amount: amounts[index], args, runId, store, records });
+    const hasMoreInRoute = index < amounts.length - 1;
+    if (hasMoreInRoute && config.requestDelayMs > 0) {
+      await sleep(config.requestDelayMs);
+    }
+  }
+}
+
+function buildVerifierResult({
+  budgetExceeded,
+  runId,
+  startedAt,
+  elapsedMs,
+  budgetMs,
+  summary,
+  selectedRoutes,
+  completedRouteCount,
+  records,
+}) {
+  if (budgetExceeded) {
+    return buildBudgetExceededDiagnostic({
+      schemaVersion: SCHEMA_VERSION,
+      runId,
+      startedAt,
+      elapsedMs,
+      budgetMs,
+      routeSummary: summary,
+      checkedRoutes: selectedRoutes,
+      completedRouteCount,
+      records,
+    });
+  }
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    runId,
+    observedAt: new Date().toISOString(),
+    startedAt,
+    elapsedMs,
+    status: "ok",
+    routeSummary: summary,
+    checkedRoutes: selectedRoutes,
+    completedRouteCount,
+    records,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const client = new GatewayClient({ baseUrl: config.gatewayApiBase });
@@ -296,84 +467,56 @@ async function main() {
   }
 
   const records = [];
+  const budgetMs = Number.isFinite(args.timeBudgetMs) && args.timeBudgetMs > 0 ? args.timeBudgetMs : null;
+  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
+  let completedRouteCount = 0;
+  let budgetExceeded = false;
   for (const route of selectedRoutes) {
-    const configuredAmounts = args.amounts || config.sampleSats;
-    const amounts = args.once ? configuredAmounts.slice(0, 1) : configuredAmounts;
-    for (let index = 0; index < amounts.length; index += 1) {
-      const amount = amounts[index];
-      try {
-        const quoteResult = await client.getQuote(quoteParamsFor(route, amount));
-        const executable = await hydrateOfframpExecutionFromGatewayBody(quoteResult.body, { client });
-        const metric = extractQuoteMetrics(route, amount, quoteResult, executable);
-        metric.runId = runId;
-        records.push({ ok: true, metric });
-        await store.append("gateway-quotes", metric);
-        if (!args.json) printQuoteMetric(metric);
-      } catch (error) {
-        const retryAmount = args.retryMinimum ? minimumQuoteAmount(error) : null;
-        if (retryAmount && retryAmount !== amount) {
-          try {
-            const quoteResult = await client.getQuote(quoteParamsFor(route, retryAmount));
-            const executable = await hydrateOfframpExecutionFromGatewayBody(quoteResult.body, { client });
-            const metric = extractQuoteMetrics(route, retryAmount, quoteResult, executable);
-            metric.runId = runId;
-            metric.retryReason = "QUOTE_AMOUNT_TOO_LOW";
-            metric.retryOfAmount = amount;
-            records.push({ ok: true, metric });
-            await store.append("gateway-quotes", metric);
-            if (!args.json) printQuoteMetric(metric);
-            continue;
-          } catch (retryError) {
-            error = retryError;
-          }
-        }
-        const failure = {
-          schemaVersion: SCHEMA_VERSION,
-          runId,
-          observedAt: new Date().toISOString(),
-          route,
-          routeKey: routeKey(route),
-          amount,
-          ok: false,
-          error: {
-            name: error.name,
-            message: error.message,
-            details: error.details || null,
-          },
-        };
-        records.push(failure);
-        await store.append("gateway-quote-failures", failure);
-        if (!args.json) {
-          console.log(`quote failed ${route.srcChain}->${route.dstChain} amount=${amount}: ${error.message}`);
-        }
-      }
-
-      const hasMoreInRoute = index < amounts.length - 1;
-      if (hasMoreInRoute && config.requestDelayMs > 0) {
-        await sleep(config.requestDelayMs);
-      }
+    if (shouldAbortForBudget({ elapsedMs: Date.now() - startedAtMs, budgetMs })) {
+      budgetExceeded = true;
+      break;
     }
-
+    await processRouteAmounts({ client, route, args, runId, store, records });
     if (config.requestDelayMs > 0) {
       await sleep(config.requestDelayMs);
     }
+    completedRouteCount += 1;
+    if (shouldAbortForBudget({ elapsedMs: Date.now() - startedAtMs, budgetMs })) {
+      budgetExceeded = true;
+      break;
+    }
   }
 
-  const result = {
-    schemaVersion: SCHEMA_VERSION,
+  const elapsedMs = Date.now() - startedAtMs;
+  const result = buildVerifierResult({
+    budgetExceeded,
     runId,
-    observedAt: new Date().toISOString(),
-    routeSummary: summary,
-    checkedRoutes: selectedRoutes,
+    startedAt,
+    elapsedMs,
+    budgetMs,
+    summary,
+    selectedRoutes,
+    completedRouteCount,
     records,
-  };
+  });
 
   if (args.json) {
     console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (budgetExceeded) {
+    console.log(
+      `diagnostic_failure time_budget_exceeded_before_completion completed=${completedRouteCount}/${selectedRoutes.length} elapsedMs=${elapsedMs}`,
+    );
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

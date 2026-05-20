@@ -138,6 +138,7 @@ export async function scanAggressiveVelocityOpportunities({ merklDataPath, curre
   // 1. Ingest raw Merkl opportunities (reuse existing pipeline)
   const rawMerkl = await getLatestMerklOpportunities({ limit: 500 });
   const rejectedCounts = {};
+  const velocityScoreRejections = [];
   const stageCounts = {
     passedBaseFilters: 0,
     passedCredibleExit: 0,
@@ -176,6 +177,9 @@ export async function scanAggressiveVelocityOpportunities({ merklDataPath, curre
 
     // Strict high net yield filter (library-driven): only strong expected net BTC profit after all costs
     if (yieldResult.score < AGGRESSIVE_VELOCITY_CRITERIA.minVelocityScore) {
+      velocityScoreRejections.push(
+        buildVelocityScoreRejection(normalizedOpportunity, yieldResult, exitFeasibility, costEstimate),
+      );
       incrementRejectedCount(rejectedCounts, "velocity_score_below_minimum");
       continue;
     }
@@ -446,6 +450,7 @@ export async function scanAggressiveVelocityOpportunities({ merklDataPath, curre
       rawCount: rawMerkl.length,
       stageCounts,
       rejectedByReason: summarizeRejectedCounts(rejectedCounts),
+      velocityScoreRejectionSummary: summarizeVelocityScoreRejections(velocityScoreRejections),
     },
   };
 }
@@ -484,6 +489,60 @@ function summarizeRejectedCounts(rejectedCounts = {}) {
       return left[0].localeCompare(right[0]);
     })
     .map(([reason, count]) => ({ reason, count }));
+}
+
+function buildVelocityScoreRejection(opportunity, yieldResult, exitFeasibility, costEstimate) {
+  const breakdownTotal = yieldResult.roundtripCostBreakdown?.totalUsd ?? null;
+  const totalRoundtripCostUsd = costEstimate?.totalRoundtripUsd ?? breakdownTotal;
+  return {
+    chain: opportunity.chain || null,
+    protocol: opportunity.protocol || opportunity.protocolId || null,
+    score: yieldResult.score,
+    minVelocityScore: AGGRESSIVE_VELOCITY_CRITERIA.minVelocityScore,
+    expectedNetBtcProfit: yieldResult.expectedNetBtcProfit,
+    minExpectedNetBtcProfit: AGGRESSIVE_VELOCITY_CRITERIA.minExpectedNetBtcProfit,
+    expectedNetProfitQuality: yieldResult.expectedNetProfitQuality,
+    isHighNetYield: yieldResult.isHighNetYield === true,
+    exitFeasibilityScore: exitFeasibility.score,
+    remainingHours: opportunity.remainingHours ?? null,
+    tvlUsd: opportunity.tvlUsd ?? null,
+    totalRoundtripCostUsd,
+    netYieldPctPerDay: yieldResult.netYieldPctPerDay,
+  };
+}
+
+function summarizeVelocityScoreRejections(rejections = []) {
+  if (!Array.isArray(rejections) || rejections.length === 0) {
+    return {
+      count: 0,
+      minVelocityScore: AGGRESSIVE_VELOCITY_CRITERIA.minVelocityScore,
+      minExpectedNetBtcProfit: AGGRESSIVE_VELOCITY_CRITERIA.minExpectedNetBtcProfit,
+      highQualityRequired: AGGRESSIVE_VELOCITY_CRITERIA.onlyHighQualityNetYield === true,
+      maxScore: null,
+      maxExpectedNetBtcProfit: null,
+      qualityCounts: {},
+      topRejected: [],
+    };
+  }
+  const qualityCounts = {};
+  for (const rejection of rejections) {
+    const quality = rejection.expectedNetProfitQuality || "unknown";
+    qualityCounts[quality] = (qualityCounts[quality] || 0) + 1;
+  }
+  const sorted = [...rejections].sort((left, right) => {
+    if ((right.score ?? 0) !== (left.score ?? 0)) return (right.score ?? 0) - (left.score ?? 0);
+    return (right.expectedNetBtcProfit ?? 0) - (left.expectedNetBtcProfit ?? 0);
+  });
+  return {
+    count: rejections.length,
+    minVelocityScore: AGGRESSIVE_VELOCITY_CRITERIA.minVelocityScore,
+    minExpectedNetBtcProfit: AGGRESSIVE_VELOCITY_CRITERIA.minExpectedNetBtcProfit,
+    highQualityRequired: AGGRESSIVE_VELOCITY_CRITERIA.onlyHighQualityNetYield === true,
+    maxScore: sorted[0]?.score ?? null,
+    maxExpectedNetBtcProfit: sorted.reduce((max, item) => Math.max(max, Number(item.expectedNetBtcProfit) || 0), 0),
+    qualityCounts,
+    topRejected: sorted.slice(0, 5),
+  };
 }
 
 async function evaluateExitFeasibility(opportunity, protocolMarks = []) {

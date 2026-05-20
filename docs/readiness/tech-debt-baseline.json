@@ -1,6 +1,6 @@
 {
   "description": "Audited technical-debt markers kept visible until a dedicated review updates the baseline.",
-  "updatedAt": "2026-05-12",
+  "updatedAt": "2026-05-21",
   "scope": ["src", "docs", "test"],
   "rules": {
     "trackedMarkerFormat": ["TODO(ISSUE-123): reason", "TODO(owner): reason"],
@@ -156,6 +156,78 @@
       "trackingTag": null,
       "reason": "real capital",
       "markerText": "TODO: real capital",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "b36974673ff0af728099693b1162ee7a43ee9644",
+      "path": "src/cli/run-strategy-tick.mjs",
+      "line": 1030,
+      "column": 12,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })",
+      "markerText": "TODO: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })",
+      "lineText": "// TODO: buildPendlePtIntent({ routerAddress: pendleRouter.address, ... })",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "8ab44672f14c0625d1f48813783ebfae44a698c6",
+      "path": "src/cli/run-strategy-tick.mjs",
+      "line": 1076,
+      "column": 12,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })",
+      "markerText": "TODO: buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })",
+      "lineText": "// TODO: buildGmxPerpIntent({ routerAddress: gmxRouter.address, ... })",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "82acc194a96516e773796d014cfc2bcd6febc0ee",
+      "path": "src/cli/run-strategy-tick.mjs",
+      "line": 1086,
+      "column": 12,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "buildBerachainIntent({ poolAddress: bendPool.address, ... })",
+      "markerText": "TODO: buildBerachainIntent({ poolAddress: bendPool.address, ... })",
+      "lineText": "// TODO: buildBerachainIntent({ poolAddress: bendPool.address, ... })",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "041311f00192e2e981ce35e30a7d53bc3082770f",
+      "path": "src/ledger/aggressive-sleeve-accounting.mjs",
+      "line": 40,
+      "column": 6,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "full 15-pitfall validation + BigInt safety + price snapshot + evidence hash chain",
+      "markerText": "TODO: full 15-pitfall validation + BigInt safety + price snapshot + evidence hash chain",
+      "lineText": "// TODO: full 15-pitfall validation + BigInt safety + price snapshot + evidence hash chain",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "83f3c1f66097b6ef26a9b2544500b6ae9387ae85",
+      "path": "src/ledger/aggressive-sleeve-accounting.mjs",
+      "line": 54,
+      "column": 6,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "lot accounting (specific-ID), IL calc via adapter, full cost subtraction, velocity metrics",
+      "markerText": "TODO: lot accounting (specific-ID), IL calc via adapter, full cost subtraction, velocity metrics",
+      "lineText": "// TODO: lot accounting (specific-ID), IL calc via adapter, full cost subtraction, velocity metrics",
+      "trackedFormat": false
+    },
+    {
+      "fingerprint": "17452974bd8f176613c84cac1aa0a0b0433cde34",
+      "path": "test/aggressive-sleeve-accounting.test.mjs",
+      "line": 49,
+      "column": 8,
+      "kind": "TODO",
+      "trackingTag": null,
+      "reason": "implement randomized or exhaustive sequence generator over enter/exit/claim/bridge events",
+      "markerText": "TODO: implement randomized or exhaustive sequence generator over enter/exit/claim/bridge events",
+      "lineText": "// TODO: implement randomized or exhaustive sequence generator over enter/exit/claim/bridge events",
       "trackedFormat": false
     }
   ]

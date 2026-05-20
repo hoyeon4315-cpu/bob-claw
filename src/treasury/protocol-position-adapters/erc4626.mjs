@@ -43,42 +43,54 @@ export async function markErc4626Position({
   );
   const chain = position.chain;
 
-  const shareBalance = BigInt(await readContract({
-    chain,
-    address: shareTokenAddress,
-    functionName: "balanceOf",
-    args: [walletAddress],
-  }) || 0);
-
-  const assetAddress = position.assetAddress || await readContract({
-    chain,
-    address: shareTokenAddress,
-    functionName: "asset",
-    args: [],
-  });
-
-  const assetDecimals = Number(position.assetDecimals ?? await readContract({
-    chain,
-    address: assetAddress,
-    functionName: "decimals",
-    args: [],
-  }));
-
-  const assetSymbol = position.assetSymbol || await readContract({
-    chain,
-    address: assetAddress,
-    functionName: "symbol",
-    args: [],
-  });
-
-  const assetBalance = shareBalance === 0n
-    ? 0n
-    : BigInt(await readContract({
+  const shareBalance = BigInt(
+    (await readContract({
       chain,
       address: shareTokenAddress,
-      functionName: "convertToAssets",
-      args: [shareBalance],
+      functionName: "balanceOf",
+      args: [walletAddress],
+    })) || 0,
+  );
+
+  const assetAddress =
+    position.assetAddress ||
+    (await readContract({
+      chain,
+      address: shareTokenAddress,
+      functionName: "asset",
+      args: [],
     }));
+
+  const assetDecimals = Number(
+    position.assetDecimals ??
+      (await readContract({
+        chain,
+        address: assetAddress,
+        functionName: "decimals",
+        args: [],
+      })),
+  );
+
+  const assetSymbol =
+    position.assetSymbol ||
+    (await readContract({
+      chain,
+      address: assetAddress,
+      functionName: "symbol",
+      args: [],
+    }));
+
+  const assetBalance =
+    shareBalance === 0n
+      ? 0n
+      : BigInt(
+          await readContract({
+            chain,
+            address: shareTokenAddress,
+            functionName: "convertToAssets",
+            args: [shareBalance],
+          }),
+        );
 
   const assetAmount = decimalAmount(assetBalance, assetDecimals);
   const assetPriceUsd = await readPrice({
@@ -88,28 +100,33 @@ export async function markErc4626Position({
   });
   const valueUsd = assetBalance === 0n ? 0 : undefined;
 
-  return normalizeProtocolPositionMark({
-    event: "position_marked",
-    observedAt,
-    positionId: position.positionId,
-    opportunityId: position.opportunityId,
-    strategyId: position.strategyId,
-    chain,
-    protocolId: position.protocolId,
-    bindingKind: position.bindingKind,
-    adapterId: "erc4626",
-    walletAddress,
-    assetAddress,
-    assetSymbol,
-    assetDecimals,
-    shareTokenAddress,
-    shareBalance: String(shareBalance),
-    assetBalance: String(assetBalance),
-    assetAmount,
-    assetPriceUsd,
-    ...(valueUsd === undefined ? {} : { valueUsd }),
-    btcPriceUsd,
-    markSource: "onchain_erc4626_convert_to_assets",
-    rpcUrl: position.rpcUrl || null,
-  }, { now: observedAt });
+  return normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      observedAt,
+      positionId: position.positionId,
+      opportunityId: position.opportunityId,
+      strategyId: position.strategyId,
+      chain,
+      protocolId: position.protocolId,
+      bindingKind: position.bindingKind,
+      adapterId: "erc4626",
+      walletAddress,
+      assetAddress,
+      assetSymbol,
+      assetDecimals,
+      shareTokenAddress,
+      shareBalance: String(shareBalance),
+      assetBalance: String(assetBalance),
+      assetAmount,
+      assetPriceUsd,
+      valuationKind: "priced",
+      valuationProvenance: "current_position_onchain",
+      ...(valueUsd === undefined ? {} : { valueUsd }),
+      btcPriceUsd,
+      markSource: "onchain_erc4626_convert_to_assets",
+      rpcUrl: position.rpcUrl || null,
+    },
+    { now: observedAt },
+  );
 }

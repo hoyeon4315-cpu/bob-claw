@@ -14,6 +14,8 @@ import {
   refillNeedsLiveRemediation,
   resolveAllChainAutopilotReport,
 } from "../status/all-chain-autopilot-slice.mjs";
+import { readJsonl } from "../lib/jsonl-read.mjs";
+import { tokensForTicker, tokenAsset } from "../assets/tokens.mjs";
 
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 const DEFAULT_CHILD_TIMEOUT_MS = 45_000;
@@ -201,6 +203,7 @@ function classifyRefillIssue(reason = null) {
   const text = String(reason || "").trim();
   if (!text) return "unknown";
   if (text === "routing_exhausted") return "routing_exhausted";
+  if (text === "quote_amount_too_low") return "quote_amount_below_minimum";
   if (
     /insufficient source balance|source_inventory_below_target_amount|source_inventory_reserved|source inventory|insufficient_funds|insufficient balance/iu.test(
       text,
@@ -224,21 +227,319 @@ function classifyRefillIssue(reason = null) {
   return "execution_unresolved";
 }
 
-function refillBlockerDetails(blockers = []) {
+function normalizeQuoteAmountFloor(value) {
+  if (!value || typeof value !== "object") return null;
+  const minimum = value.minimum != null ? String(value.minimum) : null;
+  const actual = value.actual != null ? String(value.actual) : null;
+  if (!minimum && !actual) return null;
+  return { minimum, actual };
+}
+
+function tokenFamilyForChainToken(chain, token) {
+  if (!chain || !token) return null;
+  const asset = tokenAsset(chain, token);
+  return asset?.family || null;
+}
+
+function familyKeyForRoute(route) {
+  if (!route?.srcChain || !route?.dstChain) return null;
+  const srcFamily = tokenFamilyForChainToken(route.srcChain, route.srcToken);
+  const dstFamily = tokenFamilyForChainToken(route.dstChain, route.dstToken);
+  if (!srcFamily || !dstFamily) return null;
+  return `${String(route.srcChain).toLowerCase()}|${srcFamily}->${String(route.dstChain).toLowerCase()}|${dstFamily}`;
+}
+
+function extractAmountFloorBody(body) {
+  if (!body || body.code !== "QUOTE_AMOUNT_TOO_LOW") return null;
+  const details = body.details;
+  const minimum = details?.minimum != null ? String(details.minimum) : null;
+  const actual = details?.actual != null ? String(details.actual) : null;
+  if (!minimum && !actual) return null;
+  return { minimum, actual };
+}
+
+function selectFreshestAmountFloor(prior, candidate) {
+  if (!prior) return candidate;
+  if (!candidate.observedAt) return prior;
+  return candidate.observedAt > prior.observedAt ? candidate : prior;
+}
+
+// Build a (srcChain, srcFamily) → (dstChain, dstFamily) → { minimum, actual,
+// observedAt } map from gateway quote failure records. Family-keyed because
+// the persisted refill blocker tuple references the destination *asset* (e.g.
+// wrapped_btc family) while Gateway's `dstToken` may be a registry-equivalent
+// settlement token within the same family. Compatibility is therefore checked
+// via the asset registry (`tokenAsset(chain, token).family`), not via any
+// chain/token literal.
+export function indexGatewayAmountFloorEvidence(records = []) {
+  const byKey = new Map();
+  const list = Array.isArray(records) ? records : [];
+  for (const record of list) {
+    const floor = extractAmountFloorBody(record?.error?.details?.body);
+    if (!floor) continue;
+    const key = familyKeyForRoute(record?.route);
+    if (!key) continue;
+    const observedAt = record?.observedAt ? String(record.observedAt) : "";
+    const candidate = { ...floor, observedAt };
+    byKey.set(key, selectFreshestAmountFloor(byKey.get(key), candidate));
+  }
+  return byKey;
+}
+
+const BTC_FAMILY_COMPATIBILITY = Object.freeze({
+  btc: ["btc", "native_or_wrapped", "wrapped_btc"],
+  native_or_wrapped: ["btc", "native_or_wrapped", "wrapped_btc"],
+  wrapped_btc: ["btc", "native_or_wrapped", "wrapped_btc"],
+});
+
+function blockerFamilyCandidates(blocker = {}) {
+  const sourceChain = blocker.sourceChain;
+  const destChain = blocker.chain;
+  if (!sourceChain || !destChain) return [];
+  const srcTokens = tokensForTicker(blocker.sourceAsset || "");
+  const dstTokens = tokensForTicker(blocker.targetAsset || blocker.asset || "");
+  const srcFamilies = new Set();
+  for (const token of srcTokens) {
+    const family = tokenFamilyForChainToken(sourceChain, token);
+    if (family) srcFamilies.add(family);
+  }
+  const dstFamilies = new Set();
+  for (const token of dstTokens) {
+    const family = tokenFamilyForChainToken(destChain, token);
+    if (family) dstFamilies.add(family);
+  }
+  if (srcFamilies.size === 0 || dstFamilies.size === 0) return [];
+  const candidates = [];
+  const srcChainLower = String(sourceChain).toLowerCase();
+  const dstChainLower = String(destChain).toLowerCase();
+  for (const srcFamily of srcFamilies) {
+    const compatibleSrcFamilies = BTC_FAMILY_COMPATIBILITY[srcFamily] || [srcFamily];
+    for (const dstFamily of dstFamilies) {
+      const compatibleDstFamilies = BTC_FAMILY_COMPATIBILITY[dstFamily] || [dstFamily];
+      for (const sFamily of compatibleSrcFamilies) {
+        for (const dFamily of compatibleDstFamilies) {
+          candidates.push(`${srcChainLower}|${sFamily}->${dstChainLower}|${dFamily}`);
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
+// Reconcile a stale autopilot refill blocker against fresh Gateway quote
+// failure evidence. When the persisted snapshot reports a routing/no-route
+// taxonomy for a (sourceChain/sourceFamily → chain/family) tuple that the
+// live Gateway observably treats as QUOTE_AMOUNT_TOO_LOW (route exists for a
+// registry-equivalent settlement token in the same family, input below
+// minimum), overlay the amount-floor evidence so downstream lifecycles can
+// advance to a precise NO_LIVE_ROUTE verdict without waiting for the next
+// autopilot rerun. No live policy/EV/cap/cooldown/kill-switch gate is
+// relaxed. Family equivalence is derived from the asset registry; no
+// chain/asset literal is hardcoded.
+const RECONCILE_ELIGIBLE_BLOCKER_REASONS = new Set([
+  "routing_exhausted",
+  "no_route",
+  "gateway_invalid_request_unknown",
+  "invalid_request_recipient",
+  "invalid_request_amount_unit",
+  "invalid_request_token",
+  "invalid_request_route_param",
+]);
+
+const SUCCESS_RECONCILE_ELIGIBLE_BLOCKER_REASONS = new Set([
+  ...RECONCILE_ELIGIBLE_BLOCKER_REASONS,
+  "quote_amount_too_low",
+]);
+
+export function reconcileBlockerWithAmountFloorEvidence(blocker = {}, amountFloorByRoute = new Map()) {
+  if (!amountFloorByRoute || amountFloorByRoute.size === 0) return blocker;
+  const reason = String(blocker.reason || "").trim();
+  if (!RECONCILE_ELIGIBLE_BLOCKER_REASONS.has(reason)) return blocker;
+  if (blocker.quoteAmountFloor) return blocker;
+  const candidates = blockerFamilyCandidates(blocker);
+  for (const key of candidates) {
+    const evidence = amountFloorByRoute.get(key);
+    if (!evidence) continue;
+    return {
+      ...blocker,
+      reason: "quote_amount_too_low",
+      routeDeferralReason: "bridge_quote_amount_below_minimum",
+      routeDeferralAction: "defer_until_input_amount_meets_route_minimum_or_consolidate_inventory",
+      quoteAmountFloor: { minimum: evidence.minimum, actual: evidence.actual },
+      reconciledFromFreshGatewayEvidence: true,
+    };
+  }
+  return blocker;
+}
+
+function extractSuccessProbeFields(record) {
+  if (!record) return null;
+  if (record.ok === false) return null;
+  if (!record.route) return null;
+  const observedAt = record.observedAt ? String(record.observedAt) : "";
+  const amount = record.amount != null ? String(record.amount) : null;
+  const outputAmount = record.outputAmount != null ? String(record.outputAmount) : null;
+  const fees = record.fees != null ? String(record.fees) : null;
+  const executionFees = record.executionFees != null ? String(record.executionFees) : null;
+  const feeRatio = Number.isFinite(Number(record.feeRatio)) ? Number(record.feeRatio) : null;
+  const retryReason = record.retryReason ? String(record.retryReason) : null;
+  const retryOfAmount = record.retryOfAmount != null ? String(record.retryOfAmount) : null;
+  if (!outputAmount) return null;
+  return { amount, outputAmount, fees, executionFees, feeRatio, retryReason, retryOfAmount, observedAt };
+}
+
+function selectFreshestSuccessProbe(prior, candidate) {
+  if (!prior) return candidate;
+  if (!candidate.observedAt) return prior;
+  return candidate.observedAt > prior.observedAt ? candidate : prior;
+}
+
+// Build a (srcChain, srcFamily) → (dstChain, dstFamily) → { amount,
+// outputAmount, fees, executionFees, feeRatio, retryReason, retryOfAmount,
+// observedAt } map from successful gateway quote records. Registry-driven
+// family key matches the failure map so producer-side reconcile can join on
+// the same tuple. The map is used to mark a stale autopilot snapshot
+// (persisted routing_exhausted/no_route/invalid_request_*) whenever a fresh
+// successful probe exists for an equivalent route family — and to forward
+// raw cost-floor numerics (fees, outputAmount, amount) for the lifecycle to
+// surface as cost evidence without re-deriving USD.
+export function indexGatewaySuccessEvidence(records = []) {
+  const byKey = new Map();
+  const list = Array.isArray(records) ? records : [];
+  for (const record of list) {
+    const probe = extractSuccessProbeFields(record);
+    if (!probe) continue;
+    const key = familyKeyForRoute(record?.route);
+    if (!key) continue;
+    byKey.set(key, selectFreshestSuccessProbe(byKey.get(key), probe));
+  }
+  return byKey;
+}
+
+export function reconcileBlockerWithGatewaySuccessEvidence(blocker = {}, successByRoute = new Map()) {
+  if (!successByRoute || successByRoute.size === 0) return blocker;
+  const reason = String(blocker.reason || "").trim();
+  if (!SUCCESS_RECONCILE_ELIGIBLE_BLOCKER_REASONS.has(reason)) return blocker;
+  const candidates = blockerFamilyCandidates(blocker);
+  for (const key of candidates) {
+    const probe = successByRoute.get(key);
+    if (!probe) continue;
+    const retryAmount = probe.retryReason === "QUOTE_AMOUNT_TOO_LOW" ? probe.retryOfAmount : null;
+    return {
+      ...blocker,
+      reason: "quote_amount_too_low",
+      routeDeferralReason: "bridge_quote_amount_below_minimum",
+      routeDeferralAction: "defer_until_input_amount_meets_route_minimum_or_consolidate_inventory",
+      ...(retryAmount && !blocker.quoteAmountFloor
+        ? { quoteAmountFloor: { minimum: probe.amount, actual: retryAmount } }
+        : {}),
+      gatewaySuccessProbe: probe,
+      reconciledFromFreshGatewayEvidence: true,
+      snapshotStaleByFreshSuccess: true,
+    };
+  }
+  return blocker;
+}
+
+function resolveSuccessByRoute(input) {
+  if (input instanceof Map) return input;
+  if (Array.isArray(input)) return indexGatewaySuccessEvidence(input);
+  return new Map();
+}
+
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function refillBlockerCostEvidence(item) {
+  return {
+    expectedNetUsd: finiteNumberOrNull(item.expectedNetUsd),
+    requiredNetUsd: finiteNumberOrNull(item.requiredNetUsd ?? item.requiredNetPnlUsd),
+    p90CostUsd: finiteNumberOrNull(item.p90CostUsd ?? item.receiptCostP90Usd ?? item.receiptCostFloorUsd),
+    effectiveFloorUsd: finiteNumberOrNull(item.effectiveFloorUsd ?? item.effectiveCostFloorUsd),
+  };
+}
+
+function normalizeStalePlannerMethod(value) {
+  return value === true || value === false ? value : null;
+}
+
+function normalizeGatewaySuccessProbe(probe) {
+  if (!probe || typeof probe !== "object") return null;
+  return {
+    amount: probe.amount != null ? String(probe.amount) : null,
+    outputAmount: probe.outputAmount != null ? String(probe.outputAmount) : null,
+    fees: probe.fees != null ? String(probe.fees) : null,
+    executionFees: probe.executionFees != null ? String(probe.executionFees) : null,
+    feeRatio: Number.isFinite(probe.feeRatio) ? probe.feeRatio : null,
+    retryReason: probe.retryReason || null,
+    retryOfAmount: probe.retryOfAmount != null ? String(probe.retryOfAmount) : null,
+    observedAt: probe.observedAt || null,
+  };
+}
+
+function normalizeRefillBlocker(item = {}) {
+  const reason = item.reason || null;
+  // Additive normalization: surface the upstream source/route/cost-floor fields
+  // emitted by `src/status/all-chain-autopilot-slice.mjs#refillBlockers`. The
+  // downstream lifecycle (`src/strategy/remediation-lane-intent-candidate.mjs`)
+  // needs the full normalized tuple (destination + source + method) plus
+  // taxonomy + cost-floor evidence to distinguish stale snapshots, structural
+  // route-absence (no cost-floor available), and EV-rejected (cost-floor
+  // numeric) classes without re-deriving from stale signals. No new policy,
+  // EV, or cost gate is introduced; this only widens the projection.
+  return {
+    chain: item.chain || null,
+    asset: item.asset || null,
+    targetAsset: item.targetAsset || item.asset || null,
+    sourceChain: item.sourceChain || null,
+    sourceAsset: item.sourceAsset || null,
+    reason,
+    category: classifyRefillIssue(reason),
+    selectedMethod: item.selectedMethod || null,
+    executorFamily: item.executorFamily || null,
+    routeFamily: item.routeFamily || null,
+    taxonomy: item.taxonomy || null,
+    routeDeferralReason: item.routeDeferralReason || null,
+    routeDeferralAction: item.routeDeferralAction || null,
+    quoteAmountFloor: normalizeQuoteAmountFloor(item.quoteAmountFloor),
+    reconciledFromFreshGatewayEvidence: item.reconciledFromFreshGatewayEvidence === true,
+    snapshotStaleByFreshSuccess: item.snapshotStaleByFreshSuccess === true,
+    gatewaySuccessProbe: normalizeGatewaySuccessProbe(item.gatewaySuccessProbe),
+    ...refillBlockerCostEvidence(item),
+    stalePlannerMethod: normalizeStalePlannerMethod(item.stalePlannerMethod),
+  };
+}
+
+export function refillBlockerDetails(blockers = [], { amountFloorByRoute = null, successByRoute = null } = {}) {
   if (!Array.isArray(blockers)) return [];
-  return blockers
-    .map((item = {}) => {
-      const reason = item.reason || null;
-      return {
-        chain: item.chain || null,
-        asset: item.asset || null,
-        reason,
-        category: classifyRefillIssue(reason),
-        selectedMethod: item.selectedMethod || null,
-      };
-    })
+  const withAmountFloor =
+    amountFloorByRoute && amountFloorByRoute.size > 0
+      ? blockers.map((blocker) => reconcileBlockerWithAmountFloorEvidence(blocker, amountFloorByRoute))
+      : blockers;
+  const withSuccess =
+    successByRoute && successByRoute.size > 0
+      ? withAmountFloor.map((blocker) => reconcileBlockerWithGatewaySuccessEvidence(blocker, successByRoute))
+      : withAmountFloor;
+  return withSuccess
+    .map(normalizeRefillBlocker)
     .filter((item) => item.reason)
     .slice(0, 8);
+}
+
+function liveAutomationRefillCounts(autopilot = null) {
+  const refill = autopilot?.refill || {};
+  return {
+    refillBlockedCount: refill.blockedCount ?? null,
+    refillUnresolvedCount: refill.unresolvedCount ?? null,
+    refillManualBacklogCount: refill.manualBacklogCount ?? null,
+    refillStaleSnapshotMethodCount: refill.staleSnapshotMethodCount ?? null,
+    refillCurrentMethodBlockedCount: refill.currentMethodBlockedCount ?? null,
+    refillAttemptedCount: refill.attemptedCount ?? null,
+    refillExecutedCount: refill.executedCount ?? null,
+  };
 }
 
 function countByCategory(items = []) {
@@ -289,6 +590,12 @@ function strategyLiveAdmissionBlockers(strategyDispatch = {}) {
     .slice(0, 8);
 }
 
+function resolveAmountFloorByRoute(input) {
+  if (input instanceof Map) return input;
+  if (Array.isArray(input)) return indexGatewayAmountFloorEvidence(input);
+  return new Map();
+}
+
 export function buildFullAutomationReadiness({
   runtime,
   inbound,
@@ -297,7 +604,11 @@ export function buildFullAutomationReadiness({
   payback,
   autopilot,
   commandHealth = {},
+  gatewayAmountFloorEvidence,
+  gatewaySuccessEvidence,
 } = {}) {
+  const amountFloorByRoute = resolveAmountFloorByRoute(gatewayAmountFloorEvidence);
+  const successByRoute = resolveSuccessByRoute(gatewaySuccessEvidence);
   const runtimeReady = runtime?.summary?.ready === true;
   const operatingCapitalIngressCount = inbound?.summary?.operatingCapitalIngressCount ?? 0;
   const paybackExcludedCount = inbound?.summary?.paybackExcludedCount ?? 0;
@@ -317,7 +628,10 @@ export function buildFullAutomationReadiness({
     merklCanaryReadyCount > 0 && !["failed", "invalid", "error"].includes(String(merklCanaryStatus || ""));
   const liveAutomationObserved = autopilot?.present === true;
   const activeLiveAutomationRun = autopilot?.activeRun === true;
-  const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || []);
+  const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || [], {
+    amountFloorByRoute,
+    successByRoute,
+  });
   const refillIssueCounts = countByCategory(refillBlockers);
   const unresolvedRefillRoutes =
     liveAutomationObserved &&
@@ -406,11 +720,7 @@ export function buildFullAutomationReadiness({
       status: autopilot?.status || null,
       phase: autopilot?.phase || null,
       nextAction: autopilot?.nextAction || null,
-      refillBlockedCount: autopilot?.refill?.blockedCount ?? null,
-      refillUnresolvedCount: autopilot?.refill?.unresolvedCount ?? null,
-      refillManualBacklogCount: autopilot?.refill?.manualBacklogCount ?? null,
-      refillAttemptedCount: autopilot?.refill?.attemptedCount ?? null,
-      refillExecutedCount: autopilot?.refill?.executedCount ?? null,
+      ...liveAutomationRefillCounts(autopilot),
       refillIssueCounts,
       refillBlockers,
       ready: !activeLiveAutomationRun && !unresolvedRefillRoutes,
@@ -458,6 +768,8 @@ async function main() {
     resolveAllChainAutopilotReport(autopilotLatest, autopilotLatestCompleted),
     { capitalManagerRefillJobsLatest: capitalManager.json },
   );
+  const gatewayQuoteFailureRecords = await readJsonl(config.dataDir, "gateway-quote-failures").catch(() => []);
+  const gatewayQuoteSuccessRecords = await readJsonl(config.dataDir, "gateway-quotes").catch(() => []);
 
   const report = buildFullAutomationReadiness({
     runtime,
@@ -467,6 +779,8 @@ async function main() {
     payback: payback.json,
     autopilot,
     commandHealth,
+    gatewayAmountFloorEvidence: gatewayQuoteFailureRecords,
+    gatewaySuccessEvidence: gatewayQuoteSuccessRecords,
   });
   report.commandHealth = commandHealth;
 

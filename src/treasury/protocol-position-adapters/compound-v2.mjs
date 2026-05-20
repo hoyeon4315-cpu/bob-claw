@@ -26,29 +26,33 @@ function decimalAmount(raw, decimals) {
 
 async function readExchangeRate({ readContract, chain, cTokenAddress, allowStateChangingExchangeRate }) {
   try {
-    return BigInt(await readContract({
-      chain,
-      address: cTokenAddress,
-      functionName: "exchangeRateStored",
-      args: [],
-    }));
+    return BigInt(
+      await readContract({
+        chain,
+        address: cTokenAddress,
+        functionName: "exchangeRateStored",
+        args: [],
+      }),
+    );
   } catch (error) {
     if (!allowStateChangingExchangeRate) throw error;
-    return BigInt(await readContract({
-      chain,
-      address: cTokenAddress,
-      functionName: "exchangeRateCurrent",
-      args: [],
-    }));
+    return BigInt(
+      await readContract({
+        chain,
+        address: cTokenAddress,
+        functionName: "exchangeRateCurrent",
+        args: [],
+      }),
+    );
   }
 }
 
 function shouldReadBorrow(position = {}) {
   return Boolean(
-    position.isBorrowingLoop
-      || position.borrowMarketAddress
-      || position.borrowBalanceAddress
-      || position.borrowBalanceFunction,
+    position.isBorrowingLoop ||
+    position.borrowMarketAddress ||
+    position.borrowBalanceAddress ||
+    position.borrowBalanceFunction,
   );
 }
 
@@ -78,12 +82,14 @@ async function readBorrowRaw({ readContract, chain, cTokenAddress, walletAddress
   const address = borrowMarketAddress(position, cTokenAddress, position.assetAddress);
   if (!address) return 0n;
   const functionName = position.borrowBalanceFunction || "borrowBalanceStored";
-  return BigInt(await readContract({
-    chain,
-    address,
-    functionName,
-    args: [walletAddress],
-  }) || 0);
+  return BigInt(
+    (await readContract({
+      chain,
+      address,
+      functionName,
+      args: [walletAddress],
+    })) || 0,
+  );
 }
 
 function compoundExchangeRateScale(position = {}) {
@@ -116,19 +122,21 @@ export async function markCompoundV2Position({
   const chain = position.chain;
   assertSameAssetBorrow(position, assetAddress);
 
-  const cTokenBalance = BigInt(await readContract({
-    chain,
-    address: cTokenAddress,
-    functionName: "balanceOf",
-    args: [walletAddress],
-  }) || 0);
+  const cTokenBalance = BigInt(
+    (await readContract({
+      chain,
+      address: cTokenAddress,
+      functionName: "balanceOf",
+      args: [walletAddress],
+    })) || 0,
+  );
   const exchangeRate = await readExchangeRate({
     readContract,
     chain,
     cTokenAddress,
     allowStateChangingExchangeRate,
   });
-  const suppliedUnderlyingRaw = cTokenBalance * exchangeRate / compoundExchangeRateScale(position);
+  const suppliedUnderlyingRaw = (cTokenBalance * exchangeRate) / compoundExchangeRateScale(position);
   const borrowRaw = await readBorrowRaw({
     readContract,
     chain,
@@ -138,38 +146,44 @@ export async function markCompoundV2Position({
   });
   const netRaw = suppliedUnderlyingRaw > borrowRaw ? suppliedUnderlyingRaw - borrowRaw : 0n;
   const assetAmount = decimalAmount(netRaw, assetDecimals);
-  const assetPriceUsd = netRaw === 0n
-    ? null
-    : await readPrice({
-      chain,
-      token: assetAddress,
-      symbol: assetSymbol,
-    });
+  const assetPriceUsd =
+    netRaw === 0n
+      ? null
+      : await readPrice({
+          chain,
+          token: assetAddress,
+          symbol: assetSymbol,
+        });
 
-  return normalizeProtocolPositionMark({
-    event: "position_marked",
-    observedAt,
-    positionId: position.positionId,
-    opportunityId: position.opportunityId,
-    strategyId: position.strategyId,
-    chain,
-    protocolId: position.protocolId,
-    bindingKind: position.bindingKind,
-    adapterId: "compound-v2",
-    walletAddress,
-    assetAddress,
-    assetSymbol,
-    assetDecimals,
-    shareTokenAddress: cTokenAddress,
-    shareBalance: String(cTokenBalance),
-    assetBalance: String(netRaw),
-    assetAmount,
-    assetPriceUsd,
-    debtBalance: String(borrowRaw),
-    debtAmount: decimalAmount(borrowRaw, assetDecimals),
-    valueUsd: netRaw === 0n ? 0 : undefined,
-    btcPriceUsd,
-    markSource: "onchain_compound_exchange_rate",
-    rpcUrl: position.rpcUrl || null,
-  }, { now: observedAt });
+  return normalizeProtocolPositionMark(
+    {
+      event: "position_marked",
+      observedAt,
+      positionId: position.positionId,
+      opportunityId: position.opportunityId,
+      strategyId: position.strategyId,
+      chain,
+      protocolId: position.protocolId,
+      bindingKind: position.bindingKind,
+      adapterId: "compound-v2",
+      walletAddress,
+      assetAddress,
+      assetSymbol,
+      assetDecimals,
+      shareTokenAddress: cTokenAddress,
+      shareBalance: String(cTokenBalance),
+      assetBalance: String(netRaw),
+      assetAmount,
+      assetPriceUsd,
+      valuationKind: "priced",
+      valuationProvenance: "current_position_onchain",
+      debtBalance: String(borrowRaw),
+      debtAmount: decimalAmount(borrowRaw, assetDecimals),
+      valueUsd: netRaw === 0n ? 0 : undefined,
+      btcPriceUsd,
+      markSource: "onchain_compound_exchange_rate",
+      rpcUrl: position.rpcUrl || null,
+    },
+    { now: observedAt },
+  );
 }

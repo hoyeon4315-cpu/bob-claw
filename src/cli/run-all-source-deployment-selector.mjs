@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
+import { resolve } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { config } from "../config/env.mjs";
 import { readKillSwitchStatus } from "../executor/policy/kill-switch.mjs";
 import { loadUnifiedOperatingCapital } from "../lib/unified-nav-reader.mjs";
@@ -61,62 +63,129 @@ async function runJsonNode(script, args = [], { timeout = 180_000 } = {}) {
   return parseJson(stdout, script);
 }
 
-async function collectFreshInputs({ timeout }) {
-  const capitalAuditInputs = await collectCapitalAuditInputs({ dataDir: config.dataDir });
-  const capitalAudit = buildCapitalAuditReport(capitalAuditInputs);
-  const pendleDirectCanaries = await runJsonNode(
+const REPORT_INPUT_COMMANDS = Object.freeze([
+  ["merklOpportunities", "src/cli/report-merkl-opportunities.mjs", ["--json", "--write"]],
+  ["merklQueue", "src/cli/report-merkl-canary-queue.mjs", ["--json", "--write"]],
+  ["campaignAware", "src/cli/report-campaign-aware-opportunities.mjs", ["--json"]],
+  ["capitalManagerRefill", "src/cli/plan-capital-manager-refill-jobs.mjs", ["--json"]],
+  ["strategyCatalog", "src/cli/report-strategy-catalog.mjs", ["--json"]],
+  ["executionSurfaces", "src/cli/report-strategy-execution-surfaces.mjs", ["--json"]],
+  ["allocatorCore", "src/cli/report-allocator-core.mjs", ["--json"]],
+  ["radarBoard", "src/cli/report-radar-board.mjs", ["--json"]],
+]);
+
+const OPTIONAL_REPORT_INPUT_COMMANDS = Object.freeze([
+  ["aggressiveStatus", "src/cli/report-aggressive-velocity-status.mjs", ["--json"]],
+  ["merklUserRewards", "src/cli/report-merkl-user-rewards.mjs", ["--json"]],
+  ["paybackStatus", "src/cli/report-payback-status.mjs", ["--json"]],
+  ["readiness", "src/cli/check-full-automation-readiness.mjs", ["--json"]],
+]);
+
+function describeChildSpawnError(error) {
+  if (!error) return { name: "Unknown", message: "Unknown child spawn failure" };
+  return {
+    name: error.name || "Error",
+    message: error.message || String(error),
+    code: error.code || null,
+    syscall: error.syscall || null,
+    errno: error.errno ?? null,
+    signal: error.signal || null,
+  };
+}
+
+export async function collectReportInputsSequentially({
+  timeout,
+  runJson = runJsonNode,
+  fetchPools = fetchDefiLlamaPools,
+} = {}) {
+  const out = {};
+  const inputCollectionFailures = [];
+  for (const [field, script, args] of REPORT_INPUT_COMMANDS) {
+    try {
+      out[field] = await runJson(script, args, { timeout });
+    } catch (error) {
+      out[field] = null;
+      inputCollectionFailures.push({
+        field,
+        script,
+        args,
+        required: true,
+        error: describeChildSpawnError(error),
+      });
+    }
+  }
+  out.defiLlamaPools = await fetchPools().catch(() => []);
+  for (const [field, script, args] of OPTIONAL_REPORT_INPUT_COMMANDS) {
+    try {
+      out[field] = await runJson(script, args, { timeout });
+    } catch (error) {
+      out[field] = null;
+      inputCollectionFailures.push({
+        field,
+        script,
+        args,
+        required: false,
+        error: describeChildSpawnError(error),
+      });
+    }
+  }
+  out.inputCollectionFailures = inputCollectionFailures;
+  return out;
+}
+
+export async function collectFreshInputBundleSequentially({
+  timeout,
+  collectCapitalAudit = collectCapitalAuditInputs,
+  buildCapitalAudit = buildCapitalAuditReport,
+  loadCapital = loadUnifiedOperatingCapital,
+  readKillSwitch = readKillSwitchStatus,
+  runJson = runJsonNode,
+  collectReports = collectReportInputsSequentially,
+} = {}) {
+  const capitalAuditInputs = await collectCapitalAudit({ dataDir: config.dataDir });
+  const capitalAudit = buildCapitalAudit(capitalAuditInputs);
+  const pendleDirectCanaries = await runJson(
     "src/cli/report-pendle-direct-canaries.mjs",
     ["--json", "--write", "--sdk-tokens"],
     { timeout },
   ).catch(() => null);
-  const [
-    unifiedCapital,
-    killStatus,
-    merklOpportunities,
-    merklQueue,
-    campaignAware,
-    capitalManagerRefill,
-    strategyCatalog,
-    executionSurfaces,
-    allocatorCore,
-    radarBoard,
-    defiLlamaPools,
-  ] = await Promise.all([
-    loadUnifiedOperatingCapital({ dataDir: config.dataDir }).catch((error) => ({
-      halt: true,
-      unifiedNavUsd: null,
-      flags: ["unified_capital_live_read_failed"],
-      missingSources: [],
-      error: error.message,
-    })),
-    readKillSwitchStatus().catch((error) => ({ halted: null, error: error.message })),
-    runJsonNode("src/cli/report-merkl-opportunities.mjs", ["--json", "--write"], { timeout }),
-    runJsonNode("src/cli/report-merkl-canary-queue.mjs", ["--json", "--write"], { timeout }),
-    runJsonNode("src/cli/report-campaign-aware-opportunities.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/plan-capital-manager-refill-jobs.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-strategy-catalog.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-strategy-execution-surfaces.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-allocator-core.mjs", ["--json"], { timeout }),
-    runJsonNode("src/cli/report-radar-board.mjs", ["--json"], { timeout }),
-    fetchDefiLlamaPools().catch(() => []),
-  ]);
-  return {
+  const pendleYtDryRun = await runJson("src/cli/dry-run-pendle-yt.mjs", ["--json", "--write"], { timeout }).catch(
+    () => null,
+  );
+  const pendleYtExitFromPosition = await runJson(
+    "src/cli/report-pendle-yt-exit-from-position.mjs",
+    ["--json", "--write"],
+    { timeout },
+  ).catch(() => null);
+  const unifiedCapital = await loadCapital({ dataDir: config.dataDir }).catch((error) => ({
+    halt: true,
+    unifiedNavUsd: null,
+    flags: ["unified_capital_live_read_failed"],
+    missingSources: [],
+    error: error.message,
+  }));
+  const killStatus = await readKillSwitch().catch((error) => ({ halted: null, error: error.message }));
+  const reportInputs = await collectReports({ timeout });
+  const inputCollectionFailures = Array.isArray(reportInputs.inputCollectionFailures)
+    ? reportInputs.inputCollectionFailures
+    : [];
+  const merged = {
     capitalAudit,
     signerAuditRecords: capitalAuditInputs.signerAuditRecords || [],
     protocolPositionMarks: capitalAuditInputs.protocolPositionMarks || [],
     pendleDirectCanaries,
+    pendleYtDryRun,
+    pendleYtExitFromPosition,
     unifiedCapital,
     killStatus,
-    merklOpportunities,
-    merklQueue,
-    campaignAware,
-    capitalManagerRefill,
-    strategyCatalog,
-    executionSurfaces,
-    allocatorCore,
-    radarBoard,
-    defiLlamaPools,
+    ...reportInputs,
   };
+  merged.inputCollectionFailures = inputCollectionFailures;
+  return merged;
+}
+
+async function collectFreshInputs({ timeout }) {
+  return collectFreshInputBundleSequentially({ timeout });
 }
 
 async function maybeSubmitSigner({ args, report }) {
@@ -184,8 +253,10 @@ async function main() {
     policyEvaluator,
   });
   const signerResult = await maybeSubmitSigner({ args, report });
+  const inputCollectionFailures = Array.isArray(inputs.inputCollectionFailures) ? inputs.inputCollectionFailures : [];
   const output = {
     ...report,
+    inputCollectionFailures,
     executionMode: {
       executePolicy: args.execute,
       submitSigner: args.submitSigner,
@@ -214,7 +285,11 @@ async function main() {
   console.log(`noBroadcastReason=${output.broadcast.noBroadcastReason || "n/a"}`);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}

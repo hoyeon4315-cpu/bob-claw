@@ -1,0 +1,1231 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  CANDIDATE_STATUSES,
+  FUTURE_BACKLOG_LANES,
+  LIFECYCLE_PRODUCERS,
+  READINESS_BLOCKER_CLASSES,
+  buildLaneIntentCandidateReport,
+} from "../src/strategy/remediation-lane-intent-candidate.mjs";
+
+function readyHandlerReport(overrides = {}, intentOverrides = {}) {
+  const handlerResult = {
+    lane: "capital_refill",
+    family: "capital_family",
+    sourceQueueItem: {
+      lane: "capital_refill",
+      family: "capital_family",
+      governingFieldPath: "familyCoverage[family=capital_family].firstBlockingReason",
+      canDryRun: true,
+      safetyBlockers: [],
+    },
+    status: "READY_FOR_DRY_RUN",
+    canDryRun: true,
+    dryRunIntent: {
+      intentType: "capital_refill_dry_run",
+      selectedMethod: intentOverrides.selectedMethod || "cross_chain_bridge_or_swap",
+      plannerCandidateMethods: intentOverrides.plannerCandidateMethods || [
+        "cross_chain_bridge_or_swap",
+        "cross_chain_swap_via_btc_intermediate",
+      ],
+      routeSourceCandidates: intentOverrides.routeSourceCandidates || [],
+      source: intentOverrides.source || {
+        chain: "bitcoin",
+        asset: "BTC",
+        token: "0x0",
+        actual: "200000",
+        estimatedUsd: 154,
+      },
+      destination: intentOverrides.destination || {
+        chain: "base",
+        asset: "wBTC.OFT",
+        token: "0xdest",
+        targetAmount: "118732",
+        targetAmountDecimal: 0.00118732,
+        estimatedAssetValueUsd: 91.12,
+      },
+      expectedNetUsd: "expectedNetUsd" in intentOverrides ? intentOverrides.expectedNetUsd : 0.91,
+      requiredNetUsd: "requiredNetUsd" in intentOverrides ? intentOverrides.requiredNetUsd : null,
+      p90CostUsd: "p90CostUsd" in intentOverrides ? intentOverrides.p90CostUsd : 0.62,
+      effectiveFloorUsd: "effectiveFloorUsd" in intentOverrides ? intentOverrides.effectiveFloorUsd : 0.75,
+      routeQuoteRef: intentOverrides.routeQuoteRef || {
+        routeKey: "synthetic-source->synthetic-dest",
+        amount: "10000",
+        routeInputUsd: 91.12,
+        routeNetEdgeUsd: 1.79,
+        routeExecutableNetEdgeUsd: 1.79,
+        routeKnownCostUsd: 0.38,
+        routeFailureRate: 0.01,
+      },
+      costs: {
+        expectedExecutionRefillCostUsd: 0.88,
+        expectedReserveReplenishmentCostUsd: 0,
+        bridgeQuoteCostUsd: 0.88,
+        bridgeQuoteCostCeilingUsd: 1.5,
+        routeKnownCostUsd: 0.38,
+      },
+      policyCaps: intentOverrides.policyCaps || {
+        tinyLivePerTxUsd: 500,
+        perTxUsd: 500,
+        perDayUsd: 500,
+        maxDailyLossUsd: 100,
+      },
+      blocker: null,
+      governingAgreement: {
+        queueLane: "capital_refill",
+        plannerDecision: "REFILL_REQUIRED",
+        jobDecision: "REFILL_REQUIRED",
+        selectionStatus: "ready",
+        agrees: true,
+      },
+    },
+    missingInputs: [],
+    missingProducer: null,
+    safetyBlockers: [],
+    canLive: false,
+    reportOnly: true,
+  };
+  return {
+    selectedPilotLane: "capital_refill",
+    status: "LANE_HANDLER_PILOT_READY",
+    handlerResults: [handlerResult],
+    handlerBacklog: [],
+    reportOnly: true,
+    canLive: false,
+    runtimeAuthority: "none",
+    ...overrides,
+  };
+}
+
+test("statuses enumerate report-only lifecycle outcomes", () => {
+  assert.deepEqual(
+    [...CANDIDATE_STATUSES],
+    [
+      "READY_FOR_INTENT_CANDIDATE",
+      "SMALLER_LEGAL_ROUTE_FOUND_REPORT_ONLY",
+      "NO_LIVE_ROUTE",
+      "WAITLIST_BELOW_ROUTE_MINIMUM",
+      "INSUFFICIENT_CAP_OR_RESERVE",
+      "TRUE_ECONOMIC_NO_GO_NEGATIVE_EV",
+      "WAITLIST_FOR_BETTER_ROUTE_OR_SIZE",
+      "ROUTE_OR_COST_PROVENANCE_MISSING",
+      "INSUFFICIENT_SAFE_CAPITAL",
+      "QUOTE_COST_FIELDS_MISSING",
+      "BACKLOG_MISSING_EVIDENCE",
+      "TYPED_MISSING_EVIDENCE",
+      "UNRESOLVED_GOVERNING_SYNC_MISMATCH",
+      "UNRESOLVED_STALE_READINESS_SNAPSHOT",
+    ],
+  );
+  assert.deepEqual(
+    [...FUTURE_BACKLOG_LANES],
+    ["receipt_reconciliation", "claim_harvest", "exit_redeem", "producer_backlog", "policy_review", "live_eligibility"],
+  );
+  assert.deepEqual(
+    [...READINESS_BLOCKER_CLASSES],
+    ["method_collision", "destination_collision", "method_unspecified_collision", "stale_snapshot_method"],
+  );
+});
+
+test("complete evidence and aligned governing surfaces produce a report-only intent candidate", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(),
+    readinessReport: {
+      liveAutomation: { refillBlockers: [] },
+    },
+  });
+  assert.equal(report.status, "READY_FOR_INTENT_CANDIDATE");
+  assert.equal(report.pilotLane, "capital_refill");
+  assert.equal(report.laneIntentCandidates.length, 1);
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.lane, "capital_refill");
+  assert.equal(candidate.status, "READY_FOR_INTENT_CANDIDATE");
+  assert.equal(candidate.canDryRun, true);
+  assert.equal(candidate.canIntent, true);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.equal(candidate.allowedToExecuteLive, false);
+  assert.equal(candidate.stableSourceRef, "familyCoverage[family=capital_family].firstBlockingReason");
+  assert.equal(candidate.evidenceComplete, true);
+  assert.equal(candidate.governingFieldPath, "familyCoverage[family=capital_family].firstBlockingReason");
+  assert.equal(candidate.selectedMethod, "cross_chain_bridge_or_swap");
+  assert.equal(candidate.executionMethod, "cross_chain_bridge_or_swap");
+  assert.equal(candidate.sourceChain, "bitcoin");
+  assert.equal(candidate.sourceAsset, "BTC");
+  assert.equal(candidate.destinationChain, "base");
+  assert.equal(candidate.destinationAsset, "wBTC.OFT");
+  assert.equal(candidate.expectedNetUsd, 0.91);
+  assert.equal(candidate.costs.expectedExecutionRefillCostUsd, 0.88);
+  assert.equal(candidate.governingAgreement.agrees, true);
+  assert.deepEqual(candidate.missingEvidence, []);
+  assert.equal(report.laneIntentCandidateSummary.intentCandidateCount, 1);
+  assert.equal(report.laneIntentCandidateSummary.canLiveCount, 0);
+  assert.equal(report.laneIntentCandidateSummary.blockedCount, 0);
+  assert.equal(report.safety.canLive, false);
+  assert.equal(report.safety.signerCalled, false);
+  assert.equal(report.safety.liveQueueEnqueued, false);
+  assert.equal(report.safety.autoExecuteChanged, false);
+});
+
+test("readiness blocker on the same destination forces UNRESOLVED_GOVERNING_SYNC_MISMATCH", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(),
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "base",
+            asset: "wBTC.OFT",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "cross_chain_bridge_or_swap",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.governingAgreement.agrees, false);
+  assert.equal(candidate.governingAgreement.readinessBlockerCount, 1);
+  assert.equal(candidate.governingAgreement.handlerAgrees, true);
+  assert.equal(candidate.nextAutomationStep, "reconcile_refill_planner_and_readiness_governing_fields");
+});
+
+test("missing required fields drop the candidate into BACKLOG_MISSING_EVIDENCE", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].dryRunIntent.selectedMethod = null;
+  handlerReport.handlerResults[0].dryRunIntent.expectedNetUsd = null;
+  handlerReport.handlerResults[0].dryRunIntent.source.chain = null;
+  handlerReport.handlerResults[0].dryRunIntent.source.asset = null;
+  handlerReport.handlerResults[0].dryRunIntent.destination.asset = null;
+  handlerReport.handlerResults[0].dryRunIntent.costs.expectedExecutionRefillCostUsd = null;
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  assert.equal(report.status, "BACKLOG_MISSING_EVIDENCE");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "BACKLOG_MISSING_EVIDENCE");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.ok(candidate.missingEvidence.includes("selectedMethod"));
+  assert.ok(candidate.missingEvidence.includes("sourceChain"));
+  assert.ok(candidate.missingEvidence.includes("sourceAsset"));
+  assert.ok(candidate.missingEvidence.includes("destinationAsset"));
+  assert.ok(candidate.missingEvidence.includes("expectedNetUsd"));
+  assert.ok(candidate.missingEvidence.includes("expectedExecutionRefillCostUsd"));
+  assert.equal(candidate.nextAutomationStep, "supply_missing_refill_intent_evidence_fields");
+});
+
+test("BLOCKED_MISSING_INPUT handler result keeps lane in BACKLOG_MISSING_EVIDENCE and never canIntent", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].status = "BLOCKED_MISSING_INPUT";
+  handlerReport.handlerResults[0].canDryRun = false;
+  handlerReport.handlerResults[0].missingInputs = ["matching_refill_planner_job"];
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  assert.equal(report.status, "BACKLOG_MISSING_EVIDENCE");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.canDryRun, false);
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.ok(candidate.missingEvidence.includes("matching_refill_planner_job"));
+});
+
+test("canDryRun without governing alignment does not imply canIntent", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].dryRunIntent.governingAgreement.agrees = false;
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.canDryRun, true);
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+});
+
+test("canIntent true never propagates to canLive true", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.canIntent, true);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.allowedToExecuteLive, false);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.equal(report.safety.canLive, false);
+  assert.equal(report.safety.allowedToExecuteLive, false);
+  assert.equal(report.safety.liveQueueEnqueued, false);
+});
+
+test("receipt/claim/exit/producer/policy/live remain futureHandlerBacklog with required evidence and next step", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport({
+      handlerBacklog: [
+        { lane: "receipt_reconciliation", family: "merkl", status: "BLOCKED_MISSING_INPUT" },
+        { lane: "claim_harvest", family: "merkl", status: "BLOCKED_MISSING_INPUT" },
+        { lane: "exit_redeem", family: "stable", status: "BLOCKED_MISSING_INPUT" },
+        { lane: "producer_backlog", family: "bnb_radar", status: "BLOCKED_MISSING_PRODUCER" },
+        { lane: "policy_review", family: "pendle_yt", status: "BLOCKED_POLICY_REVIEW" },
+      ],
+    }),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  assert.equal(report.futureHandlerBacklog.length, FUTURE_BACKLOG_LANES.length);
+  const receipt = report.futureHandlerBacklog.find((entry) => entry.lane === "receipt_reconciliation");
+  assert.equal(receipt.status, "FUTURE_HANDLER_BACKLOG");
+  assert.equal(receipt.canIntent, false);
+  assert.equal(receipt.canLive, false);
+  assert.ok(receipt.requiredEvidence.includes("receipt_target_identity"));
+  assert.ok(receipt.requiredEvidence.includes("tx_hash_or_stable_broadcast_id"));
+  assert.ok(receipt.requiredEvidence.includes("dry_run_reconciliation_path_or_exact_missing_producer"));
+  assert.equal(receipt.handlerBacklogCount, 1);
+  assert.ok(receipt.queueFamilies.includes("merkl"));
+  const claim = report.laneBacklog.find((entry) => entry.lane === "claim_harvest");
+  assert.ok(claim.requiredEvidence.includes("chain_token_distributor_or_exact_missing_field"));
+  assert.ok(claim.requiredEvidence.includes("claim_readiness"));
+  const exit = report.laneBacklog.find((entry) => entry.lane === "exit_redeem");
+  assert.ok(exit.requiredEvidence.includes("action_specific_exit_or_redeem_expected_net_usd"));
+  assert.ok(exit.requiredEvidence.includes("executor_binding_or_exact_missing_binding"));
+  const live = report.futureHandlerBacklog.find((entry) => entry.lane === "live_eligibility");
+  assert.equal(live.status, "FUTURE_HANDLER_BACKLOG");
+  assert.equal(live.canIntent, false);
+  assert.equal(live.canLive, false);
+  assert.ok(live.requiredEvidence.includes("policy_proof"));
+  assert.ok(live.requiredEvidence.includes("kill_switch_proof"));
+  assert.equal(report.laneHandlerCoverage.reportOnly, true);
+  assert.equal(report.laneSafetyProof.runtimeAuthority, "none");
+});
+
+test("above-min governing-aligned intent without USD cost-floor producer => QUOTE_COST_FIELDS_MISSING", () => {
+  const handlerReport = readyHandlerReport();
+  // Drop the USD cost-floor source from the planner dry-run intent.
+  handlerReport.handlerResults[0].dryRunIntent.requiredNetUsd = null;
+  handlerReport.handlerResults[0].dryRunIntent.p90CostUsd = null;
+  handlerReport.handlerResults[0].dryRunIntent.effectiveFloorUsd = null;
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "QUOTE_COST_FIELDS_MISSING");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.equal(candidate.nextAutomationStep, "supply_real_producer_usd_cost_floor_fields_without_fabrication");
+  assert.ok(candidate.missingUsdCostFloorFields.includes("requiredNetUsd|p90CostUsd|effectiveFloorUsd"));
+  assert.ok(candidate.quoteCostFieldsMissing);
+  assert.equal(candidate.quoteCostFieldsMissing.missingUsdCostFloorProducer, "src/treasury/refill-job.mjs");
+});
+
+test("negative EV after legal amount sweep blocks canIntent with producer decomposition", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      expectedNetUsd: -0.25,
+      requiredNetUsd: 0.95,
+      p90CostUsd: 0.85,
+      effectiveFloorUsd: 0.95,
+      routeQuoteRef: {
+        routeKey: "generic-source->generic-dest",
+        amount: "10000",
+        routeInputUsd: 10,
+        routeNetEdgeUsd: 0.2,
+        routeExecutableNetEdgeUsd: 0.2,
+        routeKnownCostUsd: 0.05,
+      },
+      source: { chain: "genericSource", asset: "GEN_SRC", token: "0xs", actual: "50000", estimatedUsd: 50 },
+      destination: {
+        chain: "genericDest",
+        asset: "GEN_DST",
+        token: "0xd",
+        targetAmount: "10000",
+        targetAmountDecimal: 0.0001,
+        estimatedAssetValueUsd: 10,
+      },
+      policyCaps: { tinyLivePerTxUsd: 100, perTxUsd: 100, perDayUsd: 100, maxDailyLossUsd: 10 },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TRUE_ECONOMIC_NO_GO_NEGATIVE_EV");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.economicReview.verdict, "TRUE_ECONOMIC_NO_GO_NEGATIVE_EV");
+  assert.equal(candidate.amountSweep.candidates[0].legal, true);
+  assert.equal(candidate.amountSweep.candidates[0].reason, "expected_net_below_effective_floor");
+  assert.equal(candidate.evDecomposition.expectedNetUsd, -0.25);
+  assert.equal(candidate.evDecomposition.effectiveFloorUsd, 0.95);
+});
+
+test("fresh quote amount above safe capital blocks canIntent without selecting a route", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      expectedNetUsd: 2,
+      requiredNetUsd: 0.95,
+      p90CostUsd: 0.85,
+      effectiveFloorUsd: 0.95,
+      routeQuoteRef: {
+        routeKey: "generic-source->generic-dest",
+        amount: "100000",
+        routeInputUsd: 80,
+        routeNetEdgeUsd: 2.5,
+        routeExecutableNetEdgeUsd: 2.5,
+        routeKnownCostUsd: 0.05,
+      },
+      source: { chain: "genericSource", asset: "GEN_SRC", token: "0xs", actual: "50000", estimatedUsd: 50 },
+      destination: {
+        chain: "genericDest",
+        asset: "GEN_DST",
+        token: "0xd",
+        targetAmount: "100000",
+        targetAmountDecimal: 0.001,
+        estimatedAssetValueUsd: 80,
+      },
+      policyCaps: { tinyLivePerTxUsd: 25, perTxUsd: 25, perDayUsd: 25, maxDailyLossUsd: 10 },
+      routeSourceCandidates: [
+        {
+          method: "synthetic_bridge_alpha",
+          selected: false,
+          availability: "ready",
+          source: { chain: "sourceA", asset: "SRC_A", actual: "77777", estimatedUsd: 60 },
+          destination: { chain: "destA", asset: "DST_A" },
+          routeQuoteRef: {
+            amount: "100000",
+            routeKnownCostUsd: 0.1,
+          },
+          costs: {
+            expectedExecutionRefillCostUsd: 0.2,
+            routeKnownCostUsd: 0.1,
+          },
+          expectedNetUsd: 1.8,
+          requiredNetUsd: 0.95,
+          p90CostUsd: 0.85,
+          effectiveFloorUsd: 0.95,
+        },
+        {
+          method: "synthetic_bridge_beta",
+          selected: true,
+          availability: "ready",
+          source: { chain: "sourceB", asset: "SRC_B", actual: "50000", estimatedUsd: 50 },
+          destination: { chain: "destA", asset: "DST_A" },
+          routeQuoteRef: {
+            amount: "100000",
+            routeKnownCostUsd: 0.05,
+          },
+          costs: {
+            expectedExecutionRefillCostUsd: 0.15,
+            routeKnownCostUsd: 0.05,
+          },
+          expectedNetUsd: 2,
+          requiredNetUsd: 0.95,
+          p90CostUsd: 0.85,
+          effectiveFloorUsd: 0.95,
+        },
+        {
+          method: "synthetic_quoteless",
+          selected: false,
+          availability: "conditional",
+          source: { chain: "sourceC", asset: "SRC_C", actual: "12345", estimatedUsd: 12 },
+          destination: { chain: "destA", asset: "DST_A" },
+          routeQuoteRef: null,
+          costs: null,
+          missingInputs: ["quote_missing"],
+        },
+      ],
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "INSUFFICIENT_SAFE_CAPITAL");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.amountSweep.candidates[0].legal, false);
+  assert.equal(candidate.amountSweep.candidates[0].reason, "quoted_amount_exceeds_safe_allocatable_capital");
+  assert.equal(candidate.missingSats, "68750");
+  assert.equal(candidate.amountSweep.candidates[0].missingSats, "68750");
+  assert.equal(candidate.waitlistRecheckCommand, "node src/cli/run-all-source-deployment-selector.mjs --json");
+  assert.equal(candidate.waitlist.requiredSats, "100000");
+  assert.equal(candidate.waitlist.safeAllocatableAmountSats, "31250");
+  assert.equal(candidate.waitlist.missingSats, "68750");
+  assert.equal(candidate.waitlist.source.chain, "sourceB");
+  assert.equal(candidate.waitlist.source.asset, "SRC_B");
+  assert.equal(candidate.waitlist.capProvenance.producer, "src/config/strategy-caps.mjs");
+  assert.equal(candidate.waitlist.paybackReserveProvenance.producer, "src/treasury/refill-job.mjs");
+  assert.equal(candidate.waitlist.gasReserveProvenance.producer, "src/treasury/refill-job.mjs");
+  assert.equal(candidate.waitlist.quote.producer, "node src/cli/check-full-automation-readiness.mjs --json");
+  assert.equal(candidate.waitlist.quote.ttlSeconds, null);
+  assert.equal(candidate.waitlist.quote.staleness, "ttl_not_provided_by_quote_producer");
+  assert.equal(candidate.waitlist.nextRefreshTrigger, "fresh_selector_or_refill_planner_rerun");
+  assert.equal(candidate.waitlist.waitlistRecheckCommand, "node src/cli/run-all-source-deployment-selector.mjs --json");
+  assert.deepEqual(
+    candidate.routeSourceRanking.map((entry) => entry.method),
+    ["synthetic_bridge_beta", "synthetic_bridge_alpha", "synthetic_quoteless"],
+  );
+  assert.equal(candidate.routeSourceRanking[0].quoteProvenance, "fresh_selected_route_quote");
+  assert.equal(candidate.routeSourceRanking[1].quoteProvenance, "fresh_planner_route_quote");
+  assert.equal(candidate.routeSourceRanking[2].blocker, "quote_or_cost_provenance_missing_for_method");
+  assert.equal(candidate.capitalBuckets.find((entry) => entry.bucket === "safe_allocatable").amountSats, "31250");
+  assert.equal(candidate.capitalBuckets.find((entry) => entry.bucket === "payback_reserve").classification, "reserved");
+  assert.equal(candidate.reallocationCandidate, null);
+});
+
+test("smaller legal route is selected report-only when it fits safe capital", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(
+      {},
+      {
+        routeSourceCandidates: [
+          {
+            method: "synthetic_large_route",
+            selected: true,
+            availability: "ready",
+            source: { chain: "moon", asset: "MOON", actual: "60000", estimatedUsd: 60 },
+            destination: { chain: "mars", asset: "MARS_BTC" },
+            routeQuoteRef: { amount: "90000", routeKnownCostUsd: 0.1 },
+            costs: { expectedExecutionRefillCostUsd: 0.2, routeKnownCostUsd: 0.1 },
+            expectedNetUsd: 2,
+            requiredNetUsd: 0.4,
+            p90CostUsd: 0.3,
+            effectiveFloorUsd: 0.4,
+          },
+          {
+            method: "synthetic_smaller_route",
+            selected: false,
+            availability: "ready",
+            source: { chain: "venus", asset: "VENUS", actual: "45000", estimatedUsd: 45 },
+            destination: { chain: "mars", asset: "MARS_BTC" },
+            routeQuoteRef: { amount: "25000", routeKnownCostUsd: 0.08 },
+            costs: { expectedExecutionRefillCostUsd: 0.12, routeKnownCostUsd: 0.08 },
+            expectedNetUsd: 1.2,
+            requiredNetUsd: 0.4,
+            p90CostUsd: 0.3,
+            effectiveFloorUsd: 0.4,
+          },
+        ],
+        source: { chain: "moon", asset: "MOON", token: "0xmoon", actual: "60000", estimatedUsd: 60 },
+        destination: {
+          chain: "mars",
+          asset: "MARS_BTC",
+          token: "0xmars",
+          targetAmount: "90000",
+          targetAmountDecimal: 0.0009,
+          estimatedAssetValueUsd: 90,
+        },
+        routeQuoteRef: {
+          routeKey: "moon->mars",
+          amount: "90000",
+          routeInputUsd: 90,
+          routeNetEdgeUsd: 2.5,
+          routeExecutableNetEdgeUsd: 2.5,
+          routeKnownCostUsd: 0.1,
+        },
+        expectedNetUsd: 2,
+        requiredNetUsd: 0.4,
+        p90CostUsd: 0.3,
+        effectiveFloorUsd: 0.4,
+        policyCaps: { tinyLivePerTxUsd: 40, perTxUsd: 40, perDayUsd: 40, maxDailyLossUsd: 10 },
+      },
+    ),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "SMALLER_LEGAL_ROUTE_FOUND_REPORT_ONLY");
+  assert.equal(candidate.canIntent, true);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.equal(candidate.reallocationCandidate.method, "synthetic_smaller_route");
+  assert.equal(candidate.reallocationCandidate.amountSats, "25000");
+  assert.equal(candidate.amountSweep.selectedReportOnlyAmountSats, "25000");
+  assert.equal(
+    candidate.amountSweep.candidates.find((entry) => entry.method === "synthetic_smaller_route").legal,
+    true,
+  );
+  assert.equal(
+    candidate.amountSweep.candidates.find((entry) => entry.method === "synthetic_large_route").reason,
+    "quoted_amount_exceeds_safe_allocatable_capital",
+  );
+});
+
+test("canIntent report-only candidate never implies canLive", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(
+      {},
+      {
+        expectedNetUsd: 2,
+        requiredNetUsd: 0.95,
+        p90CostUsd: 0.85,
+        effectiveFloorUsd: 0.95,
+        routeQuoteRef: {
+          routeKey: "synthetic-source->synthetic-dest",
+          amount: "100000",
+          routeInputUsd: 80,
+          routeNetEdgeUsd: 2.5,
+          routeExecutableNetEdgeUsd: 2.5,
+          routeKnownCostUsd: 0.05,
+        },
+        source: { chain: "intentSource", asset: "INT_SRC", token: "0xs", actual: "200000", estimatedUsd: 160 },
+        destination: {
+          chain: "intentDest",
+          asset: "INT_DST",
+          token: "0xd",
+          targetAmount: "100000",
+          targetAmountDecimal: 0.001,
+          estimatedAssetValueUsd: 80,
+        },
+        policyCaps: { tinyLivePerTxUsd: 500, perTxUsd: 500, perDayUsd: 500, maxDailyLossUsd: 10 },
+      },
+    ),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "READY_FOR_INTENT_CANDIDATE");
+  assert.equal(candidate.canIntent, true);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reallocationCandidate.reportOnly, true);
+  assert.equal(candidate.reallocationCandidate.runtimeAuthority, "none");
+});
+
+test("anti-overfit: distinct method tuples both block on USD cost-floor when missing", () => {
+  for (const tuple of [
+    {
+      selectedMethod: "antialpha_method",
+      source: { chain: "ax", asset: "AX" },
+      destination: { chain: "az", asset: "AZ" },
+    },
+    {
+      selectedMethod: "antibeta_method",
+      source: { chain: "bx", asset: "BX" },
+      destination: { chain: "bz", asset: "BZ" },
+    },
+  ]) {
+    const handlerReport = readyHandlerReport(
+      {},
+      {
+        selectedMethod: tuple.selectedMethod,
+        plannerCandidateMethods: [tuple.selectedMethod],
+        source: { ...tuple.source, token: "0xs", estimatedUsd: 5 },
+        destination: {
+          chain: tuple.destination.chain,
+          asset: tuple.destination.asset,
+          token: "0xd",
+          targetAmount: "9999",
+          targetAmountDecimal: 0.00009999,
+          estimatedAssetValueUsd: 4,
+        },
+        p90CostUsd: null,
+        effectiveFloorUsd: null,
+      },
+    );
+    const report = buildLaneIntentCandidateReport({
+      laneHandlerReport: handlerReport,
+      readinessReport: { liveAutomation: { refillBlockers: [] } },
+    });
+    const candidate = report.laneIntentCandidates[0];
+    assert.equal(candidate.status, "QUOTE_COST_FIELDS_MISSING", `tuple ${tuple.selectedMethod}`);
+    assert.equal(candidate.canIntent, false);
+    assert.equal(candidate.canLive, false);
+  }
+});
+
+test("above-min canIntent requires USD floor + producer agreement; otherwise canIntent stays false", () => {
+  // Surface mismatch (handler agrees but readiness has unrelated current-method blocker) must
+  // never permit canIntent=true regardless of USD floor presence.
+  const handlerReport = readyHandlerReport();
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "base",
+            asset: "wBTC.OFT",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "cross_chain_bridge_or_swap",
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.notEqual(candidate.status, "READY_FOR_INTENT_CANDIDATE");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+});
+
+test("no capital_refill pilot lane produces no candidate but keeps backlog populated", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: {
+      selectedPilotLane: null,
+      handlerResults: [],
+      handlerBacklog: [],
+    },
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  assert.equal(report.status, "NO_PILOT_LANE_FOR_INTENT_CANDIDATE");
+  assert.equal(report.laneIntentCandidates.length, 0);
+  assert.equal(report.laneIntentCandidateSummary.intentCandidateCount, 0);
+  assert.equal(report.futureHandlerBacklog.length, FUTURE_BACKLOG_LANES.length);
+});
+
+test("no family-specific or protocol-specific special casing is required", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].family = "any_other_family";
+  handlerReport.handlerResults[0].sourceQueueItem.family = "any_other_family";
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.family, "any_other_family");
+  assert.equal(candidate.status, "READY_FOR_INTENT_CANDIDATE");
+  assert.equal(candidate.canIntent, true);
+});
+
+test("readiness blocker whose method left planner candidate set marks UNRESOLVED_STALE_READINESS_SNAPSHOT", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: ["method_alpha", "method_beta"],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "synthchain",
+        asset: "SYNTH",
+        token: "0xsynth",
+        targetAmount: "1000",
+        targetAmountDecimal: 0.001,
+        estimatedAssetValueUsd: 50,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "method_obsolete_gamma",
+          },
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "expected_net_below_receipt_cost_p90_floor",
+            category: "execution_unresolved",
+            selectedMethod: "method_obsolete_delta",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "UNRESOLVED_STALE_READINESS_SNAPSHOT");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "UNRESOLVED_STALE_READINESS_SNAPSHOT");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.governingAgreement.onlyStaleSnapshot, true);
+  assert.equal(candidate.governingAgreement.staleSnapshotCount, 2);
+  assert.equal(candidate.governingAgreement.liveCollisionCount, 0);
+  assert.equal(candidate.nextAutomationStep, "rerun_autopilot_to_refresh_governing_refill_blockers");
+  for (const blocker of candidate.readinessBlockers) {
+    assert.equal(blocker.mismatchClass, "stale_snapshot_method");
+  }
+  assert.equal(report.laneIntentCandidateSummary.staleSnapshotCount, 1);
+  assert.equal(report.laneIntentCandidateSummary.governingMismatchCount, 0);
+});
+
+test("mixed stale and current-method blockers keep UNRESOLVED_GOVERNING_SYNC_MISMATCH", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: ["method_alpha", "method_beta"],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "synthchain",
+        asset: "SYNTH",
+        token: "0xsynth",
+        targetAmount: "1000",
+        targetAmountDecimal: 0.001,
+        estimatedAssetValueUsd: 50,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "routing_exhausted",
+            selectedMethod: "method_obsolete_gamma",
+          },
+          {
+            chain: "synthchain",
+            asset: "SYNTH",
+            reason: "routing_exhausted",
+            selectedMethod: "method_alpha",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.governingAgreement.staleSnapshotCount, 1);
+  assert.equal(candidate.governingAgreement.liveCollisionCount, 1);
+  const classes = candidate.readinessBlockers.map((entry) => entry.mismatchClass);
+  assert.deepEqual(classes.sort(), ["method_collision", "stale_snapshot_method"]);
+  assert.equal(candidate.nextAutomationStep, "reconcile_refill_planner_and_readiness_governing_fields");
+});
+
+test("readiness blocker without selectedMethod is destination_collision and blocks intent", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: ["method_alpha"],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "altchain",
+        asset: "ALT",
+        token: "0xalt",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 5,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [{ chain: "altchain", asset: "ALT", reason: "routing_exhausted", selectedMethod: null }],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  assert.equal(candidate.readinessBlockers[0].mismatchClass, "destination_collision");
+});
+
+test("absent plannerCandidateMethods falls back to method_unspecified_collision", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      plannerCandidateMethods: [],
+      selectedMethod: "method_alpha",
+      destination: {
+        chain: "altchain",
+        asset: "ALT",
+        token: "0xalt",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 5,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          { chain: "altchain", asset: "ALT", reason: "routing_exhausted", selectedMethod: "method_anything" },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.readinessBlockers[0].mismatchClass, "method_unspecified_collision");
+  assert.equal(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+});
+
+test("lifecycle exposes producer paths on candidates, backlog, and report root", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport(),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  assert.equal(report.producers, LIFECYCLE_PRODUCERS);
+  assert.equal(report.producers.refillPlanner.cli, "node src/cli/plan-capital-manager-refill-jobs.mjs --json");
+  assert.equal(report.producers.readinessRefillBlockers.cli, "node src/cli/check-full-automation-readiness.mjs --json");
+  assert.equal(report.producers.readinessRefillBlockers.upstreamModule, "src/status/all-chain-autopilot-slice.mjs");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.producers, LIFECYCLE_PRODUCERS);
+  const receipt = report.futureHandlerBacklog.find((entry) => entry.lane === "receipt_reconciliation");
+  assert.ok(receipt.owningProducer);
+  assert.ok(receipt.owningProducer.cli.includes("report:receipt-ledger"));
+  const live = report.futureHandlerBacklog.find((entry) => entry.lane === "live_eligibility");
+  assert.ok(live.owningProducer);
+  assert.ok(live.owningProducer.module.includes("policy"));
+});
+
+test("precise NO_LIVE_ROUTE requires current-method blocker and direct cost evidence", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].dryRunIntent.blocker = "expected_net_below_receipt_cost_p90_floor";
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "base",
+            asset: "wBTC.OFT",
+            reason: "expected_net_below_receipt_cost_p90_floor",
+            selectedMethod: "cross_chain_bridge_or_swap",
+            stalePlannerMethod: false,
+            expectedNetUsd: -0.1,
+            requiredNetUsd: 0.5,
+            p90CostUsd: 0.6,
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "NO_LIVE_ROUTE");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.evidenceComplete, true);
+  assert.equal(candidate.noLiveRouteEvidence.method, "cross_chain_bridge_or_swap");
+  assert.equal(candidate.noLiveRouteEvidence.costEvidence[0].expectedNetUsd, -0.1);
+  assert.equal(candidate.noLiveRouteEvidence.costEvidence[0].requiredNetUsd, 0.5);
+  assert.equal(candidate.noLiveRouteEvidence.costEvidence[0].p90CostUsd, 0.6);
+});
+
+test("NO_LIVE_ROUTE requires planner and readiness blocker reason agreement", () => {
+  const handlerReport = readyHandlerReport();
+  handlerReport.handlerResults[0].dryRunIntent.blocker = "expected_net_below_receipt_cost_p90_floor";
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "base",
+            asset: "wBTC.OFT",
+            reason: "routing_exhausted",
+            selectedMethod: "cross_chain_bridge_or_swap",
+            stalePlannerMethod: false,
+            expectedNetUsd: -0.1,
+            requiredNetUsd: 0.5,
+            p90CostUsd: 0.6,
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.noLiveRouteEvidence, null);
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+});
+
+test("producer backlog and waitlist expose exact common lifecycle fields", () => {
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: readyHandlerReport({
+      handlerBacklog: [
+        {
+          lane: "producer_backlog",
+          family: "arbitrary_family",
+          status: "BLOCKED_MISSING_PRODUCER",
+          missingProducer: "build_arbitrary_receipt_producer",
+          governingFieldPath: "familyActionTable[family=arbitrary_family].missingProducer",
+        },
+        {
+          lane: "waitlist",
+          family: "wait_family",
+          status: "WAITLIST",
+          reason: "negative_ev",
+          governingFieldPath: "familyActionTable[family=wait_family].reason",
+        },
+      ],
+    }),
+    readinessReport: { liveAutomation: { refillBlockers: [] } },
+  });
+  const producer = report.laneBacklog.find((entry) => entry.family === "arbitrary_family");
+  assert.equal(producer.missingProducer, "build_arbitrary_receipt_producer");
+  assert.equal(producer.governingFieldPath, "familyActionTable[family=arbitrary_family].missingProducer");
+  assert.equal(producer.canLive, false);
+  assert.equal(producer.reportOnly, true);
+  assert.ok(producer.evidenceContract.includes("owner_or_best_owner_guess"));
+  const wait = report.laneWaitlist.find((entry) => entry.family === "wait_family");
+  assert.equal(wait.reason, "negative_ev");
+  assert.equal(wait.recheckCondition, "negative_ev");
+  assert.equal(wait.governingFieldPath, "familyActionTable[family=wait_family].reason");
+  assert.ok(wait.validWaitReasons.includes("negative_ev"));
+});
+
+test("classification works across arbitrary chain/asset/method strings (no hardcoding)", () => {
+  const cases = [
+    { chain: "zzz", asset: "QQQ", planner: ["m1", "m2"], blockerMethod: "m1", expected: "method_collision" },
+    { chain: "alpha", asset: "BETA", planner: ["m1", "m2"], blockerMethod: "m_old", expected: "stale_snapshot_method" },
+    { chain: "x", asset: "Y", planner: ["only_one"], blockerMethod: "only_one", expected: "method_collision" },
+    { chain: "n", asset: "N", planner: ["fresh"], blockerMethod: "obsolete", expected: "stale_snapshot_method" },
+  ];
+  for (const fixture of cases) {
+    const handlerReport = readyHandlerReport(
+      {},
+      {
+        plannerCandidateMethods: fixture.planner,
+        selectedMethod: fixture.planner[0],
+        destination: {
+          chain: fixture.chain,
+          asset: fixture.asset,
+          token: "0x0",
+          targetAmount: "1",
+          targetAmountDecimal: 1,
+          estimatedAssetValueUsd: 1,
+        },
+      },
+    );
+    const report = buildLaneIntentCandidateReport({
+      laneHandlerReport: handlerReport,
+      readinessReport: {
+        liveAutomation: {
+          refillBlockers: [
+            {
+              chain: fixture.chain,
+              asset: fixture.asset,
+              reason: "routing_exhausted",
+              selectedMethod: fixture.blockerMethod,
+            },
+          ],
+        },
+      },
+    });
+    const candidate = report.laneIntentCandidates[0];
+    assert.equal(
+      candidate.readinessBlockers[0].mismatchClass,
+      fixture.expected,
+      `expected ${fixture.expected} for ${JSON.stringify(fixture)}`,
+    );
+  }
+});
+
+test("normalized tuple match with route-absence taxonomy emits TYPED_MISSING_EVIDENCE", () => {
+  // planner has fresh ready job (blocker:null); readiness blocker matches the
+  // full normalized tuple (chain + asset + sourceChain + sourceAsset +
+  // selectedMethod) AND carries a route-absence taxonomy whose cost-floor is
+  // structurally unavailable. Synthetic chain/asset/method strings prove no
+  // target literal is required.
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_cross_chain_method_a",
+      plannerCandidateMethods: ["synthetic_cross_chain_method_a", "synthetic_cross_chain_method_b"],
+      source: { chain: "syntheticSrcChain", asset: "SYN_SRC_ASSET", token: "0xsrc", estimatedUsd: 50 },
+      destination: {
+        chain: "syntheticDstChain",
+        asset: "SYN_DST_ASSET",
+        token: "0xdst",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "syntheticDstChain",
+            asset: "SYN_DST_ASSET",
+            sourceChain: "syntheticSrcChain",
+            sourceAsset: "SYN_SRC_ASSET",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "synthetic_cross_chain_method_a",
+            stalePlannerMethod: false,
+            taxonomy: "route_specific_failure_lock",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(report.status, "TYPED_MISSING_EVIDENCE");
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TYPED_MISSING_EVIDENCE");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.runtimeAuthority, "none");
+  assert.ok(
+    candidate.typedMissingEvidence.includes(
+      "planner_blocker_absent_for_normalized_tuple_with_active_readiness_blocker",
+    ),
+  );
+  assert.ok(candidate.typedMissingEvidence.includes("readiness_cost_floor_unavailable_for_route_absence_taxonomy"));
+  assert.equal(candidate.typedMissingEvidenceDetail.method, "synthetic_cross_chain_method_a");
+  assert.equal(candidate.typedMissingEvidenceDetail.resource.sourceChain, "syntheticSrcChain");
+  assert.equal(candidate.typedMissingEvidenceDetail.resource.sourceAsset, "SYN_SRC_ASSET");
+  assert.equal(report.laneIntentCandidateSummary.typedMissingEvidenceCount, 1);
+  assert.equal(candidate.nextAutomationStep, "supply_typed_missing_evidence_fields_for_governing_alignment");
+});
+
+test("EV-style current-method blocker without cost-floor numbers emits TYPED_MISSING_EVIDENCE", () => {
+  // Same shape but blocker reflects an EV-rejected category. Cost-floor numeric
+  // fields are absent from the producer projection so the lifecycle requests
+  // them explicitly instead of collapsing into UNRESOLVED. Synthetic strings.
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_swap_via_intermediate",
+      plannerCandidateMethods: ["synthetic_swap_via_intermediate"],
+      source: { chain: "synthSrc", asset: "SYNX", token: "0xsx", estimatedUsd: 25 },
+      destination: {
+        chain: "synthDst",
+        asset: "SYNY",
+        token: "0xdy",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "synthDst",
+            asset: "SYNY",
+            sourceChain: "synthSrc",
+            sourceAsset: "SYNX",
+            reason: "expected_net_below_receipt_cost_p90_floor",
+            category: "execution_unresolved",
+            selectedMethod: "synthetic_swap_via_intermediate",
+            stalePlannerMethod: false,
+            taxonomy: "real_negative_ev",
+            // Cost-floor numeric fields intentionally absent — producer
+            // projection has not propagated them yet.
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TYPED_MISSING_EVIDENCE");
+  assert.ok(
+    candidate.typedMissingEvidence.includes("readiness_cost_floor_numeric_fields_missing_from_producer_projection"),
+  );
+});
+
+test("source-specific blocker for a different tuple does not create typed missing evidence", () => {
+  // Planner source tuple does not match readiness blocker source tuple. The
+  // typed-missing-evidence path requires structural tuple agreement, and the
+  // source-specific stale blocker must not override the selected planner job.
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_method_alpha",
+      plannerCandidateMethods: ["synthetic_method_alpha"],
+      source: { chain: "srcAlpha", asset: "ALPHA", token: "0xa", estimatedUsd: 30 },
+      destination: {
+        chain: "dstAlpha",
+        asset: "DALPHA",
+        token: "0xda",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "dstAlpha",
+            asset: "DALPHA",
+            sourceChain: "srcBeta", // different source chain
+            sourceAsset: "BETA",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "synthetic_method_alpha",
+            stalePlannerMethod: false,
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.notEqual(candidate.status, "UNRESOLVED_GOVERNING_SYNC_MISMATCH");
+  assert.equal(candidate.governingAgreement.sourceMismatchedBlockers.length, 1);
+  assert.equal(candidate.governingAgreement.blockingReadinessBlockers.length, 0);
+  assert.equal(candidate.typedMissingEvidence.length, 0);
+});
+
+test("TYPED_MISSING_EVIDENCE never implies canIntent or canLive", () => {
+  const handlerReport = readyHandlerReport(
+    {},
+    {
+      selectedMethod: "synthetic_method_gamma",
+      plannerCandidateMethods: ["synthetic_method_gamma"],
+      source: { chain: "srcG", asset: "GAM", token: "0xg", estimatedUsd: 12 },
+      destination: {
+        chain: "dstG",
+        asset: "DG",
+        token: "0xdg",
+        targetAmount: "1",
+        targetAmountDecimal: 1,
+        estimatedAssetValueUsd: 1,
+      },
+    },
+  );
+  const report = buildLaneIntentCandidateReport({
+    laneHandlerReport: handlerReport,
+    readinessReport: {
+      liveAutomation: {
+        refillBlockers: [
+          {
+            chain: "dstG",
+            asset: "DG",
+            sourceChain: "srcG",
+            sourceAsset: "GAM",
+            reason: "routing_exhausted",
+            category: "routing_exhausted",
+            selectedMethod: "synthetic_method_gamma",
+            stalePlannerMethod: false,
+          },
+        ],
+      },
+    },
+  });
+  const candidate = report.laneIntentCandidates[0];
+  assert.equal(candidate.status, "TYPED_MISSING_EVIDENCE");
+  assert.equal(candidate.canIntent, false);
+  assert.equal(candidate.canLive, false);
+  assert.equal(candidate.reportOnly, true);
+  assert.equal(candidate.allowedToExecuteLive, false);
+  assert.equal(report.safety.canLive, false);
+  assert.equal(report.safety.signerCalled, false);
+  assert.equal(report.safety.liveQueueEnqueued, false);
+});

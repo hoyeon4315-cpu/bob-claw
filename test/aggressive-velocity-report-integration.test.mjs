@@ -61,6 +61,56 @@ test("execution surface overlay replaces generic aggressive blocker with current
   assert.equal(updated.strategyDiagnostics.aggressiveVelocity.candidateLadder.bottleneckStage, "velocity");
 });
 
+test("execution surface overlay adds aggressive diagnostics row when catalog omits it", () => {
+  const report = {
+    summary: {
+      liveEligibleCount: 0,
+    },
+    strategies: [
+      {
+        id: "wrapped-btc-loop-base-moonwell",
+        currentLiveEligible: false,
+      },
+    ],
+  };
+
+  const aggressiveStatus = {
+    strategyId: "aggressive-velocity-v1",
+    status: "analysis_only",
+    reason: "no_high_yield_candidates_selected",
+    liveCapable: true,
+    currentLiveEligible: false,
+    liveAdmissionBlockers: ["no_high_yield_candidates_selected"],
+    selectedCount: 0,
+    candidateLadder: {
+      rawCandidateCount: 400,
+      credibleExitCount: 7,
+      velocityCandidateCount: 0,
+      selectedCount: 0,
+      bottleneckStage: "velocity",
+    },
+    selectionDiagnostics: { finalSelectedCount: 0 },
+    rejectionEvidence: {
+      scan: {
+        velocityScoreRejectionSummary: {
+          count: 7,
+          minVelocityScore: 52,
+          maxScore: 40,
+        },
+      },
+    },
+  };
+
+  const updated = overlayAggressiveVelocityExecutionSurface(report, aggressiveStatus);
+  const aggressive = updated.strategies.find((strategy) => strategy.id === "aggressive-velocity-v1");
+
+  assert.equal(aggressive.status, "analysis_only");
+  assert.equal(aggressive.currentLiveEligible, false);
+  assert.equal(aggressive.evidence.candidateLadder.bottleneckStage, "velocity");
+  assert.equal(aggressive.evidence.rejectionEvidence.scan.velocityScoreRejectionSummary.count, 7);
+  assert.equal(updated.summary.liveEligibleCount, 0);
+});
+
 test("automation health attach helper exposes aggressive status diagnostics", () => {
   const report = {
     status: "attention_required",
@@ -103,6 +153,30 @@ test("aggressive status exposes canonical candidate ladder and bottleneck stage"
     buildLiveStateImpl: async () => ({
       currentLiveEligible: false,
       liveAdmissionBlockers: ["no_high_yield_candidates_selected"],
+      rejectionEvidence: {
+        scan: {
+          velocityScoreRejectionSummary: {
+            count: 1,
+            minVelocityScore: 52,
+            minExpectedNetBtcProfit: 0.00005,
+            highQualityRequired: true,
+            maxScore: 40,
+            maxExpectedNetBtcProfit: 0.00001,
+            qualityCounts: { low: 1 },
+            topRejected: [
+              {
+                chain: "base",
+                protocol: "aave",
+                score: 40,
+                minVelocityScore: 52,
+                expectedNetBtcProfit: 0.00001,
+                expectedNetProfitQuality: "low",
+                exitFeasibilityScore: 65,
+              },
+            ],
+          },
+        },
+      },
       strategist: {
         selectedCount: 0,
         totalQualified: 0,
@@ -129,6 +203,26 @@ test("aggressive status exposes canonical candidate ladder and bottleneck stage"
               executableCandidates: 0,
               finalSelected: 0,
             },
+            velocityScoreRejectionSummary: {
+              count: 1,
+              minVelocityScore: 52,
+              minExpectedNetBtcProfit: 0.00005,
+              highQualityRequired: true,
+              maxScore: 40,
+              maxExpectedNetBtcProfit: 0.00001,
+              qualityCounts: { low: 1 },
+              topRejected: [
+                {
+                  chain: "base",
+                  protocol: "aave",
+                  score: 40,
+                  minVelocityScore: 52,
+                  expectedNetBtcProfit: 0.00001,
+                  expectedNetProfitQuality: "low",
+                  exitFeasibilityScore: 65,
+                },
+              ],
+            },
           },
           topRejectedReasons: [{ reason: "velocity_score_below_minimum", count: 1 }],
         },
@@ -142,4 +236,6 @@ test("aggressive status exposes canonical candidate ladder and bottleneck stage"
   assert.equal(status.candidateLadder.selectedCount, 0);
   assert.equal(status.candidateLadder.bottleneckStage, "velocity");
   assert.equal(status.bottleneckStage, "velocity");
+  assert.equal(status.rejectionEvidence.scan.velocityScoreRejectionSummary.count, 1);
+  assert.equal(status.rejectionEvidence.scan.velocityScoreRejectionSummary.maxScore, 40);
 });

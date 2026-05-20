@@ -15,6 +15,7 @@ import {
   GatewayClient,
   GatewayError,
   classifyGatewayBlockedReason,
+  gatewayQuoteAmountFloor,
   isDeterministicGatewayBlock,
   routeKey,
 } from "../../gateway/client.mjs";
@@ -272,6 +273,7 @@ export async function buildGatewayBtcConsolidationPlan({
   let amountUsd = null;
   let gatewayError = null;
   let blockedReason = null;
+  let quoteAmountFloor = null;
   let gatewayQuoteLatencyMs = null;
   try {
     const quoteResult = await client.getQuote(
@@ -313,6 +315,7 @@ export async function buildGatewayBtcConsolidationPlan({
     if (isDeterministicGatewayBlock(error)) {
       blockedReason = classifyGatewayBlockedReason(error);
       gatewayError = serializeGatewayError(error);
+      quoteAmountFloor = gatewayQuoteAmountFloor(error);
       try {
         amountUsd = amountUsdFromAmountRaw(normalizedAmount, srcAsset, await priceReader());
       } catch {
@@ -398,6 +401,7 @@ export async function buildGatewayBtcConsolidationPlan({
     planStatus: normalizedQuote && (executionReady || skipPreflight) ? "ready" : "blocked",
     blockedReason,
     gatewayError,
+    quoteAmountFloor,
     preflightError,
     executionReady,
     skipPreflight,
