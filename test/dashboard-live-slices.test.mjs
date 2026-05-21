@@ -216,6 +216,115 @@ test("all-chain autopilot dashboard slice repairs stale signer failed refill blo
   assert.equal(slice.refill.unresolvedCount, 0);
 });
 
+function buildEvEvidenceSliceFixture({ refillExecution, signerPolicy }) {
+  return buildAllChainAutopilotDashboardSlice({
+    observedAt: "2026-05-20T22:00:00.000Z",
+    mode: "execute",
+    status: "completed_with_blockers",
+    summary: { officialChainCount: 11, refillJobCount: 1, autoRefillJobCount: 1, refillAttemptedCount: 1 },
+    refillExecutions: [refillExecution],
+    steps: [
+      {
+        name: `treasury_refill_execute:${refillExecution.jobId}`,
+        json: {
+          execution: {
+            stepResults: [{ id: "ev_gate_check", signerResult: { status: "rejected", policy: signerPolicy } }],
+          },
+        },
+      },
+    ],
+  });
+}
+
+test("all-chain autopilot dashboard slice surfaces numeric EV evidence on signer-policy refill blockers", () => {
+  const slice = buildEvEvidenceSliceFixture({
+    refillExecution: {
+      jobId: "ev-floor-refill-job",
+      chain: "bsc",
+      asset: "wBTC.OFT",
+      sourceChain: "base",
+      sourceAsset: "wBTC.OFT",
+      executionMethod: "cross_chain_bridge_lifi",
+      selectedExecutionMethod: "cross_chain_bridge_lifi",
+      attempted: true,
+      executed: false,
+    },
+    signerPolicy: {
+      decision: "BLOCK",
+      blockers: ["expected_net_below_receipt_cost_p90_floor"],
+      evidence: {
+        expectedNetUsd: 0.12,
+        requiredNetUsd: 0.85,
+        p90CostUsd: 0.5,
+        effectiveMinProfitFloor: 0.1,
+        sampleCount: 12,
+        sampleThreshold: 5,
+        costMultiplier: 1.5,
+        costSource: "history_p90",
+      },
+    },
+  });
+  const blocker = slice.refill.blockers.find((entry) => entry.jobId === "ev-floor-refill-job");
+  assert.ok(blocker, "expected EV-floor refill blocker entry");
+  assert.equal(blocker.reason, "expected_net_below_receipt_cost_p90_floor");
+  assert.equal(blocker.expectedNetUsd, 0.12);
+  assert.equal(blocker.requiredNetUsd, 0.85);
+  assert.equal(blocker.p90CostUsd, 0.5);
+  assert.equal(blocker.effectiveFloorUsd, 0.85);
+});
+
+test("all-chain autopilot dashboard slice leaves numeric EV fields null when signer policy carries no evidence", () => {
+  const slice = buildEvEvidenceSliceFixture({
+    refillExecution: {
+      jobId: "no-evidence-job",
+      chain: "base",
+      asset: "wBTC.OFT",
+      executionMethod: "same_chain_token_to_token_swap",
+      selectedExecutionMethod: "same_chain_token_to_token_swap",
+      attempted: true,
+      executed: false,
+    },
+    signerPolicy: { decision: "BLOCK", blockers: ["signer_execution_failed"] },
+  });
+  const blocker = slice.refill.blockers.find((entry) => entry.jobId === "no-evidence-job");
+  assert.ok(blocker, "expected refill blocker entry");
+  assert.equal(blocker.reason, "signer_execution_failed");
+  assert.equal(blocker.expectedNetUsd, null);
+  assert.equal(blocker.requiredNetUsd, null);
+  assert.equal(blocker.p90CostUsd, null);
+  assert.equal(blocker.effectiveFloorUsd, null);
+});
+
+test("all-chain autopilot dashboard slice prefers refill-execution-level cost fields over policy evidence", () => {
+  const slice = buildEvEvidenceSliceFixture({
+    refillExecution: {
+      jobId: "execution-fields-priority",
+      chain: "base",
+      asset: "wBTC.OFT",
+      executionMethod: "cross_chain_bridge_lifi",
+      selectedExecutionMethod: "cross_chain_bridge_lifi",
+      attempted: true,
+      executed: false,
+      executionBlockedReason: "expected_net_below_receipt_cost_p90_floor",
+      expectedNetUsd: 0.05,
+      requiredNetUsd: 0.6,
+      p90CostUsd: 0.4,
+      effectiveFloorUsd: 0.6,
+    },
+    signerPolicy: {
+      decision: "BLOCK",
+      blockers: ["expected_net_below_receipt_cost_p90_floor"],
+      evidence: { expectedNetUsd: 9.99, requiredNetUsd: 9.99, p90CostUsd: 9.99 },
+    },
+  });
+  const blocker = slice.refill.blockers.find((entry) => entry.jobId === "execution-fields-priority");
+  assert.ok(blocker, "expected refill blocker entry");
+  assert.equal(blocker.expectedNetUsd, 0.05);
+  assert.equal(blocker.requiredNetUsd, 0.6);
+  assert.equal(blocker.p90CostUsd, 0.4);
+  assert.equal(blocker.effectiveFloorUsd, 0.6);
+});
+
 test("all-chain autopilot dashboard slice exposes scoped refill blocker recovery details", () => {
   const slice = buildAllChainAutopilotDashboardSlice({
     observedAt: "2026-05-09T12:00:00.000Z",

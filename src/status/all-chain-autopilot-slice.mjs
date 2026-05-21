@@ -73,8 +73,20 @@ export function refillNeedsLiveRemediation(item = {}) {
   return reasons.some((reason) => !REFILL_MANUAL_DEFERRAL_REASONS.has(reason));
 }
 
+function policyEntryReason(entry) {
+  if (!entry) return null;
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object") return entry.reason || null;
+  return null;
+}
+
+function policyEntryEvidence(entry) {
+  return entry && typeof entry === "object" ? entry.evidence || null : null;
+}
+
 function refillReason(item = {}, policyBlockerByJobId = new Map()) {
-  const policyBlocker = item.jobId ? policyBlockerByJobId.get(item.jobId) : null;
+  const policyEntry = item.jobId ? policyBlockerByJobId.get(item.jobId) : null;
+  const policyBlocker = policyEntryReason(policyEntry);
   return (
     policyBlocker ||
     compactReason(item.executionBlockedReason) ||
@@ -82,6 +94,21 @@ function refillReason(item = {}, policyBlockerByJobId = new Map()) {
     (compactReason(item.previewStatus) === "ready" ? null : compactReason(item.previewStatus)) ||
     (item.selectedExecutionMethod || item.executionMethod ? null : "refill_not_executed")
   );
+}
+
+function signerPolicyEntryFromResult(result) {
+  const signerResult = result?.signerResult || {};
+  if (signerResult.status !== "rejected" && signerResult.policy?.decision !== "BLOCK") return null;
+  const blockers = [
+    ...(Array.isArray(signerResult.policy?.blockers) ? signerResult.policy.blockers : []),
+    ...(Array.isArray(signerResult.lifecycle?.blockers) ? signerResult.lifecycle.blockers : []),
+  ].filter(Boolean);
+  if (blockers.length === 0) return null;
+  const evidence =
+    signerResult.policy && typeof signerResult.policy === "object" && signerResult.policy.evidence
+      ? signerResult.policy.evidence
+      : null;
+  return { reason: blockers.join(","), evidence };
 }
 
 function signerPolicyBlockerMapFromSteps(steps = []) {
@@ -94,14 +121,9 @@ function signerPolicyBlockerMapFromSteps(steps = []) {
     const stepResults = step?.json?.execution?.stepResults;
     if (!Array.isArray(stepResults)) continue;
     for (const result of stepResults) {
-      const signerResult = result?.signerResult || {};
-      if (signerResult.status !== "rejected" && signerResult.policy?.decision !== "BLOCK") continue;
-      const blockers = [
-        ...(Array.isArray(signerResult.policy?.blockers) ? signerResult.policy.blockers : []),
-        ...(Array.isArray(signerResult.lifecycle?.blockers) ? signerResult.lifecycle.blockers : []),
-      ].filter(Boolean);
-      if (blockers.length > 0) {
-        map.set(jobId, blockers.join(","));
+      const entry = signerPolicyEntryFromResult(result);
+      if (entry) {
+        map.set(jobId, entry);
         break;
       }
     }
@@ -148,11 +170,41 @@ function refillBlockerTaxonomyFields(item) {
   };
 }
 
+function pickFiniteNumber(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const numeric = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return null;
+}
+
+function refillBlockerCostEvidenceFields(item, policyEvidence) {
+  const expectedNetUsd = pickFiniteNumber(item.expectedNetUsd, policyEvidence?.expectedNetUsd);
+  const requiredNetUsd = pickFiniteNumber(item.requiredNetUsd, item.requiredNetPnlUsd, policyEvidence?.requiredNetUsd);
+  const p90CostUsd = pickFiniteNumber(
+    item.p90CostUsd,
+    item.receiptCostP90Usd,
+    item.receiptCostFloorUsd,
+    policyEvidence?.p90CostUsd,
+  );
+  const effectiveFloorUsd = pickFiniteNumber(
+    item.effectiveFloorUsd,
+    item.effectiveCostFloorUsd,
+    policyEvidence?.effectiveFloorUsd,
+    policyEvidence?.requiredNetUsd,
+  );
+  return { expectedNetUsd, requiredNetUsd, p90CostUsd, effectiveFloorUsd };
+}
+
 function buildRefillBlockerEntry(item, { policyBlockerByJobId, plannerMethodsByResource }) {
+  const policyEntry = item.jobId ? policyBlockerByJobId.get(item.jobId) : null;
+  const policyEvidence = policyEntryEvidence(policyEntry);
   return {
     ...refillBlockerIdentityFields(item),
     reason: refillReason(item, policyBlockerByJobId),
     ...refillBlockerTaxonomyFields(item),
+    ...refillBlockerCostEvidenceFields(item, policyEvidence),
     stalePlannerMethod: refillBlockerStalePlannerMethod(item, plannerMethodsByResource),
   };
 }
