@@ -810,55 +810,11 @@ test("wrapped BTC loop stays dry-run when per-intent expected net is not measure
 });
 
 test("wrapped BTC loop stays dry-run when expected net is below the receipt cost floor", () => {
-  const report = buildStrategyExecutionSurfaces({
+  const report = buildWrappedBtcReceiptHistoryReport({
+    expectedNetUsd: 0.42,
+    receiptHistory: null,
+    signerBackedRunCount: 22,
     now: "2026-05-06T12:00:00.000Z",
-    dashboardStatus: {
-      ...dashboardStatusFixture(),
-      overall: {
-        liveTrading: "ALLOWED",
-        lanePolicy: {
-          candidateId: "wrapped-btc-loop-base-moonwell",
-          stage: "B",
-          policyLiveTrading: "ALLOWED",
-        },
-      },
-    },
-    state: { scoreSnapshot: { scores: [] } },
-    triangleArtifacts: {},
-    artifacts: {
-      wrappedBtcLendingLoopSlice: {
-        strategy: {
-          id: "wrapped-btc-loop-base-moonwell",
-          label: "Wrapped BTC lending loop (Base / Moonwell)",
-        },
-        ...wrappedBtcLoopExpectedNetPolicy(0.42),
-        bindingSupport: {
-          executableFromRepo: true,
-        },
-        dryRunSummary: {
-          dryRunReceiptRecorded: true,
-          signerBackedRunCount: 22,
-        },
-        pnl: {
-          paper: { annualNetCarryUsd: 5.9183 },
-          estimated: { valueUsd: 0.42 },
-          realized: { valueUsd: 0.42 },
-        },
-      },
-      phase3StrategyValidation: {
-        validations: [
-          {
-            id: "wrapped_btc_loop_validation",
-            overallStatus: "passed",
-            evidence: {
-              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
-              extendedReceiptContextReady: true,
-            },
-          },
-        ],
-      },
-      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
-    },
   });
 
   const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
