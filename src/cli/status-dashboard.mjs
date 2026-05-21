@@ -27,17 +27,58 @@ import {
   planGasRefresh,
   planQuoteDecayRefresh,
 } from "../watch/canary-readiness-watch.mjs";
+import { childTraceContext, traceContextFromHeaders } from "../trace-context.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const IS_MAIN = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
 function parseArgs(argv) {
   const options = optionMapFromArgs(argv);
-  return {
+  const parsed = {
     skipShadowCycle: hasFlag(argv, "--skip-shadow-cycle"),
     skipCanaryInputRefresh: hasFlag(argv, "--skip-canary-input-refresh"),
     commitPublic: hasFlag(argv, "--commit-public"),
     liveSnapshotDir: dashboardLiveSnapshotDir({ options }),
+    requestId: null,
+    traceId: null,
+    traceparent: null,
+  };
+  for (const arg of argv) {
+    if (arg.startsWith("--request-id=")) parsed.requestId = arg.slice("--request-id=".length);
+    if (arg.startsWith("--trace-id=")) parsed.traceId = arg.slice("--trace-id=".length);
+    if (arg.startsWith("--traceparent=")) parsed.traceparent = arg.slice("--traceparent=".length);
+  }
+  return parsed;
+}
+
+export function buildStatusDashboardTraceContext({
+  argv = process.argv.slice(2),
+  env = process.env,
+  now = new Date().toISOString(),
+} = {}) {
+  const args = parseArgs(argv);
+  const root = traceContextFromHeaders(
+    {
+      traceparent: args.traceparent || env.BOB_CLAW_TRACEPARENT || env.TRACEPARENT || null,
+      "X-Request-ID": args.requestId || env.BOB_CLAW_REQUEST_ID || null,
+      "X-Trace-ID": args.traceId || env.BOB_CLAW_TRACE_ID || null,
+    },
+    {
+      boundary: "cli",
+      name: "status-dashboard",
+      component: "status-dashboard",
+      operation: "status_dashboard_cli",
+      startedAt: now,
+    },
+  );
+  return {
+    root,
+    status: childTraceContext(root, {
+      boundary: "status",
+      name: "build-dashboard-status",
+      component: "status-dashboard",
+      operation: "build_dashboard_status",
+    }),
   };
 }
 
@@ -100,7 +141,11 @@ export function refreshCanaryInputsIfNeeded({ state, address, runScript = runNod
       runScript("src/cli/verify-gateway.mjs", buildCanaryInputRefreshVerifyArgs(canaryInputRefresh) || []);
     } catch (error) {
       if (!isTargetedGatewayRefreshRouteMiss(error)) {
-        partialErrors.push({ script: "src/cli/verify-gateway.mjs", message: error.message, timedOut: error.timedOut || false });
+        partialErrors.push({
+          script: "src/cli/verify-gateway.mjs",
+          message: error.message,
+          timedOut: error.timedOut || false,
+        });
       }
     }
   }
@@ -108,7 +153,10 @@ export function refreshCanaryInputsIfNeeded({ state, address, runScript = runNod
     runPartial("src/cli/gas-snapshot.mjs", buildCanaryInputRefreshGasSnapshotArgs(canaryInputRefresh) || []);
   }
   if (canaryInputRefresh.inputKeys.includes("exact_gas")) {
-    runPartial("src/cli/estimate-gateway-gas.mjs", buildCanaryInputRefreshExactGasArgs(canaryInputRefresh, address) || []);
+    runPartial(
+      "src/cli/estimate-gateway-gas.mjs",
+      buildCanaryInputRefreshExactGasArgs(canaryInputRefresh, address) || [],
+    );
   }
   if (canaryInputRefresh.inputKeys.includes("dex_quote")) {
     runPartial("src/cli/quote-dex.mjs", buildCanaryInputRefreshDexArgs(canaryInputRefresh) || []);
@@ -191,9 +239,14 @@ function isBtcFamilyScore(score) {
 
 function previewDexRefreshTargets(state, dexRefresh) {
   const scores = state?.scoreSnapshot?.scores || [];
-  const selected = dexRefresh?.routeKey && dexRefresh?.amount
-    ? scores.filter((score) => score.routeKey === dexRefresh.routeKey && String(score.amount) === String(dexRefresh.amount))
-    : scores.filter((score) => dexRefresh?.chains?.includes(score.dstChain) && score?.dstAsset?.family === "wrapped_btc");
+  const selected =
+    dexRefresh?.routeKey && dexRefresh?.amount
+      ? scores.filter(
+          (score) => score.routeKey === dexRefresh.routeKey && String(score.amount) === String(dexRefresh.amount),
+        )
+      : scores.filter(
+          (score) => dexRefresh?.chains?.includes(score.dstChain) && score?.dstAsset?.family === "wrapped_btc",
+        );
   return {
     targetRouteCount: selected.length,
     targetRoutes: selected.slice(0, 3).map(routeLabelForScore),
@@ -203,12 +256,16 @@ function previewDexRefreshTargets(state, dexRefresh) {
 function previewBlockedScoreTargets(state, blockedScore) {
   const scores = state?.scoreSnapshot?.scores || [];
   const selection = describeBlockedScoreRefreshSelection(blockedScore, state?.nextStep?.route || null);
-  const selected = selection.scope === "touch_chains"
-    ? scores.filter(
-        (score) =>
-          isBtcFamilyScore(score) && (selection.chains.includes(score.srcChain) || selection.chains.includes(score.dstChain)),
-      )
-    : scores.filter((score) => score.routeKey === blockedScore.routeKey && String(score.amount) === String(blockedScore.amount));
+  const selected =
+    selection.scope === "touch_chains"
+      ? scores.filter(
+          (score) =>
+            isBtcFamilyScore(score) &&
+            (selection.chains.includes(score.srcChain) || selection.chains.includes(score.dstChain)),
+        )
+      : scores.filter(
+          (score) => score.routeKey === blockedScore.routeKey && String(score.amount) === String(blockedScore.amount),
+        );
   return {
     scope: selection.scope,
     chains: selection.chains,
@@ -314,7 +371,9 @@ function buildPublicWatchers(state) {
       amount: dexEnvironment.amount || null,
       classification: dexEnvironment.classification || null,
       targetRouteCount: dexEnvironment.targetRouteCount || 0,
-      targetRoutes: (dexEnvironment.targetRoutes || []).map((item) => `${item.routeKey} amount=${item.amount} (${item.classification})`),
+      targetRoutes: (dexEnvironment.targetRoutes || []).map(
+        (item) => `${item.routeKey} amount=${item.amount} (${item.classification})`,
+      ),
     },
     gatewayCoverage: {
       shouldRefresh: gatewayCoverage.shouldRefresh,
@@ -331,11 +390,15 @@ function buildPublicWatchers(state) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const trace = buildStatusDashboardTraceContext({ argv: process.argv.slice(2), env: process.env });
   if (!args.skipShadowCycle) {
     runNodeScript("src/cli/run-shadow-cycle.mjs", ["--write"]);
   }
 
-  let context = await buildCurrentDashboardContext({ dataDir: config.dataDir });
+  let context = await buildCurrentDashboardContext({
+    dataDir: config.dataDir,
+    traceContext: trace.status,
+  });
   let status = context.dashboardStatus;
   let watchState = context.state;
   watchState.dashboardStatus = status;
@@ -358,7 +421,11 @@ async function main() {
           message: e.message,
         }));
       }
-      context = await buildCurrentDashboardContext({ dataDir: config.dataDir, address: watchState.address || null });
+      context = await buildCurrentDashboardContext({
+        dataDir: config.dataDir,
+        address: watchState.address || null,
+        traceContext: trace.status,
+      });
       status = context.dashboardStatus;
       watchState = context.state;
     }
@@ -377,8 +444,14 @@ async function main() {
 
   console.log(`${output.changed ? "wrote" : "unchanged"}=${output.path}`);
   console.log(`${dashboardOutput.changed ? "dashboardWrote" : "dashboardUnchanged"}=${dashboardOutput.path}`);
+  console.log(`traceId=${status.observability?.trace?.traceId || trace.status.traceId}`);
+  console.log(`requestId=${status.observability?.trace?.requestId || trace.status.requestId}`);
+  console.log(`spanId=${status.observability?.trace?.spanId || trace.status.spanId}`);
+  console.log(`parentSpanId=${status.observability?.trace?.parentSpanId || trace.status.parentSpanId || "none"}`);
   if (blockerFunnelOutput) {
-    console.log(`${blockerFunnelOutput.changed ? "blockerFunnelWrote" : "blockerFunnelUnchanged"}=${blockerFunnelOutput.path}`);
+    console.log(
+      `${blockerFunnelOutput.changed ? "blockerFunnelWrote" : "blockerFunnelUnchanged"}=${blockerFunnelOutput.path}`,
+    );
   }
   console.log(`walletHoldingsRefreshed=${walletHoldingsPath}`);
   console.log(`severity=${status.overall.severity}`);

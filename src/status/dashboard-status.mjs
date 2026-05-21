@@ -57,6 +57,7 @@ import { buildStrategyTracksSummary } from "../strategy/strategy-tracks.mjs";
 import { buildCampaignAwareSlice } from "./campaign-aware-dashboard-slice.mjs";
 import { buildRadarDashboardSlice } from "./radar-slice.mjs";
 import { buildClosedCanaryCycleRecords } from "../executor/canary/realized-cycle-truth.mjs";
+import { traceMetadata } from "../trace-context.mjs";
 
 const STATUS_SCHEMA_VERSION = 2;
 // No project-wide risk budget anymore; per-strategy caps live in each
@@ -1926,6 +1927,7 @@ function decideOverall({ audit, gateway, gas, decisionInputs = null }) {
 
 export function buildDashboardStatus(input, options = {}) {
   const now = options.now || new Date().toISOString();
+  const trace = options.traceContext ? traceMetadata(options.traceContext) : null;
   const audit = buildOverfitAudit(
     {
       routesRecords: input.routesRecords || [],
@@ -2177,6 +2179,9 @@ export function buildDashboardStatus(input, options = {}) {
   return {
     schemaVersion: STATUS_SCHEMA_VERSION,
     generatedAt: now,
+    observability: {
+      trace,
+    },
     overall,
     gateway,
     market,

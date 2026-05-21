@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 const TRACE_ID_RE = /^[a-f0-9]{32}$/u;
 const SPAN_ID_RE = /^[a-f0-9]{16}$/u;
 const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/u;
+const TRACEPARENT_RE = /^00-([a-f0-9]{32})-([a-f0-9]{16})-([a-f0-9]{2})$/u;
 const ZERO_TRACE_ID = "0".repeat(32);
 const ZERO_SPAN_ID = "0".repeat(16);
 const SENSITIVE_ATTRIBUTE_RE =
@@ -38,37 +39,73 @@ export function isSafeRequestId(value) {
 
 export function createTraceContext({
   traceId = null,
+  parentTraceId = null,
   requestId = null,
   spanId = null,
   parentSpanId = null,
   boundary = "job",
   name = "unnamed",
+  component = "unknown",
+  operation = "unnamed",
+  startedAt = null,
   sampled = true,
 } = {}) {
   const resolvedTraceId = isValidTraceId(traceId) ? asString(traceId).toLowerCase() : randomHex(16);
   const resolvedSpanId = isValidSpanId(spanId) ? asString(spanId).toLowerCase() : randomHex(8);
   return Object.freeze({
     traceId: resolvedTraceId,
+    parentTraceId: isValidTraceId(parentTraceId) ? asString(parentTraceId).toLowerCase() : null,
     requestId: isSafeRequestId(requestId) ? asString(requestId) : `req-${resolvedTraceId.slice(0, 16)}`,
     spanId: resolvedSpanId,
     parentSpanId: isValidSpanId(parentSpanId) ? asString(parentSpanId).toLowerCase() : null,
     boundary: safeLabel(boundary, "job"),
     name: safeLabel(name, "unnamed"),
+    component: safeLabel(component, "unknown"),
+    operation: safeLabel(operation, "unnamed"),
+    startedAt: asString(startedAt) || null,
     sampled: sampled !== false,
   });
 }
 
-export function childTraceContext(parent, { spanId = null, boundary = "helper", name = "child", sampled } = {}) {
+export function childTraceContext(
+  parent,
+  {
+    spanId = null,
+    boundary = "helper",
+    name = "child",
+    component = null,
+    operation = null,
+    startedAt = null,
+    sampled,
+  } = {},
+) {
   const root = parent && typeof parent === "object" ? parent : createTraceContext();
   return createTraceContext({
     traceId: root.traceId,
+    parentTraceId: root.traceId,
     requestId: root.requestId,
     spanId,
     parentSpanId: root.spanId,
     boundary,
     name,
+    component: component || root.component,
+    operation: operation || name,
+    startedAt: startedAt || root.startedAt,
     sampled: sampled ?? root.sampled,
   });
+}
+
+function parseTraceparentHeader(value) {
+  const candidate = asString(value).toLowerCase();
+  const match = TRACEPARENT_RE.exec(candidate);
+  if (!match) return null;
+  const [, traceId, parentSpanId, traceFlags] = match;
+  if (!isValidTraceId(traceId) || !isValidSpanId(parentSpanId)) return null;
+  return {
+    traceId,
+    parentSpanId,
+    sampled: traceFlags.endsWith("1"),
+  };
 }
 
 function headerValue(headers, name) {
@@ -80,22 +117,27 @@ function headerValue(headers, name) {
 }
 
 export function traceContextFromHeaders(headers, options = {}) {
+  const traceparent = parseTraceparentHeader(headerValue(headers, "traceparent"));
   return createTraceContext({
     ...options,
     requestId: headerValue(headers, "X-Request-ID") || options.requestId,
-    traceId: headerValue(headers, "X-Trace-ID") || options.traceId,
+    traceId: headerValue(headers, "X-Trace-ID") || traceparent?.traceId || options.traceId,
     spanId: headerValue(headers, "X-Span-ID") || options.spanId,
-    parentSpanId: headerValue(headers, "X-Parent-Span-ID") || options.parentSpanId,
+    parentSpanId: headerValue(headers, "X-Parent-Span-ID") || traceparent?.parentSpanId || options.parentSpanId,
+    sampled: traceparent?.sampled ?? options.sampled,
   });
 }
 
 export function traceHeaders(context) {
   const safe = createTraceContext(context);
-  return Object.freeze({
+  const headers = {
     "X-Request-ID": safe.requestId,
     "X-Trace-ID": safe.traceId,
     "X-Span-ID": safe.spanId,
-  });
+    traceparent: `00-${safe.traceId}-${safe.spanId}-${safe.sampled ? "01" : "00"}`,
+  };
+  if (safe.parentSpanId) headers["X-Parent-Span-ID"] = safe.parentSpanId;
+  return Object.freeze(headers);
 }
 
 function safeAttributeValue(value) {
@@ -110,11 +152,15 @@ export function traceMetadata(context, attributes = {}) {
   const safe = createTraceContext(context);
   const metadata = {
     traceId: safe.traceId,
+    parentTraceId: safe.parentTraceId,
     requestId: safe.requestId,
     spanId: safe.spanId,
     parentSpanId: safe.parentSpanId,
     boundary: safe.boundary,
     name: safe.name,
+    component: safe.component,
+    operation: safe.operation,
+    startedAt: safe.startedAt,
     sampled: safe.sampled,
   };
   for (const [key, value] of Object.entries(attributes || {})) {
