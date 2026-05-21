@@ -184,6 +184,10 @@ test("all-source selector normalizes every required source and selects the EV-po
   assert.equal(report.laneHandlerPilot.safety.signerCalled, false);
   assert.equal(report.laneHandlerPilot.safety.runtimeStateMutated, false);
   assert.equal(report.laneHandlerPilot.safety.liveQueueEnqueued, false);
+  assert.equal(report.capitalIntentOrchestrator.reportOnly, true);
+  assert.equal(report.capitalIntentOrchestrator.canLive, false);
+  assert.equal(report.capitalIntentOrchestrator.runtimeAuthority, "none");
+  assert.deepEqual(report.capitalIntentTable, report.capitalIntentOrchestrator.rows);
 });
 
 test("all-source selector does not treat DefiLlama as executable without binding, cap, unwind, and receipt path", async () => {
