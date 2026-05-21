@@ -1721,6 +1721,25 @@ function lowerText(value) {
   }
 }
 
+function shallowFamilyText(surface = {}) {
+  return [
+    surface.source,
+    surface.family,
+    surface.id,
+    surface.strategyId,
+    surface.mappedStrategyId,
+    surface.protocol,
+    surface.protocolId,
+    surface.assetFamily,
+    surface.category,
+    surface.label,
+    ...(Array.isArray(surface.protocols) ? surface.protocols : []),
+  ]
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .join(" ")
+    .toLowerCase();
+}
+
 const SOURCE_TO_EXCLUSIVE_FAMILY = Object.freeze({
   defillama: "defillama",
   radar_campaign: "radar",
@@ -1740,7 +1759,8 @@ function familySetForSurface(surface = {}) {
   if (surface.source === "stable_carry" || /stablecarry|stable_treasury_carry|stablecoin|usdc|usdt|dai/.test(text)) {
     families.add("stable_carry");
   }
-  if (surface.source === "btc_wrapper_lending" || /wrapped.?btc|btc_wrappers|cbbtc|wbtc|moonwell/.test(text)) {
+  const shallow = shallowFamilyText(surface);
+  if (surface.source === "btc_wrapper_lending" || /wrapped.?btc|btc_wrappers|cbbtc|wbtc|moonwell/.test(shallow)) {
     families.add("btc_wrapper_lending");
   }
   if (surface.source === "tokenized_gold_reserve" || /tokenized.*(gold|reserve)|xaut|paxg|reserve_sleeve/.test(text)) {
