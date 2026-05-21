@@ -46,7 +46,7 @@ jobs:
       DASHBOARD_LIVE_ORIGIN: ${{ inputs.live_origin || vars.BOB_CLAW_DASHBOARD_LIVE_ORIGIN || '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:
