@@ -1277,6 +1277,66 @@ test("USDC vault position marks under gateway sleeve do not bleed into stable_ca
   assert.equal(ambiguous.activeActionEconomics.totalActiveValueUsd, 80.01);
 });
 
+test("open-position blockers from non-btc candidates do not govern btc wrapper family without active btc position", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      campaignAware: { candidates: [] },
+      strategyCatalog: { btcFamilies: [] },
+      allocatorCore: { candidates: [] },
+      defiLlamaPools: [],
+      merklQueue: {
+        summary: { queueCount: 1 },
+        queue: [
+          {
+            queueId: "merkl:pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+            opportunityId: "pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+            chain: "base",
+            protocolId: "pendle",
+            pendleYt: { ev: { canaryReady: false } },
+            mappedStrategyId: "pendle-yt-canary",
+            executionSurface: "fixedYield",
+            notionalUsd: 10,
+            expectedRealizedNetUsd: 0.04,
+            protocolBindingPlan: {
+              status: "binding_ready",
+              bindingKind: "pendle_yt_buy_sell_redeem",
+              resolvedBinding: {
+                marketAddress: "0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+                entryTokenSymbols: ["cbBTC", "wBTC"],
+                entryTokenAddresses: [
+                  "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+                  "0x4200000000000000000000000000000000000006",
+                ],
+              },
+            },
+            executionReadiness: {
+              status: "open_position_active",
+              openPosition: {
+                positionId:
+                  "protocol:base:pendle:pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e:pendle_market_swap:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e",
+                observedAt: "2026-05-19T05:00:00.000Z",
+              },
+            },
+            autoEntry: { status: "blocked", blockers: ["open_position_active"] },
+          },
+        ],
+      },
+      policyEvaluator: async () => {
+        throw new Error("open-position duplicate entry blocker must not reach policy");
+      },
+    }),
+  );
+
+  const btcWrapper = report.familyCoverage.find((row) => row.family === "btc_wrapper_lending");
+  assert.ok(btcWrapper);
+  assert.equal(btcWrapper.activePositionCount, 0);
+  assert.notEqual(btcWrapper.firstBlockingReason, "open_position_active");
+
+  const btcWrapperAction = report.familyActionTable.find((row) => row.family === "btc_wrapper_lending");
+  assert.ok(btcWrapperAction);
+  assert.notEqual(btcWrapperAction.reason, "open_position_active");
+});
+
 test("repeated pendle YT marks for the same positionId dedup to one active position", async () => {
   const pendlePositionId =
     "protocol:base:pendle:pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e:pendle_market_swap:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e";
