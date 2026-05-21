@@ -2041,6 +2041,34 @@ function addCandidateFamilyCoverage(rows, candidate) {
   }
 }
 
+function openQueuePositionDecision(item = {}) {
+  const openPosition = item.executionReadiness?.openPosition;
+  if (!openPosition) return null;
+  const positionId = openPosition.positionId || item.queueId || item.opportunityId || null;
+  return {
+    positionId,
+    strategyId: item.mappedStrategyId || item.strategyId || null,
+    protocolId: item.protocolId || item.protocol || null,
+    bindingKind: item.protocolBindingPlan?.bindingKind || null,
+    valueUsd: finiteNumber(openPosition.valueUsd, 0),
+    actionDecision: "HOLD_NOOP",
+    actionReason: "open_position_duplicate_entry_guard",
+    missingBindingKey: null,
+    executableActionPath: {
+      action: "hold",
+      bindingKey: null,
+      producer: null,
+      dispatchEligibility: "hold_no_action_required",
+      blocker: null,
+    },
+  };
+}
+
+function openQueuePositionEconomics(item = {}) {
+  const decision = openQueuePositionDecision(item);
+  return decision ? { perPositionDecisions: [decision] } : null;
+}
+
 function addMerklQueueFamilyCoverage(rows, merklQueue = {}) {
   let pendleQueueCount = 0;
   for (const item of array(merklQueue.queue)) {
@@ -2050,6 +2078,7 @@ function addMerklQueueFamilyCoverage(rows, merklQueue = {}) {
       addFamilySurface(rows, family, {
         discoveredCandidateCount: 1,
         activePositionCount: item.executionReadiness?.openPosition ? 1 : 0,
+        activeActionEconomics: openQueuePositionEconomics(item),
         blockingReason: first(
           [...array(item.autoEntry?.blockers), ...array(item.capabilityGaps)],
           item.executionReadiness?.status,
