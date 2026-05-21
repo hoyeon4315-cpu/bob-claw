@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildCapitalAuditReport,
   buildCapitalAuditScope,
+  collectBroadcastTransactionsAndReceipts,
   matchBitcoinSettlements,
 } from "../src/audit/capital-audit.mjs";
 
@@ -25,6 +26,51 @@ test("capital audit scope collects EVM and bitcoin addresses from audit sources"
 
   assert.deepEqual(scope.evmAddresses, ["0x111", "0x222", "0x333", "0x444"]);
   assert.deepEqual(scope.bitcoinAddresses, ["bc1test"]);
+});
+
+test("capital audit bounds broadcast transaction and receipt RPC collection", async () => {
+  const signerAuditRecords = Array.from({ length: 6 }, (_, index) => ({
+    timestamp: `2026-04-19T00:40:1${index}.000Z`,
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    chain: "base",
+    intentHash: `intent-${index}`,
+    lifecycle: { stage: "broadcasted" },
+    broadcast: {
+      txHash: `0xbounded${index}`,
+      from: "0xfrom",
+      to: "0xto",
+    },
+  }));
+  let activeTxReads = 0;
+  let activeReceiptReads = 0;
+  let maxTxReads = 0;
+  let maxReceiptReads = 0;
+  const delay = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+  const result = await collectBroadcastTransactionsAndReceipts({
+    signerAuditRecords,
+    concurrency: 2,
+    txReader: async (_chain, txHash) => {
+      activeTxReads += 1;
+      maxTxReads = Math.max(maxTxReads, activeTxReads);
+      await delay();
+      activeTxReads -= 1;
+      return { hash: txHash, value: 0n };
+    },
+    receiptReader: async (_chain, txHash) => {
+      activeReceiptReads += 1;
+      maxReceiptReads = Math.max(maxReceiptReads, activeReceiptReads);
+      await delay();
+      activeReceiptReads -= 1;
+      return { transactionHash: txHash, status: 1, gasUsed: 1n, effectiveGasPrice: 1n };
+    },
+  });
+
+  assert.equal(Object.keys(result.transactionsByTxHash).length, 6);
+  assert.equal(Object.keys(result.receiptsByTxHash).length, 6);
+  assert.equal(result.issues.length, 0);
+  assert.ok(maxTxReads <= 2);
+  assert.ok(maxReceiptReads <= 2);
 });
 
 test("capital audit matches BTC history to off-ramp settlement proofs by amount", () => {
