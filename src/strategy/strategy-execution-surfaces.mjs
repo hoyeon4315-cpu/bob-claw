@@ -217,11 +217,16 @@ function wrappedBtcLoopExpectedNetUsd(wrappedBtcLendingLoopSlice = null, validat
   return null;
 }
 
+function wrappedBtcLoopReceiptHistoryFromSlice(slice) {
+  return slice?.liveExecutionPolicy?.receiptHistory ?? null;
+}
+
 function wrappedBtcLoopEvPreview({
   strategyId = WRAPPED_BTC_LOOP_STRATEGY_ID,
   chain = "base",
   expectedNetUsd = null,
   amountUsd = null,
+  receiptHistory = null,
   now = new Date().toISOString(),
 } = {}) {
   const numericExpectedNetUsd = Number(expectedNetUsd);
@@ -236,7 +241,7 @@ function wrappedBtcLoopEvPreview({
       expectedNetUsd: numericExpectedNetUsd,
       observedAt: now,
     },
-    null,
+    receiptHistory,
     { now },
   );
 }
@@ -498,6 +503,7 @@ function buildWrappedBtcLoopExecutorSurface({
     chain: strategy.chain || "base",
     expectedNetUsd,
     amountUsd: livePerTradeCapUsd,
+    receiptHistory: wrappedBtcLoopReceiptHistoryFromSlice(wrappedBtcLendingLoopSlice),
     now,
   });
   const liveRunControl = evaluateWrappedBtcLoopLiveRunControl({
@@ -1085,16 +1091,21 @@ function buildSurface(entry, { group, policy }) {
       // Uses catalog evidenceClass="protocol_receipt_bound", receiptBoundPoolCount, receiptEvidence (now with liveReady upgrade on proven receipts).
       // fallbackReason distinguishes snapshot-driven "micro_canary_ready" (shadow ready via DefiLlama classification) vs real "minimal_live_proof_exists" only on entryExitProven + positive realized.
       // This completes evidence-based promotion for surfaces without hard-coded analysis_only.
-      const hasReceiptBound = entry.evidence?.evidenceClass === "protocol_receipt_bound" || (entry.evidence?.receiptBoundPoolCount || 0) > 0;
+      const hasReceiptBound =
+        entry.evidence?.evidenceClass === "protocol_receipt_bound" || (entry.evidence?.receiptBoundPoolCount || 0) > 0;
       const isShadowReady = entry.status === "shadow_ready" || entry.evidence?.shadowReady === true || hasReceiptBound;
       const selectedMode = isShadowReady ? "shadow" : "analysis";
       const selectedCommands = entry.commands || [];
       const re = entry.evidence?.receiptEvidence || {};
-      const hasRealReceiptProof = (re.passedCount || 0) > 0 || (re.realizedNetUsd || 0) > 0 || (re.entryExitProvenCount || 0) > 0;
+      const hasRealReceiptProof =
+        (re.passedCount || 0) > 0 || (re.realizedNetUsd || 0) > 0 || (re.entryExitProvenCount || 0) > 0;
       // YCE-003 acceleration (Execution & Policy): surfaces now also prefers the catalog's evidence-driven reason
       // (receipt_bound_pools_via_snapshot_evidenceClass post-reval preservation) for fallback when no real receipts yet.
       // Completes full dynamic chain: snapshot evidenceClass → catalog status/reason → surfaces mode + fallback + blockers.
-      const dynamicFallback = entry.reason && entry.reason.includes("receipt_bound") ? entry.reason : (entry.evidence?.microCanaryStatus || "shadow_ready_via_snapshot_evidenceClass");
+      const dynamicFallback =
+        entry.reason && entry.reason.includes("receipt_bound")
+          ? entry.reason
+          : entry.evidence?.microCanaryStatus || "shadow_ready_via_snapshot_evidenceClass";
       return {
         ...shared,
         capabilityBucket: "dry_run_or_shadow_only",
@@ -1103,7 +1114,9 @@ function buildSurface(entry, { group, policy }) {
         currentLiveEligible: false,
         selectedMode,
         fallbackReason: isShadowReady
-          ? (hasRealReceiptProof ? "minimal_live_proof_exists" : dynamicFallback)
+          ? hasRealReceiptProof
+            ? "minimal_live_proof_exists"
+            : dynamicFallback
           : "analysis_probe_only",
         missingCapabilities: [],
         liveAdmissionBlockers: liveAdmissionBlockers({
