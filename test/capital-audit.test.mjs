@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildCapitalAuditReport, buildCapitalAuditScope, matchBitcoinSettlements } from "../src/audit/capital-audit.mjs";
+import {
+  buildCapitalAuditReport,
+  buildCapitalAuditScope,
+  matchBitcoinSettlements,
+} from "../src/audit/capital-audit.mjs";
 
 test("capital audit scope collects EVM and bitcoin addresses from audit sources", () => {
   const scope = buildCapitalAuditScope({
@@ -121,7 +125,10 @@ test("capital audit classifies approved operator BTC deposits separately from of
   assert.equal(report.summary.bitcoinUnmatchedTxCount, 0);
   assert.equal(report.bitcoinAddresses[0].operatorFundingTxs[0].txid, "funding-deposit");
   assert.equal(report.bitcoinAddresses[0].nonSettlementTxs[0].receivedSats, 1200);
-  assert.equal(report.issues.some((entry) => entry.code === "bitcoin_tx_unmatched_to_offramp"), false);
+  assert.equal(
+    report.issues.some((entry) => entry.code === "bitcoin_tx_unmatched_to_offramp"),
+    false,
+  );
 });
 
 test("capital audit report flags broadcasts that still lack helper traceability", () => {
@@ -156,7 +163,10 @@ test("capital audit report flags broadcasts that still lack helper traceability"
 
   assert.equal(report.status, "incomplete_traceability");
   assert.equal(report.summary.unmatchedBroadcastCount, 1);
-  assert.equal(report.issues.some((entry) => entry.code === "broadcast_missing_helper_trace"), true);
+  assert.equal(
+    report.issues.some((entry) => entry.code === "broadcast_missing_helper_trace"),
+    true,
+  );
 });
 
 test("capital audit decomposes broadcast gas by category chain result and preserves total gas", () => {
@@ -203,7 +213,10 @@ test("capital audit decomposes broadcast gas by category chain result and preser
   assert.equal(report.summary.topGasChain, "ethereum");
   assert.equal(report.summary.gasFromRevertedTxsUsd, 0.6);
   assert.equal(report.summary.gasFromNoReceiptTxsUsd, 0);
-  assert.equal(report.broadcastBreakdown.some((cell) => cell.result === "no_receipt"), true);
+  assert.equal(
+    report.broadcastBreakdown.some((cell) => cell.result === "no_receipt"),
+    true,
+  );
 });
 
 test("capital audit matches legacy funding-transfer broadcasts from signer audit helper traces", () => {
@@ -462,6 +475,255 @@ test("capital audit matches non-legacy signer-audit helper traces with composite
   assert.equal(report.transactions[0].evidenceType, "signer_audit_trace");
 });
 
+function auditReportWithReceiptJoinFixtures({ signerAuditRecords, capitalAuditPairs = [] }) {
+  return buildCapitalAuditReport({
+    signerAuditRecords,
+    capitalAuditPairs,
+    treasurySnapshots: [],
+    gatewayBtcOfframpExecutions: [],
+    gatewayBtcConsolidationExecutions: [],
+    nativeDexExperimentExecutions: [],
+    transactionsByTxHash: {},
+    receiptsByTxHash: {},
+    bitcoinHistoriesByAddress: {},
+    prices: {
+      btc: 80000,
+      tokenByKey: { btc: 80000, usd_stable: 1, ethereum: 3000 },
+      nativeByChain: { base: 3000 },
+    },
+  });
+}
+
+function signerLifecycleFixture({
+  stage,
+  txHash,
+  strategyId,
+  intentHash,
+  intentType,
+  amountUsd,
+  timestamp,
+  chain = "base",
+}) {
+  return {
+    timestamp,
+    strategyId,
+    chain,
+    intentHash,
+    intent: { intentType, amountUsd, mode: "live" },
+    amountUsd,
+    lifecycle: { stage, txHash },
+    broadcast: stage === "signed" ? null : { txHash, from: "0x111", to: "0x222" },
+  };
+}
+
+function terminalSignerFixture(fields) {
+  return {
+    ...signerLifecycleFixture(fields),
+    realized: fields.realized,
+  };
+}
+
+function capitalAuditPairFixture({ txHash, reconciliationStatus, chain = "base" }) {
+  return {
+    status: "closed",
+    stage: "post_reconciliation",
+    source: "signer_terminal_backfill",
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    chain,
+    intentHash: "btc-intent",
+    txHash,
+    reconciliationStatus,
+    validation: { ok: true, method: "signer_terminal_backfill" },
+  };
+}
+
+test("capital audit reconciles stable terminal signer receipts without live RPC receipt", () => {
+  const common = {
+    txHash: "0xstable",
+    strategyId: "stablecoin_treasury_rotation",
+    intentHash: "stable-intent",
+    intentType: "swap",
+    amountUsd: 9.999,
+  };
+  const report = auditReportWithReceiptJoinFixtures({
+    signerAuditRecords: [
+      signerLifecycleFixture({ ...common, stage: "broadcasted", timestamp: "2026-04-24T20:17:49.400Z" }),
+      terminalSignerFixture({
+        ...common,
+        stage: "confirmed",
+        timestamp: "2026-04-24T20:17:54.076Z",
+        realized: {
+          hash: "0xstable",
+          blockNumber: 45136262,
+          status: 1,
+          gasUsed: "53000",
+          gasPrice: "6000000",
+        },
+      }),
+    ],
+  });
+
+  assert.equal(report.transactions[0].txHash, "0xstable");
+  assert.equal(report.transactions[0].result, "ok");
+  assert.equal(report.transactions[0].receiptStatus, 1);
+});
+
+test("capital audit reconciles BTC wrapper terminal signer receipts without live RPC receipt", () => {
+  const common = {
+    txHash: "0xbtc",
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    intentHash: "btc-intent",
+    intentType: "wrapped_btc_loop_entry",
+    amountUsd: 300,
+  };
+  const report = auditReportWithReceiptJoinFixtures({
+    signerAuditRecords: [
+      signerLifecycleFixture({ ...common, stage: "broadcasted", timestamp: "2026-04-16T20:54:01.915Z" }),
+      terminalSignerFixture({
+        ...common,
+        stage: "confirmed",
+        timestamp: "2026-05-18T02:25:58.620Z",
+        realized: {
+          hash: null,
+          blockNumber: 44791748,
+          status: 1,
+          gasUsed: "99020",
+          effectiveGasPrice: "6000000",
+        },
+      }),
+    ],
+  });
+
+  assert.equal(report.transactions[0].txHash, "0xbtc");
+  assert.equal(report.transactions[0].result, "ok");
+  assert.equal(report.transactions[0].receiptStatus, 1);
+});
+
+test("capital audit rejects terminal signer receipt evidence from mismatched chain", () => {
+  const common = {
+    txHash: "0xstable",
+    strategyId: "stablecoin_treasury_rotation",
+    intentHash: "stable-intent",
+    intentType: "swap",
+    amountUsd: 9.999,
+  };
+  const report = auditReportWithReceiptJoinFixtures({
+    signerAuditRecords: [
+      signerLifecycleFixture({ ...common, stage: "broadcasted", timestamp: "2026-04-24T20:17:49.400Z" }),
+      terminalSignerFixture({
+        ...common,
+        chain: "optimism",
+        stage: "confirmed",
+        timestamp: "2026-04-24T20:17:54.076Z",
+        realized: {
+          hash: "0xstable",
+          blockNumber: 45136262,
+          status: 1,
+          gasUsed: "53000",
+          effectiveGasPrice: "6000000",
+        },
+      }),
+    ],
+  });
+
+  assert.equal(report.transactions[0].result, "no_receipt");
+  assert.equal(report.transactions[0].receiptStatus, null);
+});
+
+test("capital audit rejects malformed terminal signer receipt evidence", () => {
+  const common = {
+    txHash: "0xbtc",
+    strategyId: "wrapped-btc-loop-base-moonwell",
+    intentHash: "btc-intent",
+    intentType: "wrapped_btc_loop_entry",
+    amountUsd: 300,
+  };
+  const report = auditReportWithReceiptJoinFixtures({
+    signerAuditRecords: [
+      signerLifecycleFixture({ ...common, stage: "broadcasted", timestamp: "2026-04-16T20:54:01.915Z" }),
+      terminalSignerFixture({
+        ...common,
+        stage: "confirmed",
+        timestamp: "2026-05-18T02:25:58.620Z",
+        realized: {
+          hash: "0xbtc",
+          blockNumber: 44791748,
+          status: 1,
+          gasUsed: "not-a-number",
+          effectiveGasPrice: "6000000",
+        },
+      }),
+    ],
+  });
+
+  assert.equal(report.transactions[0].result, "no_receipt");
+  assert.equal(report.transactions[0].receiptStatus, null);
+});
+
+test("capital audit treats closed capital audit pairs as generic reconciliation proof", () => {
+  const report = auditReportWithReceiptJoinFixtures({
+    signerAuditRecords: [
+      signerLifecycleFixture({
+        timestamp: "2026-04-16T21:12:49.966Z",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intentHash: "btc-intent",
+        intentType: "wrapped_btc_loop_entry",
+        amountUsd: 7,
+        txHash: "0xpaired",
+        stage: "broadcasted",
+      }),
+    ],
+    capitalAuditPairs: [capitalAuditPairFixture({ txHash: "0xpaired", reconciliationStatus: "reconciled" })],
+  });
+
+  assert.equal(report.transactions[0].result, "reconciled");
+  assert.equal(report.transactions[0].reconciliationStatus, "reconciled");
+  assert.equal(report.transactions[0].receiptStatus, null);
+});
+
+test("capital audit treats closed failed capital audit pairs as terminal reverted proof", () => {
+  const report = auditReportWithReceiptJoinFixtures({
+    signerAuditRecords: [
+      signerLifecycleFixture({
+        timestamp: "2026-04-16T21:31:31.857Z",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intentHash: "btc-intent",
+        intentType: "risk_unwind",
+        amountUsd: 3.14,
+        txHash: "0xfailed",
+        stage: "broadcasted",
+      }),
+    ],
+    capitalAuditPairs: [capitalAuditPairFixture({ txHash: "0xfailed", reconciliationStatus: "failed" })],
+  });
+
+  assert.equal(report.transactions[0].result, "reverted");
+  assert.equal(report.transactions[0].reconciliationStatus, "failed");
+  assert.equal(report.transactions[0].receiptStatus, null);
+});
+
+test("capital audit rejects closed capital audit pairs from mismatched chain", () => {
+  const report = auditReportWithReceiptJoinFixtures({
+    signerAuditRecords: [
+      signerLifecycleFixture({
+        timestamp: "2026-04-16T21:12:49.966Z",
+        strategyId: "wrapped-btc-loop-base-moonwell",
+        intentHash: "btc-intent",
+        intentType: "wrapped_btc_loop_entry",
+        amountUsd: 7,
+        txHash: "0xpaired",
+        stage: "broadcasted",
+      }),
+    ],
+    capitalAuditPairs: [
+      capitalAuditPairFixture({ txHash: "0xpaired", reconciliationStatus: "reconciled", chain: "optimism" }),
+    ],
+  });
+
+  assert.equal(report.transactions[0].result, "no_receipt");
+  assert.equal(report.transactions[0].reconciliationStatus, null);
+});
+
 test("capital audit does not match signer-audit helper traces on tx hash alone", () => {
   const report = buildCapitalAuditReport({
     signerAuditRecords: [
@@ -596,7 +858,7 @@ test("capital audit report includes combined EVM and native BTC totals", () => {
   assert.equal(report.summary.currentNativeBtcSats, 13000);
   assert.ok(Math.abs(report.summary.currentNativeBtcUsd - 10.4) < 1e-9);
   assert.ok(Math.abs(report.summary.currentCombinedUsd - 62.4) < 1e-9);
-  assert.ok(Math.abs(report.summary.combinedDeltaUsd - (-7.6)) < 1e-9);
+  assert.ok(Math.abs(report.summary.combinedDeltaUsd - -7.6) < 1e-9);
 });
 
 test("capital audit report injects protocol position marks into treasury inventory", () => {
@@ -702,9 +964,7 @@ test("capital audit scope includes onramp recipient in EVM addresses", () => {
     signerAuditRecords: [],
     treasurySnapshots: [],
     gatewayBtcOfframpExecutions: [],
-    gatewayBtcOnrampExecutions: [
-      { plan: { senderAddress: "bc1sender", recipient: "0xBaseRecipient" } },
-    ],
+    gatewayBtcOnrampExecutions: [{ plan: { senderAddress: "bc1sender", recipient: "0xBaseRecipient" } }],
     approvedOperatorBtcAddresses: [],
   });
 

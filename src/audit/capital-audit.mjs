@@ -22,6 +22,15 @@ function bigint(value, fallback = 0n) {
   }
 }
 
+function bigintOrNull(value) {
+  try {
+    if (value === undefined || value === null || value === "") return null;
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
 function numberOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
@@ -53,6 +62,10 @@ function normalizeAddress(value) {
   return value ? String(value).toLowerCase() : null;
 }
 
+function normalizeTxHash(value) {
+  return value ? String(value).toLowerCase() : null;
+}
+
 function uniqueSorted(values = []) {
   return [...new Set(values.filter(Boolean))].sort((left, right) => String(left).localeCompare(String(right)));
 }
@@ -80,6 +93,97 @@ export function latestBroadcastSignerRecords(records = []) {
     }
   }
   return [...latest.values()].sort((left, right) => new Date(left.timestamp || 0) - new Date(right.timestamp || 0));
+}
+
+function appendMapEntry(map, key, value) {
+  if (!key) return;
+  if (!map.has(key)) map.set(key, []);
+  map.get(key).push(value);
+}
+
+function terminalStageReceiptStatus(stage, realized = {}) {
+  if (stage === "confirmed") return realized.status ?? 1;
+  if (stage === "reverted") return realized.status ?? 0;
+  return null;
+}
+
+function terminalSignerReceiptIdentity(record = {}) {
+  const stage = record?.lifecycle?.stage || null;
+  if (stage !== "confirmed" && stage !== "reverted") return null;
+  const txHash = record?.broadcast?.txHash || record?.lifecycle?.txHash || null;
+  const normalizedTxHash = normalizeTxHash(txHash);
+  if (!normalizedTxHash) return null;
+  const receiptHash = record?.realized?.hash || txHash;
+  if (normalizeTxHash(receiptHash) !== normalizedTxHash) return null;
+  return { stage, txHash };
+}
+
+function terminalSignerReceiptCosts(realized = {}) {
+  if (!realized || typeof realized !== "object") return null;
+  const gasUsed = bigintOrNull(realized.gasUsed);
+  const effectiveGasPrice = bigintOrNull(realized.effectiveGasPrice ?? realized.gasPrice);
+  if (gasUsed === null || effectiveGasPrice === null) return null;
+  return { gasUsed, effectiveGasPrice };
+}
+
+function terminalSignerReceiptForRecord(record = {}) {
+  const identity = terminalSignerReceiptIdentity(record);
+  if (!identity) return null;
+  const costs = terminalSignerReceiptCosts(record.realized);
+  if (!costs) return null;
+  const { stage, txHash } = identity;
+  const status = terminalStageReceiptStatus(stage, record.realized);
+  if (status === null || status === undefined) return null;
+  return {
+    hash: txHash,
+    status,
+    blockNumber: record.realized.blockNumber ?? null,
+    gasUsed: costs.gasUsed.toString(),
+    effectiveGasPrice: costs.effectiveGasPrice.toString(),
+    from: record?.broadcast?.from || null,
+    to: record?.broadcast?.to || null,
+  };
+}
+
+function buildTerminalSignerReceiptIndex(records = []) {
+  const byTxHash = new Map();
+  for (const record of records) {
+    const receipt = terminalSignerReceiptForRecord(record);
+    if (!receipt) continue;
+    appendMapEntry(byTxHash, normalizeTxHash(receipt.hash), { record, receipt });
+  }
+  return byTxHash;
+}
+
+function closedCapitalAuditPairMatchesBroadcast(record = {}, pair = {}) {
+  const reconciliationStatus = String(pair.reconciliationStatus || "").toLowerCase();
+  return (
+    String(pair.status || "").toLowerCase() === "closed" &&
+    String(pair.stage || "").toLowerCase() === "post_reconciliation" &&
+    (reconciliationStatus === "reconciled" || reconciliationStatus === "failed") &&
+    pair.validation?.ok === true &&
+    normalizeTxHash(record?.broadcast?.txHash) === normalizeTxHash(pair.txHash) &&
+    helperTraceRecordContextMatches(record, {
+      strategyId: pair.strategyId,
+      chain: pair.chain,
+      intentHash: pair.intentHash,
+    })
+  );
+}
+
+function resultFromCapitalAuditPair(pair = null) {
+  const status = String(pair?.reconciliationStatus || "").toLowerCase();
+  if (status === "reconciled") return "reconciled";
+  if (status === "failed") return "reverted";
+  return null;
+}
+
+function buildCapitalAuditPairIndex(pairs = []) {
+  const byTxHash = new Map();
+  for (const pair of pairs) {
+    appendMapEntry(byTxHash, normalizeTxHash(pair?.txHash), pair);
+  }
+  return byTxHash;
 }
 
 function flattenTreasuryBalances(snapshot = null) {
@@ -457,7 +561,13 @@ function classifyRemainingBitcoinTxs(unused = [], operatorFundingAddressSet, add
   return { operatorFundingTxs, operatorFundingTxIds, nonSettlementTxs, nonSettlementTxIds, unmatchedTxs };
 }
 
-function buildAddressBitcoinMatchEntry(address, normalizedHistory, unusedAfter, classification, bitcoinHistoriesByAddress = {}) {
+function buildAddressBitcoinMatchEntry(
+  address,
+  normalizedHistory,
+  unusedAfter,
+  classification,
+  bitcoinHistoriesByAddress = {},
+) {
   const { operatorFundingTxs, nonSettlementTxs, unmatchedTxs } = classification;
   return {
     txCount: normalizedHistory.length,
@@ -886,10 +996,48 @@ function computeBroadcastHelperMatchDetails(offramp, onramp, consolidation, nati
   return { helperMatched, helperMatchSource, helperMatchRule };
 }
 
-function resolveBroadcastTxAndReceipt(txHash, transactionsByTxHash = {}, receiptsByTxHash = {}) {
+function terminalSignerReceiptMatchesBroadcast(record = {}, candidateRecord = {}) {
+  return (
+    normalizeTxHash(record?.broadcast?.txHash) ===
+      normalizeTxHash(candidateRecord?.broadcast?.txHash || candidateRecord?.lifecycle?.txHash) &&
+    helperTraceRecordContextMatches(record, {
+      strategyId: candidateRecord?.strategyId,
+      chain: candidateRecord?.chain,
+      intentHash: candidateRecord?.intentHash,
+      from: candidateRecord?.broadcast?.from,
+      to: candidateRecord?.broadcast?.to,
+    })
+  );
+}
+
+function fallbackTerminalSignerReceipt(record = {}, terminalSignerReceiptsByTxHash = new Map()) {
+  const txHash = normalizeTxHash(record?.broadcast?.txHash);
+  const candidates = terminalSignerReceiptsByTxHash.get(txHash) || [];
+  const matches = candidates.filter((candidate) => terminalSignerReceiptMatchesBroadcast(record, candidate.record));
+  if (matches.length !== 1) return null;
+  return matches[0].receipt;
+}
+
+function fallbackCapitalAuditPair(record = {}, capitalAuditPairsByTxHash = new Map()) {
+  const txHash = normalizeTxHash(record?.broadcast?.txHash);
+  const candidates = capitalAuditPairsByTxHash.get(txHash) || [];
+  const matches = candidates.filter((pair) => closedCapitalAuditPairMatchesBroadcast(record, pair));
+  if (matches.length !== 1) return null;
+  return matches[0];
+}
+
+function resolveBroadcastTxAndReceipt(
+  record,
+  transactionsByTxHash = {},
+  receiptsByTxHash = {},
+  terminalSignerReceiptsByTxHash = new Map(),
+  capitalAuditPairsByTxHash = new Map(),
+) {
+  const txHash = record?.broadcast?.txHash;
   return {
     transaction: transactionsByTxHash[txHash] || null,
-    receipt: receiptsByTxHash[txHash] || null,
+    receipt: receiptsByTxHash[txHash] || fallbackTerminalSignerReceipt(record, terminalSignerReceiptsByTxHash),
+    reconciliationPair: fallbackCapitalAuditPair(record, capitalAuditPairsByTxHash),
   };
 }
 
@@ -911,38 +1059,72 @@ function enrichBroadcastRecord(record, helpers = {}) {
     auditHelperTraceIndex = { byTxHash: new Map(), byIntentHash: new Map(), byFallbackBucket: new Map() },
     transactionsByTxHash = {},
     receiptsByTxHash = {},
+    terminalSignerReceiptsByTxHash = new Map(),
+    capitalAuditPairsByTxHash = new Map(),
     prices = emptyPricesUsd(),
   } = helpers;
   const txHash = record.broadcast.txHash;
-  const { transaction, receipt } = resolveBroadcastTxAndReceipt(txHash, transactionsByTxHash, receiptsByTxHash);
-  const evidenceMaps = resolveEvidenceMaps(txHash, offrampsByTxHash, onrampsByTxHash, consolidationsByTxHash, nativeDexByTxHash);
+  const { transaction, receipt, reconciliationPair } = resolveBroadcastTxAndReceipt(
+    record,
+    transactionsByTxHash,
+    receiptsByTxHash,
+    terminalSignerReceiptsByTxHash,
+    capitalAuditPairsByTxHash,
+  );
+  const evidenceMaps = resolveEvidenceMaps(
+    txHash,
+    offrampsByTxHash,
+    onrampsByTxHash,
+    consolidationsByTxHash,
+    nativeDexByTxHash,
+  );
   const { offramp, onramp, consolidation, nativeDex } = evidenceMaps;
   const auditHelperTrace = matchAuditHelperTrace(record, auditHelperTraceIndex);
   const evidenceType = determineBroadcastEvidenceType(offramp, onramp, consolidation, nativeDex, auditHelperTrace);
-function buildEnrichedBroadcastRecordFields(record, transaction, receipt, evidenceType, matchDetails, prices) {
-  return {
-    txHash: record.broadcast.txHash,
-    observedAt: record.timestamp,
-    strategyId: record.strategyId,
-    chain: record.chain,
-    lifecycleStage: broadcastLifecycleStage(record),
-    category: broadcastCategory(record, evidenceType),
-    result: broadcastResultFromReceipt(receipt),
-    from: record.broadcast?.from || transaction?.from || null,
-    to: record.broadcast?.to || transaction?.to || null,
-    amountUsd: record.amountUsd ?? null,
+  function buildEnrichedBroadcastRecordFields(
+    record,
+    transaction,
+    receipt,
+    reconciliationPair,
     evidenceType,
-    gasUsd: gasUsdForReceipt(record.chain, receipt, prices),
-    txValueUsd: txValueUsdForTransaction(record.chain, transaction, prices),
-    receiptStatus: receipt?.status ?? null,
-    helperMatched: matchDetails.helperMatched,
-    helperMatchSource: matchDetails.helperMatchSource,
-    helperMatchRule: matchDetails.helperMatchRule,
-  };
-}
+    matchDetails,
+    prices,
+  ) {
+    return {
+      txHash: record.broadcast.txHash,
+      observedAt: record.timestamp,
+      strategyId: record.strategyId,
+      chain: record.chain,
+      lifecycleStage: broadcastLifecycleStage(record),
+      category: broadcastCategory(record, evidenceType),
+      result: receipt
+        ? broadcastResultFromReceipt(receipt)
+        : resultFromCapitalAuditPair(reconciliationPair) || "no_receipt",
+      from: record.broadcast?.from || transaction?.from || null,
+      to: record.broadcast?.to || transaction?.to || null,
+      amountUsd: record.amountUsd ?? null,
+      evidenceType,
+      gasUsd: gasUsdForReceipt(record.chain, receipt, prices),
+      txValueUsd: txValueUsdForTransaction(record.chain, transaction, prices),
+      receiptStatus: receipt?.status ?? null,
+      reconciliationStatus: reconciliationPair?.reconciliationStatus ?? null,
+      reconciliationSource: reconciliationPair?.source ?? null,
+      helperMatched: matchDetails.helperMatched,
+      helperMatchSource: matchDetails.helperMatchSource,
+      helperMatchRule: matchDetails.helperMatchRule,
+    };
+  }
 
   const matchDetails = computeBroadcastHelperMatchDetails(offramp, onramp, consolidation, nativeDex, auditHelperTrace);
-  return buildEnrichedBroadcastRecordFields(record, transaction, receipt, evidenceType, matchDetails, prices);
+  return buildEnrichedBroadcastRecordFields(
+    record,
+    transaction,
+    receipt,
+    reconciliationPair,
+    evidenceType,
+    matchDetails,
+    prices,
+  );
 }
 
 export function buildCapitalAuditReport({
@@ -953,6 +1135,7 @@ export function buildCapitalAuditReport({
   gatewayBtcOnrampExecutions = [],
   gatewayBtcConsolidationExecutions = [],
   nativeDexExperimentExecutions = [],
+  capitalAuditPairs = [],
   transactionsByTxHash = {},
   receiptsByTxHash = {},
   bitcoinHistoriesByAddress = {},
@@ -983,6 +1166,8 @@ export function buildCapitalAuditReport({
   const consolidationsByTxHash = buildConsolidationMap(gatewayBtcConsolidationExecutions);
   const nativeDexByTxHash = buildNativeDexMap(nativeDexExperimentExecutions);
   const auditHelperTraceIndex = buildAuditHelperTraceIndex(signerAuditRecords);
+  const terminalSignerReceiptsByTxHash = buildTerminalSignerReceiptIndex(signerAuditRecords);
+  const capitalAuditPairsByTxHash = buildCapitalAuditPairIndex(capitalAuditPairs);
 
   const transactions = broadcasts.map((record) =>
     enrichBroadcastRecord(record, {
@@ -993,8 +1178,10 @@ export function buildCapitalAuditReport({
       auditHelperTraceIndex,
       transactionsByTxHash,
       receiptsByTxHash,
+      terminalSignerReceiptsByTxHash,
+      capitalAuditPairsByTxHash,
       prices,
-    })
+    }),
   );
 
   const enrichedTreasurySnapshots = injectProtocolPositionsIntoLatestSnapshot(treasurySnapshots, protocolPositionMarks);
@@ -1040,36 +1227,36 @@ export function buildCapitalAuditReport({
     gasFromRevertedTxsUsd,
     gasFromNoReceiptTxsUsd,
   } = gasMetrics;
-function buildGasMetrics(transactions = [], broadcastBreakdown = []) {
-  const totalGasUsd = transactions
-    .map((entry) => entry.gasUsd)
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const breakdownGasUsd = broadcastBreakdown.map((entry) => entry.gasUsd).reduce((sum, value) => sum + value, 0);
-  const { byCategoryGas, byChainGas } = aggregateGasByCategoryAndChain(broadcastBreakdown);
-  const topGasCategory = [...byCategoryGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
-  const topGasChain = [...byChainGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
-  const gasFromRevertedTxsUsd = transactions
-    .filter((entry) => entry.result === "reverted")
-    .map((entry) => entry.gasUsd)
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const gasFromNoReceiptTxsUsd = transactions
-    .filter((entry) => entry.result === "no_receipt")
-    .map((entry) => entry.gasUsd)
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  return {
-    totalGasUsd,
-    breakdownGasUsd,
-    byCategoryGas,
-    byChainGas,
-    topGasCategory,
-    topGasChain,
-    gasFromRevertedTxsUsd,
-    gasFromNoReceiptTxsUsd,
-  };
-}
+  function buildGasMetrics(transactions = [], broadcastBreakdown = []) {
+    const totalGasUsd = transactions
+      .map((entry) => entry.gasUsd)
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const breakdownGasUsd = broadcastBreakdown.map((entry) => entry.gasUsd).reduce((sum, value) => sum + value, 0);
+    const { byCategoryGas, byChainGas } = aggregateGasByCategoryAndChain(broadcastBreakdown);
+    const topGasCategory = [...byCategoryGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+    const topGasChain = [...byChainGas.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null;
+    const gasFromRevertedTxsUsd = transactions
+      .filter((entry) => entry.result === "reverted")
+      .map((entry) => entry.gasUsd)
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const gasFromNoReceiptTxsUsd = transactions
+      .filter((entry) => entry.result === "no_receipt")
+      .map((entry) => entry.gasUsd)
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    return {
+      totalGasUsd,
+      breakdownGasUsd,
+      byCategoryGas,
+      byChainGas,
+      topGasCategory,
+      topGasChain,
+      gasFromRevertedTxsUsd,
+      gasFromNoReceiptTxsUsd,
+    };
+  }
   const {
     totalQuotedGatewayFeeSats,
     totalQuotedGatewayResidualSats,
@@ -1089,95 +1276,95 @@ function buildGasMetrics(transactions = [], broadcastBreakdown = []) {
     prices,
   });
 
-function buildGatewayBtcAndInventoryTotals({
-  offrampSummaries = [],
-  nativeDexSummaries = [],
-  operatorFundingBitcoinTxs = [],
-  bitcoinMatching = { addresses: {} },
-  inventory = {},
-  prices = {},
-} = {}) {
-  const totalQuotedGatewayResidualSats = offrampSummaries
-    .map((entry) => Number(entry.quotedResidualSats))
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const totalQuotedGatewayFeeSats = offrampSummaries
-    .map((entry) => Number(entry.quotedFeeSats))
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const totalObservedBtcSats = offrampSummaries
-    .map((entry) => Number(entry.observedBitcoinSats))
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const totalNativeDexOutputDriftUsd = nativeDexSummaries
-    .map((entry) => entry.outputDriftUsd)
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const operatorFundingBtcSats = operatorFundingBitcoinTxs
-    .map((entry) => Number(entry.receivedSats || 0))
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const currentNativeBtcSats = Object.values(bitcoinMatching.addresses)
-    .map((entry) => entry.balance?.balanceSats)
-    .filter(Number.isFinite)
-    .reduce((sum, value) => sum + value, 0);
-  const currentNativeBtcUsd = Number.isFinite(prices?.btc) ? (currentNativeBtcSats / 1e8) * prices.btc : null;
-  const currentCombinedUsd =
-    Number.isFinite(inventory.end?.estimatedWalletUsd) && Number.isFinite(currentNativeBtcUsd)
-      ? inventory.end.estimatedWalletUsd + currentNativeBtcUsd
-      : null;
-  const startCombinedUsd =
-    Number.isFinite(inventory.start?.estimatedWalletUsd) && Number.isFinite(currentNativeBtcUsd)
-      ? inventory.start.estimatedWalletUsd + 0
-      : null;
-  return {
-    totalQuotedGatewayFeeSats,
-    totalQuotedGatewayResidualSats,
-    totalObservedBtcSats,
-    totalNativeDexOutputDriftUsd,
-    operatorFundingBtcSats,
-    currentNativeBtcSats,
-    currentNativeBtcUsd,
-    currentCombinedUsd,
-    startCombinedUsd,
-  };
-}
+  function buildGatewayBtcAndInventoryTotals({
+    offrampSummaries = [],
+    nativeDexSummaries = [],
+    operatorFundingBitcoinTxs = [],
+    bitcoinMatching = { addresses: {} },
+    inventory = {},
+    prices = {},
+  } = {}) {
+    const totalQuotedGatewayResidualSats = offrampSummaries
+      .map((entry) => Number(entry.quotedResidualSats))
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const totalQuotedGatewayFeeSats = offrampSummaries
+      .map((entry) => Number(entry.quotedFeeSats))
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const totalObservedBtcSats = offrampSummaries
+      .map((entry) => Number(entry.observedBitcoinSats))
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const totalNativeDexOutputDriftUsd = nativeDexSummaries
+      .map((entry) => entry.outputDriftUsd)
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const operatorFundingBtcSats = operatorFundingBitcoinTxs
+      .map((entry) => Number(entry.receivedSats || 0))
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const currentNativeBtcSats = Object.values(bitcoinMatching.addresses)
+      .map((entry) => entry.balance?.balanceSats)
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const currentNativeBtcUsd = Number.isFinite(prices?.btc) ? (currentNativeBtcSats / 1e8) * prices.btc : null;
+    const currentCombinedUsd =
+      Number.isFinite(inventory.end?.estimatedWalletUsd) && Number.isFinite(currentNativeBtcUsd)
+        ? inventory.end.estimatedWalletUsd + currentNativeBtcUsd
+        : null;
+    const startCombinedUsd =
+      Number.isFinite(inventory.start?.estimatedWalletUsd) && Number.isFinite(currentNativeBtcUsd)
+        ? inventory.start.estimatedWalletUsd + 0
+        : null;
+    return {
+      totalQuotedGatewayFeeSats,
+      totalQuotedGatewayResidualSats,
+      totalObservedBtcSats,
+      totalNativeDexOutputDriftUsd,
+      operatorFundingBtcSats,
+      currentNativeBtcSats,
+      currentNativeBtcUsd,
+      currentCombinedUsd,
+      startCombinedUsd,
+    };
+  }
 
-function buildDerivedIssues(issues = [], unmatchedBroadcasts = [], unmatchedBitcoinTxs = [], offrampSummaries = []) {
-  return [
-    ...issues,
-    ...unmatchedBroadcasts.map((entry) => ({
-      code: "broadcast_missing_helper_trace",
-      severity: "medium",
-      txHash: entry.txHash,
-      strategyId: entry.strategyId,
-      chain: entry.chain,
-      observedAt: entry.observedAt,
-      amountUsd: entry.amountUsd,
-      from: entry.from,
-      to: entry.to,
-    })),
-    ...unmatchedBitcoinTxs.map((entry) => ({
-      code: "bitcoin_tx_unmatched_to_offramp",
-      severity: "high",
-      address: entry.address,
-      txid: entry.txid,
-      receivedSats: entry.receivedSats,
-      blockTime: entry.blockTime,
-    })),
-    ...offrampSummaries
-      .filter((entry) => Number(entry.quotedResidualSats) !== 0)
-      .map((entry) => ({
-        code: "gateway_quote_residual_unexplained",
-        severity: "low",
+  function buildDerivedIssues(issues = [], unmatchedBroadcasts = [], unmatchedBitcoinTxs = [], offrampSummaries = []) {
+    return [
+      ...issues,
+      ...unmatchedBroadcasts.map((entry) => ({
+        code: "broadcast_missing_helper_trace",
+        severity: "medium",
         txHash: entry.txHash,
-        srcChain: entry.srcChain,
-        recipient: entry.recipient,
+        strategyId: entry.strategyId,
+        chain: entry.chain,
         observedAt: entry.observedAt,
-        residualSats: Number(entry.quotedResidualSats),
+        amountUsd: entry.amountUsd,
+        from: entry.from,
+        to: entry.to,
       })),
-  ];
-}
+      ...unmatchedBitcoinTxs.map((entry) => ({
+        code: "bitcoin_tx_unmatched_to_offramp",
+        severity: "high",
+        address: entry.address,
+        txid: entry.txid,
+        receivedSats: entry.receivedSats,
+        blockTime: entry.blockTime,
+      })),
+      ...offrampSummaries
+        .filter((entry) => Number(entry.quotedResidualSats) !== 0)
+        .map((entry) => ({
+          code: "gateway_quote_residual_unexplained",
+          severity: "low",
+          txHash: entry.txHash,
+          srcChain: entry.srcChain,
+          recipient: entry.recipient,
+          observedAt: entry.observedAt,
+          residualSats: Number(entry.quotedResidualSats),
+        })),
+    ];
+  }
 
   const derivedIssues = buildDerivedIssues(issues, unmatchedBroadcasts, unmatchedBitcoinTxs, offrampSummaries);
 
@@ -1189,8 +1376,23 @@ function buildDerivedIssues(issues = [], unmatchedBroadcasts = [], unmatchedBitc
     offrampSummaries,
     operatorFundingBitcoinTxs,
     nonSettlementBitcoinTxs,
-    gasMetrics: { totalGasUsd, breakdownGasUsd, topGasCategory, topGasChain, gasFromRevertedTxsUsd, gasFromNoReceiptTxsUsd },
-    gatewayBtcTotals: { totalQuotedGatewayFeeSats, totalQuotedGatewayResidualSats, totalObservedBtcSats, totalNativeDexOutputDriftUsd, currentNativeBtcSats, currentNativeBtcUsd, currentCombinedUsd },
+    gasMetrics: {
+      totalGasUsd,
+      breakdownGasUsd,
+      topGasCategory,
+      topGasChain,
+      gasFromRevertedTxsUsd,
+      gasFromNoReceiptTxsUsd,
+    },
+    gatewayBtcTotals: {
+      totalQuotedGatewayFeeSats,
+      totalQuotedGatewayResidualSats,
+      totalObservedBtcSats,
+      totalNativeDexOutputDriftUsd,
+      currentNativeBtcSats,
+      currentNativeBtcUsd,
+      currentCombinedUsd,
+    },
     inventory,
     startCombinedUsd,
     currentCombinedUsd,
@@ -1233,10 +1435,21 @@ function buildDerivedIssues(issues = [], unmatchedBroadcasts = [], unmatchedBitc
 }
 
 function buildCapitalAuditSummary(params = {}) {
-  const broadcast = buildBroadcastCounts(params.transactions, params.unmatchedBroadcasts, params.unmatchedBitcoinTxs, params.scope);
-  const bitcoin = buildBitcoinCounts(params.offrampSummaries, params.unmatchedBitcoinTxs, params.operatorFundingBitcoinTxs, params.nonSettlementBitcoinTxs, params.operatorFundingBtcSats);
+  const broadcast = buildBroadcastCounts(params.transactions, params.unmatchedBroadcasts, params.scope);
+  const bitcoin = buildBitcoinCounts(
+    params.offrampSummaries,
+    params.unmatchedBitcoinTxs,
+    params.operatorFundingBitcoinTxs,
+    params.nonSettlementBitcoinTxs,
+    params.operatorFundingBtcSats,
+  );
   const gas = buildGasSummaryFields(params.gasMetrics);
-  const treasury = buildTreasuryAndCombinedFields(params.inventory, params.startCombinedUsd, params.currentCombinedUsd, params.gatewayBtcTotals, params.derivedIssues);
+  const treasury = buildTreasuryAndCombinedFields(
+    params.inventory,
+    params.startCombinedUsd,
+    params.currentCombinedUsd,
+    params.gatewayBtcTotals,
+  );
   return {
     ...broadcast,
     ...bitcoin,
@@ -1246,7 +1459,7 @@ function buildCapitalAuditSummary(params = {}) {
   };
 }
 
-function buildBroadcastCounts(transactions = [], unmatchedBroadcasts = [], unmatchedBitcoinTxs = [], scope = { bitcoinAddresses: [] }) {
+function buildBroadcastCounts(transactions = [], unmatchedBroadcasts = [], scope = { bitcoinAddresses: [] }) {
   return {
     broadcastCount: transactions.length,
     broadcastWithReceiptCount: transactions.filter((entry) => entry.receiptStatus !== null).length,
@@ -1256,7 +1469,13 @@ function buildBroadcastCounts(transactions = [], unmatchedBroadcasts = [], unmat
   };
 }
 
-function buildBitcoinCounts(offrampSummaries = [], unmatchedBitcoinTxs = [], operatorFundingBitcoinTxs = [], nonSettlementBitcoinTxs = [], operatorFundingBtcSats = 0) {
+function buildBitcoinCounts(
+  offrampSummaries = [],
+  unmatchedBitcoinTxs = [],
+  operatorFundingBitcoinTxs = [],
+  nonSettlementBitcoinTxs = [],
+  operatorFundingBtcSats = 0,
+) {
   return {
     bitcoinMatchedSettlementCount: offrampSummaries.filter((entry) => entry.matchedBitcoinTx?.txid).length,
     bitcoinUnmatchedTxCount: unmatchedBitcoinTxs.length,
@@ -1285,7 +1504,12 @@ function buildGasSummaryFields(gasMetrics = {}) {
   };
 }
 
-function buildTreasuryAndCombinedFields(inventory = {}, startCombinedUsd = null, currentCombinedUsd = null, gatewayBtcTotals = {}, derivedIssues = []) {
+function buildTreasuryAndCombinedFields(
+  inventory = {},
+  startCombinedUsd = null,
+  currentCombinedUsd = null,
+  gatewayBtcTotals = {},
+) {
   const {
     totalQuotedGatewayFeeSats = 0,
     totalQuotedGatewayResidualSats = 0,
@@ -1338,6 +1562,7 @@ export async function collectCapitalAuditInputs({
     gatewayBtcOnrampExecutions,
     gatewayBtcConsolidationExecutions,
     nativeDexExperimentExecutions,
+    capitalAuditPairs,
     marketPriceSnapshots,
     gasSnapshots,
     bitcoinFeeSnapshots,
@@ -1349,6 +1574,7 @@ export async function collectCapitalAuditInputs({
     readJsonl(dataDir, "gateway-btc-onramp-executions"),
     readJsonl(dataDir, "gateway-btc-consolidation-executions"),
     readJsonl(dataDir, "native-dex-experiment-executions"),
+    readJsonl(dataDir, "capital-audit-pairs"),
     readJsonl(dataDir, "market-price-snapshots"),
     readJsonl(dataDir, "gas-snapshots"),
     readJsonl(dataDir, "bitcoin-fee-snapshots"),
@@ -1452,6 +1678,7 @@ export async function collectCapitalAuditInputs({
     gatewayBtcOnrampExecutions,
     gatewayBtcConsolidationExecutions,
     nativeDexExperimentExecutions,
+    capitalAuditPairs,
     transactionsByTxHash,
     receiptsByTxHash,
     bitcoinHistoriesByAddress,
