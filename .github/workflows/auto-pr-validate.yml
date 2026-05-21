@@ -102,7 +102,7 @@ jobs:
           if-no-files-found: error
       - name: label auto-merge-eligible on success
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.addLabels({
