@@ -7,6 +7,7 @@ import {
   reconcileBlockerWithAmountFloorEvidence,
   reconcileBlockerWithGatewaySuccessEvidence,
   refillBlockerDetails,
+  refillBlockerDetailsForReadiness,
 } from "../src/cli/check-full-automation-readiness.mjs";
 import { WBTC_OFT_TOKEN } from "../src/assets/tokens.mjs";
 
@@ -393,4 +394,54 @@ test("refillBlockerDetails leaves blockers untouched when neither evidence map m
   assert.equal(projected[0].reason, "expected_net_below_receipt_cost_p90_floor");
   assert.equal(projected[0].snapshotStaleByFreshSuccess, false);
   assert.equal(projected[0].gatewaySuccessProbe, null);
+});
+
+function quoteFloorBlockers() {
+  return [
+    {
+      chain: "synDstChainAlpha",
+      asset: "wBTC.OFT",
+      targetAsset: "wBTC.OFT",
+      sourceChain: "synSrcChainAlpha",
+      sourceAsset: "BTC",
+      reason: "quote_amount_too_low",
+      selectedMethod: "synthetic_bridge",
+      quoteAmountFloor: { minimum: "25000", actual: "10000" },
+    },
+  ];
+}
+
+function capitalManagerWithSyntheticSource(actual) {
+  return {
+    jobs: {
+      jobs: [
+        {
+          chain: "synDstChainAlpha",
+          asset: "wBTC.OFT",
+          executionMethod: "synthetic_bridge",
+          decision: "REFILL_REQUIRED",
+          blocker: null,
+          fundingSource: {
+            selectionStatus: "ready",
+            source: { chain: "synSrcChainAlpha", ticker: "BTC", actual },
+          },
+        },
+      ],
+    },
+  };
+}
+
+test("refillBlockerDetailsForReadiness drops quote-floor blockers when fresh planner source satisfies minimum", () => {
+  const projected = refillBlockerDetailsForReadiness(quoteFloorBlockers(), {
+    capitalManager: capitalManagerWithSyntheticSource("118705"),
+  });
+  assert.deepEqual(projected, []);
+});
+
+test("refillBlockerDetailsForReadiness keeps quote-floor blockers when planner source is still below minimum", () => {
+  const projected = refillBlockerDetailsForReadiness(quoteFloorBlockers(), {
+    capitalManager: capitalManagerWithSyntheticSource("10000"),
+  });
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0].reason, "quote_amount_too_low");
 });

@@ -513,6 +513,86 @@ function normalizeRefillBlocker(item = {}) {
   };
 }
 
+function unwrapCapitalJobs(capitalManager = null) {
+  const wrapped =
+    capitalManager?.jobs && typeof capitalManager.jobs === "object" ? capitalManager.jobs : capitalManager;
+  return Array.isArray(wrapped?.jobs) ? wrapped.jobs : [];
+}
+
+function bigintOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    return BigInt(String(value));
+  } catch {
+    return null;
+  }
+}
+
+function stringsEqual(left, right) {
+  return String(left || "").toLowerCase() === String(right || "").toLowerCase();
+}
+
+function plannerJobReady(job = {}) {
+  if (job.decision && job.decision !== "REFILL_REQUIRED") return false;
+  if (job.blocker !== null && job.blocker !== undefined) return false;
+  const status = job.fundingSource?.selectionStatus;
+  return status === "ready" || status === null || status === undefined;
+}
+
+function plannerJobMatchesDestination(job = {}, blocker = {}) {
+  return (
+    stringsEqual(job.chain, blocker.chain) &&
+    stringsEqual(job.asset || job.targetAsset, blocker.asset || blocker.targetAsset)
+  );
+}
+
+function plannerJobMatchesMethod(job = {}, blocker = {}) {
+  if (!blocker.selectedMethod) return true;
+  return stringsEqual(job.executionMethod || job.fundingSource?.method || null, blocker.selectedMethod);
+}
+
+function plannerJobMatchesSource(job = {}, blocker = {}) {
+  const source = job.fundingSource?.source || {};
+  if (blocker.sourceChain && !stringsEqual(source.chain, blocker.sourceChain)) return false;
+  if (!blocker.sourceAsset) return true;
+  const ticker = source.ticker || source.asset || source.token || null;
+  return !ticker || stringsEqual(ticker, blocker.sourceAsset);
+}
+
+function plannerJobMatchesBlocker(job = {}, blocker = {}) {
+  if (!plannerJobReady(job)) return false;
+  return (
+    plannerJobMatchesDestination(job, blocker) &&
+    plannerJobMatchesMethod(job, blocker) &&
+    plannerJobMatchesSource(job, blocker)
+  );
+}
+
+function plannerJobSatisfiesQuoteAmountFloor(job = {}, floor = null) {
+  const minimum = bigintOrNull(floor?.minimum);
+  if (minimum === null) return false;
+  const candidates = [
+    job.fundingSource?.source?.actual,
+    job.sourceAmount,
+    job.targetAmount,
+    job.amount,
+    job.quoteAmount,
+  ];
+  return candidates.some((value) => {
+    const amount = bigintOrNull(value);
+    return amount !== null && amount >= minimum;
+  });
+}
+
+function refillBlockerSupersededByPlannerAmount(blocker = {}, capitalManager = null) {
+  if (blocker.reason !== "quote_amount_too_low") return false;
+  if (!blocker.quoteAmountFloor) return false;
+  return unwrapCapitalJobs(capitalManager).some(
+    (job) =>
+      plannerJobMatchesBlocker(job, blocker) && plannerJobSatisfiesQuoteAmountFloor(job, blocker.quoteAmountFloor),
+  );
+}
+
 export function refillBlockerDetails(blockers = [], { amountFloorByRoute = null, successByRoute = null } = {}) {
   if (!Array.isArray(blockers)) return [];
   const withAmountFloor =
@@ -527,6 +607,15 @@ export function refillBlockerDetails(blockers = [], { amountFloorByRoute = null,
     .map(normalizeRefillBlocker)
     .filter((item) => item.reason)
     .slice(0, 8);
+}
+
+export function refillBlockerDetailsForReadiness(
+  blockers = [],
+  { amountFloorByRoute = null, successByRoute = null, capitalManager = null } = {},
+) {
+  return refillBlockerDetails(blockers, { amountFloorByRoute, successByRoute }).filter(
+    (item) => !refillBlockerSupersededByPlannerAmount(item, capitalManager),
+  );
 }
 
 function liveAutomationRefillCounts(autopilot = null) {
@@ -628,9 +717,10 @@ export function buildFullAutomationReadiness({
     merklCanaryReadyCount > 0 && !["failed", "invalid", "error"].includes(String(merklCanaryStatus || ""));
   const liveAutomationObserved = autopilot?.present === true;
   const activeLiveAutomationRun = autopilot?.activeRun === true;
-  const refillBlockers = refillBlockerDetails(autopilot?.refill?.blockers || [], {
+  const refillBlockers = refillBlockerDetailsForReadiness(autopilot?.refill?.blockers || [], {
     amountFloorByRoute,
     successByRoute,
+    capitalManager,
   });
   const refillIssueCounts = countByCategory(refillBlockers);
   const unresolvedRefillRoutes =
