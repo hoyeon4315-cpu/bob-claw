@@ -19,6 +19,7 @@ import { buildFamilyActionTable } from "./family-action-classification.mjs";
 import { buildDryRunRemediationPlan } from "./dry-run-remediation-planner.mjs";
 import { buildLaneHandlerReport } from "./lane-handler-framework.mjs";
 import { buildLaneIntentCandidateReport } from "./remediation-lane-intent-candidate.mjs";
+import { buildCapitalIntentOrchestratorReport } from "./capital-intent-orchestrator.mjs";
 
 function attachLifecycleEvidence(candidates, options, now) {
   const protocolPositionMarks = Array.isArray(options.protocolPositionMarks) ? options.protocolPositionMarks : [];
@@ -2453,6 +2454,10 @@ function buildRemediationLifecycleBundle({ now, dryRunRemediationPlan, options, 
     laneHandlerReport,
     laneHandlerPilot: laneHandlerPilotSummary(laneHandlerReport),
     laneIntentCandidateReport,
+    capitalIntentOrchestrator: buildCapitalIntentOrchestratorReport({
+      generatedAt: now,
+      laneIntentCandidateReport,
+    }),
   };
 }
 
@@ -2532,7 +2537,7 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
       familyActionTable,
     },
   });
-  const { laneHandlerPilot, laneIntentCandidateReport } = buildRemediationLifecycleBundle({
+  const { laneHandlerPilot, laneIntentCandidateReport, capitalIntentOrchestrator } = buildRemediationLifecycleBundle({
     now,
     dryRunRemediationPlan,
     options,
@@ -2563,6 +2568,8 @@ export async function buildAllSourceDeploymentSelectorReport(options = {}) {
     laneSafetyProof: laneIntentCandidateReport.laneSafetyProof,
     futureHandlerBacklog: laneIntentCandidateReport.futureHandlerBacklog,
     laneIntentCandidateReport,
+    capitalIntentOrchestrator,
+    capitalIntentTable: capitalIntentOrchestrator.rows,
     claimHarvestSummary,
     paybackAttributionSummary,
     capitalTruth: {
