@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm
+FROM mcr.microsoft.com/devcontainers/javascript-node:4-24-bookworm
 
 # Python supports repo scripts such as graphify and the static dashboard server.
 # curl/unzip are used to install Foundry, while build tooling helps npm native deps compile cleanly.
