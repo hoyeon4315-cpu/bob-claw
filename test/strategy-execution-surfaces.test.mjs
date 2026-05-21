@@ -110,6 +110,59 @@ function wrappedBtcLoopReceiptHistoryFixture(
   return { receiptRecords, auditRecords: [] };
 }
 
+function buildWrappedBtcReceiptHistoryReport({
+  expectedNetUsd,
+  receiptHistory,
+  signerBackedRunCount,
+  now = "2026-05-21T05:00:00.000Z",
+}) {
+  return buildStrategyExecutionSurfaces({
+    now,
+    dashboardStatus: {
+      ...dashboardStatusFixture(),
+      overall: {
+        liveTrading: "ALLOWED",
+        lanePolicy: {
+          candidateId: "wrapped-btc-loop-base-moonwell",
+          stage: "B",
+          policyLiveTrading: "ALLOWED",
+        },
+      },
+    },
+    state: { scoreSnapshot: { scores: [] } },
+    triangleArtifacts: {},
+    artifacts: {
+      wrappedBtcLendingLoopSlice: {
+        strategy: {
+          id: "wrapped-btc-loop-base-moonwell",
+          label: "Wrapped BTC lending loop (Base / Moonwell)",
+        },
+        ...wrappedBtcLoopExpectedNetPolicy(expectedNetUsd, receiptHistory),
+        bindingSupport: { executableFromRepo: true },
+        dryRunSummary: { dryRunReceiptRecorded: true, signerBackedRunCount },
+        pnl: {
+          paper: { annualNetCarryUsd: 5.9183 },
+          estimated: { valueUsd: expectedNetUsd },
+          realized: { valueUsd: expectedNetUsd },
+        },
+      },
+      phase3StrategyValidation: {
+        validations: [
+          {
+            id: "wrapped_btc_loop_validation",
+            overallStatus: "passed",
+            evidence: {
+              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
+              extendedReceiptContextReady: true,
+            },
+          },
+        ],
+      },
+      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
+    },
+  });
+}
+
 test("execution surfaces classify missing runners separately from runnable observation lanes", () => {
   const report = buildStrategyExecutionSurfaces({
     dashboardStatus: dashboardStatusFixture(),
@@ -820,54 +873,10 @@ test("wrapped BTC loop stays dry-run when expected net is below the receipt cost
 });
 
 test("wrapped BTC loop EV preview consumes signer-backed receipt history instead of chain p99 fallback", () => {
-  const now = "2026-05-21T05:00:00.000Z";
-  const report = buildStrategyExecutionSurfaces({
-    now,
-    dashboardStatus: {
-      ...dashboardStatusFixture(),
-      overall: {
-        liveTrading: "ALLOWED",
-        lanePolicy: {
-          candidateId: "wrapped-btc-loop-base-moonwell",
-          stage: "B",
-          policyLiveTrading: "ALLOWED",
-        },
-      },
-    },
-    state: { scoreSnapshot: { scores: [] } },
-    triangleArtifacts: {},
-    artifacts: {
-      wrappedBtcLendingLoopSlice: {
-        strategy: {
-          id: "wrapped-btc-loop-base-moonwell",
-          label: "Wrapped BTC lending loop (Base / Moonwell)",
-        },
-        ...wrappedBtcLoopExpectedNetPolicy(
-          0.4913,
-          wrappedBtcLoopReceiptHistoryFixture(0.035, 12, "2026-05-10T00:00:00.000Z"),
-        ),
-        bindingSupport: { executableFromRepo: true },
-        dryRunSummary: { dryRunReceiptRecorded: true, signerBackedRunCount: 12 },
-        pnl: {
-          paper: { annualNetCarryUsd: 5.9183 },
-          estimated: { valueUsd: 0.4913 },
-          realized: { valueUsd: 0.4913 },
-        },
-      },
-      phase3StrategyValidation: {
-        validations: [
-          {
-            id: "wrapped_btc_loop_validation",
-            overallStatus: "passed",
-            evidence: {
-              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
-              extendedReceiptContextReady: true,
-            },
-          },
-        ],
-      },
-      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
-    },
+  const report = buildWrappedBtcReceiptHistoryReport({
+    expectedNetUsd: 0.4913,
+    receiptHistory: wrappedBtcLoopReceiptHistoryFixture(0.035, 12),
+    signerBackedRunCount: 12,
   });
 
   const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
@@ -880,54 +889,10 @@ test("wrapped BTC loop EV preview consumes signer-backed receipt history instead
 });
 
 test("wrapped BTC loop EV preview keeps blocking when receipt-history p90 still exceeds expected net", () => {
-  const now = "2026-05-21T05:00:00.000Z";
-  const report = buildStrategyExecutionSurfaces({
-    now,
-    dashboardStatus: {
-      ...dashboardStatusFixture(),
-      overall: {
-        liveTrading: "ALLOWED",
-        lanePolicy: {
-          candidateId: "wrapped-btc-loop-base-moonwell",
-          stage: "B",
-          policyLiveTrading: "ALLOWED",
-        },
-      },
-    },
-    state: { scoreSnapshot: { scores: [] } },
-    triangleArtifacts: {},
-    artifacts: {
-      wrappedBtcLendingLoopSlice: {
-        strategy: {
-          id: "wrapped-btc-loop-base-moonwell",
-          label: "Wrapped BTC lending loop (Base / Moonwell)",
-        },
-        ...wrappedBtcLoopExpectedNetPolicy(
-          0.05,
-          wrappedBtcLoopReceiptHistoryFixture(0.2, 12, "2026-05-10T00:00:00.000Z"),
-        ),
-        bindingSupport: { executableFromRepo: true },
-        dryRunSummary: { dryRunReceiptRecorded: true, signerBackedRunCount: 12 },
-        pnl: {
-          paper: { annualNetCarryUsd: 5.9183 },
-          estimated: { valueUsd: 0.05 },
-          realized: { valueUsd: 0.05 },
-        },
-      },
-      phase3StrategyValidation: {
-        validations: [
-          {
-            id: "wrapped_btc_loop_validation",
-            overallStatus: "passed",
-            evidence: {
-              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
-              extendedReceiptContextReady: true,
-            },
-          },
-        ],
-      },
-      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
-    },
+  const report = buildWrappedBtcReceiptHistoryReport({
+    expectedNetUsd: 0.05,
+    receiptHistory: wrappedBtcLoopReceiptHistoryFixture(0.2, 12),
+    signerBackedRunCount: 12,
   });
 
   const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
@@ -938,54 +903,10 @@ test("wrapped BTC loop EV preview keeps blocking when receipt-history p90 still 
 });
 
 test("wrapped BTC loop EV preview falls back to chain p99 when receipt history is below sample threshold", () => {
-  const now = "2026-05-21T05:00:00.000Z";
-  const report = buildStrategyExecutionSurfaces({
-    now,
-    dashboardStatus: {
-      ...dashboardStatusFixture(),
-      overall: {
-        liveTrading: "ALLOWED",
-        lanePolicy: {
-          candidateId: "wrapped-btc-loop-base-moonwell",
-          stage: "B",
-          policyLiveTrading: "ALLOWED",
-        },
-      },
-    },
-    state: { scoreSnapshot: { scores: [] } },
-    triangleArtifacts: {},
-    artifacts: {
-      wrappedBtcLendingLoopSlice: {
-        strategy: {
-          id: "wrapped-btc-loop-base-moonwell",
-          label: "Wrapped BTC lending loop (Base / Moonwell)",
-        },
-        ...wrappedBtcLoopExpectedNetPolicy(
-          0.4913,
-          wrappedBtcLoopReceiptHistoryFixture(0.035, 3, "2026-05-10T00:00:00.000Z"),
-        ),
-        bindingSupport: { executableFromRepo: true },
-        dryRunSummary: { dryRunReceiptRecorded: true, signerBackedRunCount: 3 },
-        pnl: {
-          paper: { annualNetCarryUsd: 5.9183 },
-          estimated: { valueUsd: 0.4913 },
-          realized: { valueUsd: 0.4913 },
-        },
-      },
-      phase3StrategyValidation: {
-        validations: [
-          {
-            id: "wrapped_btc_loop_validation",
-            overallStatus: "passed",
-            evidence: {
-              liveRoundtripProofStatus: "signer_backed_roundtrip_recorded",
-              extendedReceiptContextReady: true,
-            },
-          },
-        ],
-      },
-      treasuryInventoryRecords: treasuryInventoryFixture("33053"),
-    },
+  const report = buildWrappedBtcReceiptHistoryReport({
+    expectedNetUsd: 0.4913,
+    receiptHistory: wrappedBtcLoopReceiptHistoryFixture(0.035, 3),
+    signerBackedRunCount: 3,
   });
 
   const wrapped = report.strategies.find((strategy) => strategy.id === "wrapped-btc-loop-base-moonwell");
