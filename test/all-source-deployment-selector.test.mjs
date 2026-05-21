@@ -1337,6 +1337,48 @@ test("open-position blockers from non-btc candidates do not govern btc wrapper f
   assert.notEqual(btcWrapperAction.reason, "open_position_active");
 });
 
+test("open Merkl queue positions surface hold noop instead of missing active-position producer", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      campaignAware: { candidates: [] },
+      strategyCatalog: { btcFamilies: [] },
+      allocatorCore: { candidates: [] },
+      defiLlamaPools: [],
+      merklQueue: {
+        summary: { queueCount: 1 },
+        queue: [
+          {
+            queueId: "merkl:stable-open",
+            opportunityId: "stable-open",
+            chain: "base",
+            protocolId: "aave",
+            executionSurface: "stableCarry",
+            mappedStrategyId: "gateway_native_asset_conversion_sleeve",
+            executionReadiness: {
+              status: "open_position_active",
+              openPosition: {
+                positionId: "merkl:base:stable-open",
+                observedAt: "2026-05-21T00:00:00.000Z",
+              },
+            },
+            autoEntry: { status: "blocked", blockers: ["open_position_active"] },
+          },
+        ],
+      },
+    }),
+  );
+
+  const stable = report.familyCoverage.find((row) => row.family === "stable_carry");
+  assert.ok(stable);
+  assert.equal(stable.activePositionCount, 1);
+  assert.equal(stable.firstBlockingReason, "HOLD_NOOP");
+
+  const stableAction = report.familyActionTable.find((row) => row.family === "stable_carry");
+  assert.ok(stableAction);
+  assert.equal(stableAction.actionClass, "TRUE_HOLD_NOOP");
+  assert.equal(stableAction.reason, "all_active_positions_hold_noop");
+});
+
 test("capless advisory btc wrapper templates do not govern family when no live-sized intent exists", async () => {
   const report = await buildAllSourceDeploymentSelectorReport(
     baseInputs({
