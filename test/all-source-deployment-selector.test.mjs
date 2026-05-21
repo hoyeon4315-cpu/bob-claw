@@ -1337,6 +1337,72 @@ test("open-position blockers from non-btc candidates do not govern btc wrapper f
   assert.notEqual(btcWrapperAction.reason, "open_position_active");
 });
 
+test("capless advisory btc wrapper templates do not govern family when no live-sized intent exists", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      strategyCatalog: { btcFamilies: [] },
+      allocatorCore: {
+        candidates: [
+          {
+            id: "avalanche:wrapped_btc_lending",
+            chain: "avalanche",
+            protocols: ["benqi"],
+            assetFamily: "btc_wrappers",
+            blockers: [],
+          },
+        ],
+      },
+      defiLlamaPools: [],
+      policyEvaluator: async () => {
+        throw new Error("advisory capless template must not reach policy");
+      },
+    }),
+  );
+
+  const btcWrapper = report.familyCoverage.find((row) => row.family === "btc_wrapper_lending");
+  assert.ok(btcWrapper.discoveredCandidateCount >= 1);
+  assert.equal(btcWrapper.evPositiveCandidateCount, 0);
+  assert.equal(btcWrapper.firstBlockingReason, "NO_POLICY_ELIGIBLE_TRADE");
+
+  const btcWrapperAction = report.familyActionTable.find((row) => row.family === "btc_wrapper_lending");
+  assert.equal(btcWrapperAction.actionClass, "TRUE_NO_TRADE_ECONOMICS");
+  assert.equal(btcWrapperAction.reason, "NO_POLICY_ELIGIBLE_TRADE");
+});
+
+test("capless live-sized btc wrapper intent still surfaces strategy caps blocker", async () => {
+  const report = await buildAllSourceDeploymentSelectorReport(
+    baseInputs({
+      merklQueue: { summary: { queueCount: 0 }, queue: [] },
+      campaignAware: { candidates: [] },
+      strategyCatalog: { btcFamilies: [] },
+      allocatorCore: {
+        candidates: [
+          {
+            id: "avalanche:wrapped_btc_lending",
+            chain: "avalanche",
+            protocols: ["benqi"],
+            assetFamily: "btc_wrappers",
+            blockers: [],
+            notionalUsd: 5,
+            expectedRealizedNetUsd: 0.05,
+          },
+        ],
+      },
+      defiLlamaPools: [],
+    }),
+  );
+
+  const btcWrapper = report.familyCoverage.find((row) => row.family === "btc_wrapper_lending");
+  assert.ok(btcWrapper.evPositiveCandidateCount >= 1);
+  assert.equal(btcWrapper.firstBlockingReason, "strategy_caps_missing");
+
+  const btcWrapperAction = report.familyActionTable.find((row) => row.family === "btc_wrapper_lending");
+  assert.equal(btcWrapperAction.actionClass, "BLOCKED_BY_POLICY_SAFETY");
+  assert.equal(btcWrapperAction.reason, "strategy_caps_missing");
+});
+
 test("repeated pendle YT marks for the same positionId dedup to one active position", async () => {
   const pendlePositionId =
     "protocol:base:pendle:pendle-direct:8453:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e:pendle_market_swap:0x6ae9cf67d57e49c55f900933f5dcfc4b63461d6e";

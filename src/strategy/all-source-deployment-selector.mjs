@@ -2005,8 +2005,17 @@ function addFamilySurface(rows, family, fields = {}) {
 }
 
 function firstCandidateBlocker(candidate) {
+  const capBlockersAreGoverning =
+    candidate.policyResult ||
+    candidate.signerIntentAvailability?.ready === true ||
+    finiteNumber(candidate.notionalUsd, 0) > 0 ||
+    finiteNumber(candidate.expectedRealizedNetUsd, -1) > 0;
   return first(
-    [...array(candidate.blockers), ...array(candidate.capResult?.blockers), ...array(candidate.policyResult?.blockers)],
+    [
+      ...array(candidate.blockers),
+      ...(capBlockersAreGoverning ? array(candidate.capResult?.blockers) : []),
+      ...array(candidate.policyResult?.blockers),
+    ],
     null,
   );
 }

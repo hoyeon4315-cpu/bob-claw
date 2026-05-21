@@ -76,6 +76,7 @@ const LEGACY_AUDIT_TRACE_EVIDENCE_TYPE_BY_INTENT = Object.freeze({
   funding_transfer: "gateway_btc_transfer_audit_trace",
   gateway_btc_transfer: "gateway_btc_transfer_audit_trace",
 });
+const DEFAULT_CAPITAL_AUDIT_RPC_CONCURRENCY = 32;
 
 function timestampMs(value) {
   const parsed = new Date(value || 0).getTime();
@@ -93,6 +94,71 @@ export function latestBroadcastSignerRecords(records = []) {
     }
   }
   return [...latest.values()].sort((left, right) => new Date(left.timestamp || 0) - new Date(right.timestamp || 0));
+}
+
+function boundedPositiveInteger(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Math.max(1, Math.floor(numeric));
+}
+
+async function mapWithConcurrency(items = [], concurrency = 1, worker) {
+  const limit = boundedPositiveInteger(concurrency, 1);
+  let nextIndex = 0;
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runWorker()));
+}
+
+export async function collectBroadcastTransactionsAndReceipts({
+  signerAuditRecords = [],
+  txReader = readTransactionByHash,
+  receiptReader = readTransactionReceipt,
+  issues = [],
+  concurrency = DEFAULT_CAPITAL_AUDIT_RPC_CONCURRENCY,
+} = {}) {
+  const transactionsByTxHash = {};
+  const receiptsByTxHash = {};
+
+  async function readTransactionAndReceiptSafely(record) {
+    const txHash = record?.broadcast?.txHash;
+    if (!txHash) return;
+
+    try {
+      transactionsByTxHash[txHash] = await txReader(record.chain, txHash);
+    } catch (error) {
+      issues.push({
+        code: "transaction_read_failed",
+        severity: "low",
+        chain: record.chain,
+        message: `Transaction read failed for ${txHash}: ${error.message}`,
+      });
+    }
+
+    try {
+      receiptsByTxHash[txHash] = await receiptReader(record.chain, txHash);
+    } catch (error) {
+      issues.push({
+        code: "receipt_read_failed",
+        severity: "low",
+        chain: record.chain,
+        message: `Receipt read failed for ${txHash}: ${error.message}`,
+      });
+    }
+  }
+
+  await mapWithConcurrency(
+    latestBroadcastSignerRecords(signerAuditRecords),
+    concurrency,
+    readTransactionAndReceiptSafely,
+  );
+
+  return { transactionsByTxHash, receiptsByTxHash, issues };
 }
 
 function appendMapEntry(map, key, value) {
@@ -1554,6 +1620,7 @@ export async function collectCapitalAuditInputs({
   bitcoinClient = new MempoolClient(),
   txReader = readTransactionByHash,
   receiptReader = readTransactionReceipt,
+  rpcConcurrency = DEFAULT_CAPITAL_AUDIT_RPC_CONCURRENCY,
 } = {}) {
   const [
     signerAuditRecords,
@@ -1608,39 +1675,13 @@ export async function collectCapitalAuditInputs({
     bitcoinFeeSnapshots,
   });
 
-  const transactionsByTxHash = {};
-  const receiptsByTxHash = {};
-
-  async function readTransactionAndReceiptSafely(record, issues) {
-    const txHash = record?.broadcast?.txHash;
-    if (!txHash) return;
-
-    try {
-      transactionsByTxHash[txHash] = await txReader(record.chain, txHash);
-    } catch (error) {
-      issues.push({
-        code: "transaction_read_failed",
-        severity: "low",
-        chain: record.chain,
-        message: `Transaction read failed for ${txHash}: ${error.message}`,
-      });
-    }
-
-    try {
-      receiptsByTxHash[txHash] = await receiptReader(record.chain, txHash);
-    } catch (error) {
-      issues.push({
-        code: "receipt_read_failed",
-        severity: "low",
-        chain: record.chain,
-        message: `Receipt read failed for ${txHash}: ${error.message}`,
-      });
-    }
-  }
-
-  await Promise.all(
-    latestBroadcastSignerRecords(signerAuditRecords).map((record) => readTransactionAndReceiptSafely(record, issues)),
-  );
+  const { transactionsByTxHash, receiptsByTxHash } = await collectBroadcastTransactionsAndReceipts({
+    signerAuditRecords,
+    txReader,
+    receiptReader,
+    issues,
+    concurrency: rpcConcurrency,
+  });
 
   const bitcoinHistoriesByAddress = {};
   await Promise.all(
